@@ -624,6 +624,10 @@ a {
   gap: 8px;
 }
 
+.sidebar-title .refresh-btn {
+  margin-left: auto;
+}
+
 .sidebar-empty {
   font-size: 0.875rem;
   color: var(--chat-muted);

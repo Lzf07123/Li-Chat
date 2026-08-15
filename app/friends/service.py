@@ -3,13 +3,15 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Friendship, User
 from app.timeutil import iso_utc, utcnow
 
 SEARCH_RESULT_LIMIT = 20
+RECOMMENDATION_DEFAULT_LIMIT = 5
+RECOMMENDATION_MAX_LIMIT = 20
 
 
 def profile(user: User) -> dict[str, str | None]:
@@ -189,3 +191,24 @@ async def remove_relationship(
 async def are_friends(db: AsyncSession, a: str, b: str) -> bool:
     row = await _pair_row(db, a, b)
     return row is not None and row.status == "accepted"
+
+
+async def recommend_friends(
+    db: AsyncSession,
+    me_sub: str,
+    *,
+    limit: int = RECOMMENDATION_DEFAULT_LIMIT,
+) -> list[dict[str, str | None]]:
+    related = select(Friendship.addressee_sub).where(
+        Friendship.requester_sub == me_sub
+    ).union(select(Friendship.requester_sub).where(Friendship.addressee_sub == me_sub))
+    users = (
+        await db.execute(
+            select(User)
+            .where(User.sub != me_sub)
+            .where(~User.sub.in_(related))
+            .order_by(func.random())
+            .limit(limit)
+        )
+    ).scalars().all()
+    return [profile(user) for user in users]

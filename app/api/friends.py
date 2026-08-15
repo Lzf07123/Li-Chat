@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -67,6 +67,17 @@ async def requests_list(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> RequestsOut:
     return RequestsOut.model_validate(await service.list_requests(db, user.sub))
+
+
+@router.get("/recommendations", response_model=FriendsOut)
+async def recommendations(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=service.RECOMMENDATION_MAX_LIMIT)] = (
+        service.RECOMMENDATION_DEFAULT_LIMIT
+    ),
+) -> FriendsOut:
+    return FriendsOut(friends=await service.recommend_friends(db, user.sub, limit=limit))
 
 
 @router.post("/requests", response_model=FriendRequestOut, status_code=201)
