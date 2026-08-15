@@ -21,6 +21,7 @@ async def test_me_after_login(
     await _login(api_client, mock_client)
     response = await api_client.get("/api/me")
     assert response.status_code == 200
+    assert response.headers.get("cache-control") == "no-store"
     data = response.json()
     assert data["sub"] == "u-1001"
     assert data["nickname"] == "Alice"
