@@ -71,6 +71,7 @@ async def test_app_script_contracts(api_client: httpx.AsyncClient) -> None:
     assert 'window.location.href = "/oidc/login"' not in text
     assert '"pageshow"' in text
     assert "event.persisted" in text
+    assert "state.loggingOut = true" in text
 
 
 async def test_ambient_script(api_client: httpx.AsyncClient) -> None:

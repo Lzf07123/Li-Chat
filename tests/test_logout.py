@@ -1,11 +1,15 @@
 from urllib.parse import parse_qs, urlparse
 
 import httpx
+import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from app.models import Session
 from app.sso.signing import sign_state
+from tests.fixtures.chat import seed_session_sync
 
 
 async def _login(api_client: httpx.AsyncClient, mock_client: httpx.AsyncClient) -> None:
@@ -89,6 +93,23 @@ async def test_post_logout_post_without_state_returns_400(
 ) -> None:
     response = await api_client.post("/oidc/post-logout")
     assert response.status_code == 400
+
+
+def test_logout_disconnects_user_websocket(app) -> None:
+    session_id, csrf = seed_session_sync(app, "u-1")
+    with TestClient(app) as client:
+        client.cookies.set("lichat_session", session_id)
+        with client.websocket_connect("/ws") as ws:
+            assert ws.receive_json() == {"type": "hello", "sub": "u-1"}
+            response = client.post(
+                "/oidc/logout",
+                headers={"x-csrf-token": csrf},
+                follow_redirects=False,
+            )
+            assert response.status_code == 302
+            with pytest.raises(WebSocketDisconnect) as exc_info:
+                ws.receive_json()
+            assert exc_info.value.code == 4401
 
 
 async def test_post_logout_accepts_json_state(api_client: httpx.AsyncClient) -> None:
