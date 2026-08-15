@@ -78,7 +78,7 @@ async function api(path, options = {}) {
     throw new Error("网络错误，请稍后重试");
   }
   if (response.status === 401) {
-    window.location.href = "/oidc/login";
+    window.location.href = "/";
     throw new Error("登录已失效");
   }
   return response;
@@ -609,8 +609,8 @@ function connectWebSocket() {
   });
   socket.addEventListener("close", (event) => {
     if (event.code === 4401) {
-      setStatus("invalid", "登录已失效，正在跳转…");
-      window.location.href = "/oidc/login";
+      setStatus("invalid", "已退出登录，正在返回登录页…");
+      window.location.href = "/";
       return;
     }
     setStatus("disconnected", "连接已断开");
