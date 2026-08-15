@@ -57,11 +57,18 @@ async def delete_session(db: AsyncSession, session_id: str) -> None:
         await db.commit()
 
 
-async def delete_sessions_for(db: AsyncSession, user_sub: str, sid: str) -> None:
-    await db.execute(
+async def delete_sessions_for(db: AsyncSession, user_sub: str, sid: str) -> int:
+    result = await db.execute(
         delete(Session).where(Session.user_sub == user_sub, Session.sid == sid)
     )
     await db.commit()
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
+async def delete_all_sessions_for(db: AsyncSession, user_sub: str) -> int:
+    result = await db.execute(delete(Session).where(Session.user_sub == user_sub))
+    await db.commit()
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 def set_session_cookie(

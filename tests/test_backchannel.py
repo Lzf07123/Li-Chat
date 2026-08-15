@@ -155,3 +155,35 @@ async def test_post_logout_rejects_invalid_logout_token(
     token = _logout_token(mock_idp, "j-p3", aud="other-client")
     response = await api_client.post("/oidc/post-logout", data={"logout_token": token})
     assert response.status_code == 400
+
+
+async def test_logout_token_with_unmatched_sid_clears_all_sessions_for_user(
+    app,
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    mock_idp: MockIdP,
+) -> None:
+    await _seed_sessions(db_session)
+    fake = FakeWS()
+    await _register_fake_ws(app, fake)
+    token = _logout_token(mock_idp, "j-r1", sid="sid-rotated")
+    response = await api_client.post("/oidc/backchannel-logout", data={"logout_token": token})
+    assert response.status_code == 200
+    assert (await db_session.execute(select(Session.id))).scalars().all() == []
+    assert fake.closed_with == [4401]
+
+
+async def test_logout_token_without_sid_clears_all_sessions_for_user(
+    app,
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    mock_idp: MockIdP,
+) -> None:
+    await _seed_sessions(db_session)
+    fake = FakeWS()
+    await _register_fake_ws(app, fake)
+    token = _logout_token(mock_idp, "j-r2", sid=None)
+    response = await api_client.post("/oidc/backchannel-logout", data={"logout_token": token})
+    assert response.status_code == 200
+    assert (await db_session.execute(select(Session.id))).scalars().all() == []
+    assert fake.closed_with == [4401]
