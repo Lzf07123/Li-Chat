@@ -28,6 +28,7 @@
 - OIDC 传输端点升级：经 https 拉取的发现文档，其 authorization/token/userinfo/jwks/end-session 端点统一升级为 https（issuer 保留原文校验）。修复真实登录首次回调 502「idp response missing tokens」——发现文档声明 http 端点，80 端口 301 不被 httpx 的带体 POST 跟随，导致令牌响应被当成空对象
 - 登出回跳页支持 POST：门户完成 SSO 登出后以 `application/x-www-form-urlencoded` 回传 `state`，原仅 GET 的路由返回 405；现同时接受 GET（query）与 POST（form，缺省回退 query），验签后 302 首页
 - 登出回跳页解析放宽：POST 依次支持 query / 表单 / JSON / 原始 urlencoded body；校验失败记录 `source/content_type/字段名` 结构化日志（不落令牌值），便于定位门户实际回传格式
+- 登出回跳页兼容 `logout_token`：门户实际把回程登出令牌 POST 到回跳地址（form 字段 `logout_token`）；现与 `/oidc/backchannel-logout` 共用校验与下线逻辑，令牌有效即清会话并返回 2xx，修复生产 400
 
 ## v0.1.0 — 2026-08-15
 

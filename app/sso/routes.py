@@ -6,7 +6,7 @@ from urllib.parse import parse_qsl, quote, urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -206,13 +206,14 @@ async def post_logout(request: Request, state: str | None = None) -> RedirectRes
     return _finish_post_logout(request, state)
 
 
-async def _extract_post_logout_state(
+async def _extract_post_logout_payload(
     request: Request,
-) -> tuple[str | None, str, list[str], list[str]]:
+) -> tuple[str | None, str | None, str, list[str], list[str]]:
     query_keys = sorted(request.query_params.keys())
     query_state = request.query_params.get("state")
-    if query_state is not None:
-        return query_state, "query", query_keys, []
+    query_token = request.query_params.get("logout_token")
+    if query_state is not None or query_token is not None:
+        return query_state, query_token, "query", query_keys, []
     content_type = request.headers.get("content-type", "").lower()
     if (
         "application/x-www-form-urlencoded" in content_type
@@ -220,8 +221,15 @@ async def _extract_post_logout_state(
     ):
         form = await request.form()
         form_keys = sorted(form.keys())
-        value = form.get("state")
-        return str(value) if value is not None else None, "form", query_keys, form_keys
+        state_value = form.get("state")
+        token_value = form.get("logout_token")
+        return (
+            str(state_value) if state_value is not None else None,
+            str(token_value) if token_value is not None else None,
+            "form",
+            query_keys,
+            form_keys,
+        )
     if not content_type:
         raw = await request.body()
         try:
@@ -229,26 +237,41 @@ async def _extract_post_logout_state(
         except Exception:
             pairs = []
         form_keys = sorted({key for key, _ in pairs})
-        value = dict(pairs).get("state")
-        return value, "form", query_keys, form_keys
+        values = dict(pairs)
+        return (
+            values.get("state"),
+            values.get("logout_token"),
+            "form",
+            query_keys,
+            form_keys,
+        )
     try:
         body = await request.json()
     except Exception:
-        return None, "json", query_keys, []
+        return None, None, "json", query_keys, []
     if isinstance(body, dict):
-        value = body.get("state")
+        state_value = body.get("state")
+        token_value = body.get("logout_token")
         return (
-            str(value) if value is not None else None,
+            str(state_value) if state_value is not None else None,
+            str(token_value) if token_value is not None else None,
             "json",
             query_keys,
             sorted(body.keys()),
         )
-    return None, "json", query_keys, []
+    return None, None, "json", query_keys, []
 
 
 @router.post("/post-logout")
-async def post_logout_submit(request: Request) -> RedirectResponse:
-    state, source, query_keys, form_keys = await _extract_post_logout_state(request)
+async def post_logout_submit(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    state, logout_token, source, query_keys, form_keys = (
+        await _extract_post_logout_payload(request)
+    )
+    if logout_token is not None:
+        return await _process_logout_token(request, db, logout_token)
     if not state or verify_state(_settings(request).session_secret, state) is None:
         logger.warning(
             "post_logout_state_invalid",
@@ -261,11 +284,8 @@ async def post_logout_submit(request: Request) -> RedirectResponse:
     return RedirectResponse("/", status_code=302)
 
 
-@router.post("/backchannel-logout")
-async def backchannel_logout(
-    request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    logout_token: Annotated[str, Form()],
+async def _process_logout_token(
+    request: Request, db: AsyncSession, logout_token: str
 ) -> JSONResponse:
     settings = _settings(request)
     discovery = cast(DiscoveryStore, request.app.state.discovery)
@@ -295,3 +315,12 @@ async def backchannel_logout(
     if redis is not None:
         await publish_logout(redis, sub)
     return JSONResponse({"status": "ok"})
+
+
+@router.post("/backchannel-logout")
+async def backchannel_logout(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    logout_token: Annotated[str, Form()],
+) -> JSONResponse:
+    return await _process_logout_token(request, db, logout_token)
