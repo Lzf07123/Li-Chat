@@ -18,6 +18,10 @@
 - 容器化部署：Dockerfile（python:3.12-slim + uv、非 root、构建期导入冒烟）与 docker-compose.yaml（单服务、命名卷持久化 SQLite、healthcheck、127.0.0.1 端口绑定）
 - compose 新增编排内 redis（7-alpine、AOF、maxmemory 192mb、健康检查、口令可覆盖），chat 默认连接，支持外部 Redis 覆盖
 
+### 缺陷修复
+
+- OIDC 传输端点升级：经 https 拉取的发现文档，其 authorization/token/userinfo/jwks/end-session 端点统一升级为 https（issuer 保留原文校验）。修复真实登录首次回调 502「idp response missing tokens」——发现文档声明 http 端点，80 端口 301 不被 httpx 的带体 POST 跟随，导致令牌响应被当成空对象
+
 ## v0.1.0 — 2026-08-15
 
 首个里程碑：Li&Pass OIDC 单点登录，按五个版本本地迭代交付，55 个测试、ruff、mypy 全绿。
