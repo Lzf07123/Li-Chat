@@ -9,7 +9,7 @@
 | GET | `/oidc/callback` | 无 | 授权回调（code/state/error/error_description），成功 302 回 `redirect_after` 并种会话 Cookie |
 | GET | `/oidc/error?message=` | 无 | 登录错误页，返回 `{"message": ...}` |
 | POST | `/oidc/logout` | CSRF | 清本地会话，302 到 IdP `end-session` |
-| GET/POST | `/oidc/post-logout` | 无 | 门户登出回跳：带 `state` 时验签后 302 首页；带 `logout_token` 时按回程登出校验（kid/iss/aud/120s/jti/events）清 `(sub,sid)` 会话并断 WS，返回 `{"status":"ok"/"ignored"}`；否则 400 并记录来源与字段名 |
+| GET/POST | `/oidc/post-logout` | 无 | 门户登出回跳：带 `state` 时验签后 302 首页；带 `logout_token` 时按回程登出校验（kid/iss/aud/120s/jti/events）清 `(sub,sid)` 会话并断 WS，返回 200 HTML 跳转页（meta refresh 到 `/`，浏览器回登录界面、门户侧仍 2xx）；否则 400 并记录来源与字段名 |
 | POST | `/oidc/backchannel-logout` | 无 | 门户服务器间调用，form 字段 `logout_token`，返回 `{"status":"ok"}` 或 `{"status":"ignored"}` |
 | GET | `/api/me` | 会话 | 当前用户 `{sub, nickname, name, picture, email, csrf_token}` |
 | GET | `/api/users/search?q=` | 会话 | 昵称/邮箱关键词搜索（1–64 字符，≤20 条）；返回 `sub/nickname/name/picture/friend_status`，不回传邮箱 |

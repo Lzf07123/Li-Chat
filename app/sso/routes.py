@@ -6,7 +6,7 @@ from urllib.parse import parse_qsl, quote, urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,6 +34,20 @@ from app.ws.manager import ConnectionManager
 
 router = APIRouter(prefix="/oidc", tags=["sso"])
 logger = get_logger(__name__)
+
+_POST_LOGOUT_LANDING_HTML = """<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="0; url=/">
+<title>已退出登录</title>
+</head>
+<body>
+<p>已退出登录，正在返回…</p>
+<p><a href="/">如果没有自动跳转，点击这里</a></p>
+</body>
+</html>"""
 
 
 def _settings(request: Request) -> Settings:
@@ -271,7 +285,8 @@ async def post_logout_submit(
         await _extract_post_logout_payload(request)
     )
     if logout_token is not None:
-        return await _process_logout_token(request, db, logout_token)
+        await _process_logout_token(request, db, logout_token)
+        return HTMLResponse(_POST_LOGOUT_LANDING_HTML)
     if not state or verify_state(_settings(request).session_secret, state) is None:
         logger.warning(
             "post_logout_state_invalid",
