@@ -89,3 +89,31 @@ async def test_post_logout_post_without_state_returns_400(
 ) -> None:
     response = await api_client.post("/oidc/post-logout")
     assert response.status_code == 400
+
+
+async def test_post_logout_accepts_json_state(api_client: httpx.AsyncClient) -> None:
+    signed = sign_state("test-session-secret", "token-1")
+    response = await api_client.post("/oidc/post-logout", json={"state": signed})
+    assert response.status_code == 302
+    assert response.headers["location"] == "/"
+
+
+async def test_post_logout_accepts_form_without_content_type(
+    api_client: httpx.AsyncClient,
+) -> None:
+    signed = sign_state("test-session-secret", "token-1")
+    request = api_client.build_request(
+        "POST",
+        "/oidc/post-logout",
+        content=f"state={signed}".encode(),
+    )
+    response = await api_client.send(request)
+    assert response.status_code == 302
+    assert response.headers["location"] == "/"
+
+
+async def test_post_logout_rejects_json_without_state(
+    api_client: httpx.AsyncClient,
+) -> None:
+    response = await api_client.post("/oidc/post-logout", json={"foo": "bar"})
+    assert response.status_code == 400
