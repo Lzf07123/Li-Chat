@@ -45,13 +45,21 @@ compose 默认随 `chat` 启动一个编排内 redis（7-alpine、AOF、192mb、
 | `LICHAT_ENV` | `dev` | `prod` 时启用 Secure Cookie 并校验密钥强度 |
 | `LICHAT_DATABASE_URL` | `sqlite+aiosqlite:///./data/lichat.db` | 生产建议 PostgreSQL |
 | `LICHAT_REDIS_URL` | 空（进程内实现） | 如 `redis://:pass@redis:6379/0`；配置后 jti 防重放与跨副本登出广播走 Redis |
-| `LICHAT_OIDC_ISSUER` | `https://account.lizf.cn` | 发现文档地址由它推导，也可用 `OIDC_DISCOVERY_URL` 覆盖 |
+| `LICHAT_OIDC_ISSUER` | `https://account.lizf.cn` | 发现文档地址由它推导，也可用 `LICHAT_OIDC_DISCOVERY_URL` 覆盖 |
+| `LICHAT_OIDC_DISCOVERY_URL` | 空（由 issuer 推导） | 显式发现文档地址，默认 `<issuer>/.well-known/openid-configuration` |
 | `LICHAT_OIDC_CLIENT_ID` | `li-chat-local` | 门户注册的 client_id |
 | `LICHAT_OIDC_CLIENT_SECRET` | 空 | 机密客户端密钥 |
 | `LICHAT_OIDC_REDIRECT_URI` | `http://localhost:8000/oidc/callback` | 必须精确命中门户白名单 |
 | `LICHAT_OIDC_POST_LOGOUT_REDIRECT_URI` | `http://localhost:8000/` | 登出回跳白名单 |
 | `LICHAT_OIDC_SCOPE` | `openid profile` | 首版不含 email，避免未验证邮箱用户被挡 |
 | `LICHAT_SESSION_SECRET` | 开发占位值 | 生产必须 ≥32 字符，用于登出 state 签名 |
+| `LICHAT_SESSION_SLIDING_TTL` | `7200` | 会话滑动过期秒数（2 小时） |
+| `LICHAT_SESSION_ABSOLUTE_TTL` | `604800` | 会话绝对过期秒数（7 天） |
+| `LICHAT_SESSION_COOKIE_NAME` | `lichat_session` | 会话 Cookie 名 |
+| `LICHAT_LOGOUT_TOKEN_MAX_SKEW` | `120` | 回程登出令牌允许时钟偏差（秒）；jti 缓存保留 = 该值 + 60 |
+| `LICHAT_DISCOVERY_CACHE_TTL` | `300` | 发现文档缓存时长（秒） |
+
+compose 插值变量（应用忽略）：`LICHAT_PORT`（宿主机端口）、`REDIS_PASSWORD` / `REDIS_APPENDONLY` / `REDIS_MAXMEMORY`（编排内 redis）、`TZ`、`IMAGE_REGISTRY` / `PYPI_INDEX_URL` / `APT_MIRROR`（镜像源）。完整模板见 `.env.example`。
 
 ## 生产部署
 
