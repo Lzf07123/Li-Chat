@@ -1,0 +1,55 @@
+from urllib.parse import parse_qs, urlparse
+
+import httpx
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import Session
+from app.sso.signing import sign_state
+
+
+async def _login(api_client: httpx.AsyncClient, mock_client: httpx.AsyncClient) -> None:
+    response = await api_client.get("/oidc/login")
+    authorize = await mock_client.get(response.headers["location"])
+    callback = await api_client.get(authorize.headers["location"])
+    assert callback.status_code == 302
+
+
+async def test_logout_redirects_to_end_session_and_clears_session(
+    api_client: httpx.AsyncClient,
+    mock_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    await _login(api_client, mock_client)
+    me = (await api_client.get("/api/me")).json()
+    response = await api_client.post("/oidc/logout", headers={"x-csrf-token": me["csrf_token"]})
+    assert response.status_code == 302
+    location = response.headers["location"]
+    assert urlparse(location).path == "/oauth2/end-session"
+    query = parse_qs(urlparse(location).query)
+    assert query["client_id"] == ["test-client"]
+    assert query["post_logout_redirect_uri"] == ["http://test/"]
+    assert query["state"]
+    assert (await db_session.execute(select(Session))).all() == []
+    assert (await api_client.get("/api/me")).status_code == 401
+
+
+async def test_logout_without_csrf_returns_403(
+    api_client: httpx.AsyncClient, mock_client: httpx.AsyncClient
+) -> None:
+    await _login(api_client, mock_client)
+    response = await api_client.post("/oidc/logout")
+    assert response.status_code == 403
+
+
+async def test_post_logout_accepts_valid_state(api_client: httpx.AsyncClient) -> None:
+    signed = sign_state("test-session-secret", "token-1")
+    response = await api_client.get("/oidc/post-logout", params={"state": signed})
+    assert response.status_code == 302
+    assert response.headers["location"] == "/"
+
+
+async def test_post_logout_rejects_tampered_state(api_client: httpx.AsyncClient) -> None:
+    signed = sign_state("test-session-secret", "token-1")
+    response = await api_client.get("/oidc/post-logout", params={"state": signed + "x"})
+    assert response.status_code == 400

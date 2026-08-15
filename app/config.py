@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,3 +34,10 @@ class Settings(BaseSettings):
     @property
     def is_prod(self) -> bool:
         return self.env == "prod"
+
+    @field_validator("session_secret")
+    @classmethod
+    def _validate_session_secret(cls, value: str, info: ValidationInfo) -> str:
+        if info.data.get("env") == "prod" and len(value) < 32:
+            raise ValueError("session_secret must be at least 32 characters in prod")
+        return value

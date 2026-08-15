@@ -2,14 +2,21 @@ from __future__ import annotations
 
 import secrets
 from typing import Annotated, cast
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.session import create_session, set_session_cookie
+from app.auth.deps import require_csrf
+from app.auth.session import (
+    clear_session_cookie,
+    create_session,
+    delete_session,
+    delete_sessions_for,
+    set_session_cookie,
+)
 from app.config import Settings
 from app.db import get_db
 from app.logging import get_logger
@@ -19,6 +26,9 @@ from app.oidc.provider import OIDCProvider, TokenExchangeError
 from app.oidc.state import create_auth_state, pop_auth_state
 from app.oidc.tokens import TokenValidationError, TokenVerifier
 from app.oidc.user_sync import upsert_user
+from app.sso.replay import ReplayCache
+from app.sso.signing import sign_state, verify_state
+from app.ws.manager import ConnectionManager
 
 router = APIRouter(prefix="/oidc", tags=["sso"])
 logger = get_logger(__name__)
@@ -155,3 +165,70 @@ async def callback(
 @router.get("/error")
 async def error(message: str = "登录未完成") -> JSONResponse:
     return JSONResponse({"message": message})
+
+
+@router.post("/logout")
+async def logout(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> RedirectResponse:
+    settings = _settings(request)
+    session_id = request.cookies.get(settings.session_cookie_name)
+    if session_id:
+        await delete_session(db, session_id)
+    metadata = await _provider(request).discovery_metadata()
+    signed = sign_state(settings.session_secret, secrets.token_urlsafe(24))
+    params = urlencode(
+        {
+            "client_id": settings.oidc_client_id,
+            "post_logout_redirect_uri": settings.oidc_post_logout_redirect_uri,
+            "state": signed,
+        }
+    )
+    response = RedirectResponse(
+        f"{metadata.end_session_endpoint}?{params}", status_code=302
+    )
+    clear_session_cookie(response, cookie_name=settings.session_cookie_name)
+    return response
+
+
+@router.get("/post-logout")
+async def post_logout(request: Request, state: str | None = None) -> RedirectResponse:
+    if not state or verify_state(_settings(request).session_secret, state) is None:
+        raise HTTPException(status_code=400, detail="invalid logout state")
+    return RedirectResponse("/", status_code=302)
+
+
+@router.post("/backchannel-logout")
+async def backchannel_logout(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    logout_token: Annotated[str, Form()],
+) -> JSONResponse:
+    settings = _settings(request)
+    discovery = cast(DiscoveryStore, request.app.state.discovery)
+    metadata = await discovery.get()
+    try:
+        claims = await _token_verifier(request, metadata).validate_logout_token(
+            logout_token, max_skew=settings.logout_token_max_skew
+        )
+    except TokenValidationError as exc:
+        logger.warning("logout_token_invalid", error=str(exc))
+        raise HTTPException(status_code=400, detail="invalid logout_token") from exc
+
+    jti = claims.get("jti")
+    sub = claims.get("sub")
+    sid = claims.get("sid")
+    if not isinstance(jti, str) or not isinstance(sub, str) or not isinstance(sid, str):
+        raise HTTPException(status_code=400, detail="logout token missing claims")
+
+    cache = cast(ReplayCache, request.app.state.replay_cache)
+    if cache.seen(jti):
+        return JSONResponse({"status": "ignored"})
+    cache.add(jti)
+
+    await delete_sessions_for(db, sub, sid)
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    await manager.disconnect_sub(sub)
+    return JSONResponse({"status": "ok"})

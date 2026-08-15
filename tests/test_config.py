@@ -1,3 +1,6 @@
+import pytest
+from pydantic import ValidationError
+
 from app.config import Settings
 
 
@@ -16,6 +19,12 @@ def test_env_override_and_explicit_discovery_url() -> None:
         env="prod",
         oidc_issuer="https://x.example",
         oidc_discovery_url="https://meta.example/discovery",
+        session_secret="x" * 40,
     )
     assert settings.discovery_url == "https://meta.example/discovery"
     assert settings.is_prod is True
+
+
+def test_prod_requires_strong_session_secret() -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, env="prod", session_secret="short")
