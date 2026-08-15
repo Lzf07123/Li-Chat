@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
@@ -192,3 +193,163 @@ def test_request_received_pushed_over_ws(app: Any) -> None:
     assert event["event"] == "request_received"
     assert event["by_sub"] == "u-alice"
     assert event["at"].endswith("Z")
+
+
+async def _seed_pending(app: Any, requester: str, addressee: str) -> None:
+    async with app.state.session_factory() as db:
+        await seed_user(db, requester, nickname=requester)
+        await seed_user(db, addressee, nickname=addressee)
+        db.add(Friendship(requester_sub=requester, addressee_sub=addressee, status="pending"))
+        await db.commit()
+
+
+async def test_accept_request_ok(app: Any) -> None:
+    await _seed_pending(app, "u-bob", "u-alice")
+    client, csrf = await _client_for(app, "u-alice")
+    async with client:
+        response = await client.post(
+            "/api/friends/requests/u-bob/accept",
+            headers={"x-csrf-token": csrf},
+        )
+    assert response.status_code == 200
+    assert response.json() == {"status": "accepted"}
+    client, _ = await _client_for(app, "u-alice")
+    async with client:
+        friends = await client.get("/api/friends")
+    assert [item["sub"] for item in friends.json()["friends"]] == ["u-bob"]
+
+
+async def test_accept_reject_only_addressee(app: Any) -> None:
+    await _seed_pending(app, "u-bob", "u-alice")
+    client, csrf = await _client_for(app, "u-bob")
+    async with client:
+        response = await client.post(
+            "/api/friends/requests/u-bob/accept",
+            headers={"x-csrf-token": csrf},
+        )
+    assert response.status_code == 404
+    client, csrf = await _client_for(app, "u-bob")
+    async with client:
+        response = await client.post(
+            "/api/friends/requests/u-bob/reject",
+            headers={"x-csrf-token": csrf},
+        )
+    assert response.status_code == 404
+
+
+async def test_reject_request_removes_pending(app: Any) -> None:
+    await _seed_pending(app, "u-bob", "u-alice")
+    client, csrf = await _client_for(app, "u-alice")
+    async with client:
+        response = await client.post(
+            "/api/friends/requests/u-bob/reject",
+            headers={"x-csrf-token": csrf},
+        )
+    assert response.status_code == 200
+    assert response.json() == {"status": "rejected"}
+    client, _ = await _client_for(app, "u-alice")
+    async with client:
+        requests = await client.get("/api/friends/requests")
+    assert requests.json() == {"incoming": [], "outgoing": []}
+
+
+async def test_remove_friend_and_missing(app: Any) -> None:
+    async with app.state.session_factory() as db:
+        from tests.fixtures.chat import make_friends
+
+        await make_friends(db, "u-alice", "u-bob")
+    client, csrf = await _client_for(app, "u-alice")
+    async with client:
+        removed = await client.delete(
+            "/api/friends/u-bob", headers={"x-csrf-token": csrf}
+        )
+        missing = await client.delete(
+            "/api/friends/u-bob", headers={"x-csrf-token": csrf}
+        )
+    assert removed.status_code == 200
+    assert removed.json() == {"status": "removed"}
+    assert missing.status_code == 404
+
+
+async def test_remove_requires_csrf(app: Any) -> None:
+    client, _ = await _client_for(app, "u-alice")
+    async with client:
+        response = await client.delete("/api/friends/u-bob")
+    assert response.status_code == 403
+
+
+async def test_remove_outgoing_request_cancels(app: Any) -> None:
+    await _seed_pending(app, "u-alice", "u-bob")
+    client, csrf = await _client_for(app, "u-alice")
+    async with client:
+        removed = await client.delete(
+            "/api/friends/u-bob", headers={"x-csrf-token": csrf}
+        )
+        requests = await client.get("/api/friends/requests")
+    assert removed.status_code == 200
+    assert requests.json() == {"incoming": [], "outgoing": []}
+
+
+def _seed_pending_sync(app: Any, requester: str, addressee: str) -> None:
+    def run() -> None:
+        async def inner() -> None:
+            async with app.state.session_factory() as db:
+                await seed_user(db, requester, nickname=requester)
+                await seed_user(db, addressee, nickname=addressee)
+                db.add(
+                    Friendship(
+                        requester_sub=requester,
+                        addressee_sub=addressee,
+                        status="pending",
+                    )
+                )
+                await db.commit()
+
+        asyncio.run(inner())
+
+    run()
+
+
+def test_accepted_and_removed_pushed_over_ws(app: Any) -> None:
+    _seed_pending_sync(app, "u-bob", "u-alice")
+    bob_sid, _ = seed_session_sync(app, "u-bob")
+    alice_sid, alice_csrf = seed_session_sync(app, "u-alice")
+    with TestClient(app) as client:
+        client.cookies.set("lichat_session", bob_sid)
+        with client.websocket_connect("/ws") as ws:
+            assert ws.receive_json() == {"type": "hello", "sub": "u-bob"}
+            client.cookies.set("lichat_session", alice_sid)
+            response = client.post(
+                "/api/friends/requests/u-bob/accept",
+                headers={"x-csrf-token": alice_csrf},
+            )
+            assert response.status_code == 200
+            accepted = ws.receive_json()
+            removed = client.delete(
+                "/api/friends/u-bob", headers={"x-csrf-token": alice_csrf}
+            )
+            assert removed.status_code == 200
+            friend_removed = ws.receive_json()
+    assert accepted["event"] == "request_accepted"
+    assert accepted["by_sub"] == "u-alice"
+    assert friend_removed["event"] == "friend_removed"
+    assert friend_removed["by_sub"] == "u-alice"
+
+
+def test_reject_pushed_over_ws(app: Any) -> None:
+    _seed_pending_sync(app, "u-bob", "u-alice")
+    bob_sid, _ = seed_session_sync(app, "u-bob")
+    alice_sid, alice_csrf = seed_session_sync(app, "u-alice")
+    with TestClient(app) as client:
+        client.cookies.set("lichat_session", bob_sid)
+        with client.websocket_connect("/ws") as ws:
+            assert ws.receive_json() == {"type": "hello", "sub": "u-bob"}
+            client.cookies.set("lichat_session", alice_sid)
+            response = client.post(
+                "/api/friends/requests/u-bob/reject",
+                headers={"x-csrf-token": alice_csrf},
+            )
+            assert response.status_code == 200
+            rejected = ws.receive_json()
+    assert rejected["event"] == "request_rejected"
+    assert rejected["by_sub"] == "u-alice"

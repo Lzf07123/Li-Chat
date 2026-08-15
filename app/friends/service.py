@@ -7,7 +7,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Friendship, User
-from app.timeutil import iso_utc
+from app.timeutil import iso_utc, utcnow
 
 SEARCH_RESULT_LIMIT = 20
 
@@ -127,3 +127,65 @@ async def list_requests(db: AsyncSession, me_sub: str) -> dict[str, list[dict[st
                     {"requester": profile(other), "created_at": iso_utc(row.created_at)}
                 )
     return {"incoming": incoming, "outgoing": outgoing}
+
+
+async def accept_request(db: AsyncSession, me_sub: str, from_sub: str) -> Friendship:
+    row = await _pair_row(db, from_sub, me_sub)
+    if row is None or row.status != "pending" or row.requester_sub != from_sub:
+        raise HTTPException(status_code=404, detail="friend request not found")
+    row.status = "accepted"
+    row.updated_at = utcnow()
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def reject_request(db: AsyncSession, me_sub: str, from_sub: str) -> None:
+    row = await _pair_row(db, from_sub, me_sub)
+    if row is None or row.status != "pending" or row.requester_sub != from_sub:
+        raise HTTPException(status_code=404, detail="friend request not found")
+    await db.delete(row)
+    await db.commit()
+
+
+async def list_friends(db: AsyncSession, me_sub: str) -> list[dict[str, str | None]]:
+    rows = (
+        await db.execute(
+            select(Friendship)
+            .where(Friendship.status == "accepted")
+            .where(
+                or_(
+                    Friendship.requester_sub == me_sub,
+                    Friendship.addressee_sub == me_sub,
+                )
+            )
+            .order_by(Friendship.updated_at.desc())
+        )
+    ).scalars().all()
+    others = [
+        row.addressee_sub if row.requester_sub == me_sub else row.requester_sub
+        for row in rows
+    ]
+    users: dict[str, User] = {}
+    if others:
+        found = (
+            await db.execute(select(User).where(User.sub.in_(set(others))))
+        ).scalars().all()
+        users = {user.sub: user for user in found}
+    return [profile(users[sub]) for sub in others if sub in users]
+
+
+async def remove_relationship(
+    db: AsyncSession, me_sub: str, other_sub: str
+) -> Friendship | None:
+    row = await _pair_row(db, me_sub, other_sub)
+    if row is None:
+        return None
+    await db.delete(row)
+    await db.commit()
+    return row
+
+
+async def are_friends(db: AsyncSession, a: str, b: str) -> bool:
+    row = await _pair_row(db, a, b)
+    return row is not None and row.status == "accepted"
