@@ -31,6 +31,7 @@ async def test_logout_redirects_to_end_session_and_clears_session(
     location = response.headers["location"]
     assert urlparse(location).path == "/oauth2/end-session"
     query = parse_qs(urlparse(location).query)
+    assert query["id_token_hint"]
     assert query["client_id"] == ["test-client"]
     assert query["post_logout_redirect_uri"] == ["http://test/"]
     assert query["state"]

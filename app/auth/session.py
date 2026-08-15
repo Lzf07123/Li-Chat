@@ -17,6 +17,7 @@ async def create_session(
     *,
     sid: str | None = None,
     acr: str | None = None,
+    id_token: str | None = None,
     sliding_ttl: int = 7200,
     absolute_ttl: int = 604800,
 ) -> Session:
@@ -26,6 +27,7 @@ async def create_session(
         user_sub=user_sub,
         sid=sid,
         acr=acr,
+        id_token=id_token,
         csrf_token=secrets.token_urlsafe(32),
         expires_at=now + timedelta(seconds=sliding_ttl),
         absolute_expires_at=now + timedelta(seconds=absolute_ttl),
