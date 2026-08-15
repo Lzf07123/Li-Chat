@@ -31,6 +31,7 @@
 - 登出回跳页解析放宽：POST 依次支持 query / 表单 / JSON / 原始 urlencoded body；校验失败记录 `source/content_type/字段名` 结构化日志（不落令牌值），便于定位门户实际回传格式
 - 登出回跳页兼容 `logout_token`：门户实际把回程登出令牌 POST 到回跳地址（form 字段 `logout_token`）；现与 `/oidc/backchannel-logout` 共用校验与下线逻辑，令牌有效即清会话并返回 2xx，修复生产 400
 - 登出回跳落回登录界面：`logout_token` 处理成功后返回 200 HTML 跳转页（meta refresh 到 `/`），浏览器自动回登录界面；门户服务器仍收到 2xx，不会继续重试
+- 登出回落不再误触授权确认：前端 401 与 WS 4401 一律回到登录卡片页（不再直接跳 `/oidc/login` 触发门户授权）；落地页增加 JS 跳转兜底，避免 meta refresh 偶发不生效
 
 ## v0.1.0 — 2026-08-15
 

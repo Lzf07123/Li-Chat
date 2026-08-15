@@ -124,6 +124,7 @@ async def test_post_logout_accepts_logout_token_and_clears_sessions(
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "url=/" in response.text
+    assert 'window.location.replace("/")' in response.text
     remaining = (await db_session.execute(select(Session.id))).scalars().all()
     assert remaining == [ids["keep"]]
     assert fake.closed_with == [4401]

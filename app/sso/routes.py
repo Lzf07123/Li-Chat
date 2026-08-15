@@ -46,6 +46,7 @@ _POST_LOGOUT_LANDING_HTML = """<!doctype html>
 <body>
 <p>已退出登录，正在返回…</p>
 <p><a href="/">如果没有自动跳转，点击这里</a></p>
+<script>window.location.replace("/");</script>
 </body>
 </html>"""
 
