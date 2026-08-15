@@ -51,7 +51,7 @@ compose 默认随 `chat` 启动一个编排内 redis（7-alpine、AOF、192mb、
 | `LICHAT_OIDC_CLIENT_SECRET` | 空 | 机密客户端密钥 |
 | `LICHAT_OIDC_REDIRECT_URI` | `http://localhost:8000/oidc/callback` | 必须精确命中门户白名单 |
 | `LICHAT_OIDC_POST_LOGOUT_REDIRECT_URI` | `http://localhost:8000/` | 登出回跳白名单 |
-| `LICHAT_OIDC_SCOPE` | `openid profile` | 首版不含 email，避免未验证邮箱用户被挡 |
+| `LICHAT_OIDC_SCOPE` | `openid profile email` | 邮箱用于资料同步与按邮箱搜索；未验证邮箱不阻塞登录 |
 | `LICHAT_SESSION_SECRET` | 开发占位值 | 生产必须 ≥32 字符，用于登出 state 签名 |
 | `LICHAT_SESSION_SLIDING_TTL` | `7200` | 会话滑动过期秒数（2 小时） |
 | `LICHAT_SESSION_ABSOLUTE_TTL` | `604800` | 会话绝对过期秒数（7 天） |
