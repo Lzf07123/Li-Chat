@@ -4,7 +4,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import User
+from app.models import Session, User
 from tests.fixtures.mock_idp import MockIdP
 
 
@@ -32,6 +32,8 @@ async def test_login_creates_user_and_redirects(
     ).scalar_one()
     assert user.nickname == "Alice"
     assert user.picture == "https://mock-idp.test/a.jpg"
+    session = (await db_session.execute(select(Session))).scalar_one()
+    assert session.id_token
 
 
 async def test_callback_with_unknown_state_rejected(api_client: httpx.AsyncClient) -> None:

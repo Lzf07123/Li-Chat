@@ -10,6 +10,7 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
+from sqlalchemy.engine import Connection
 from starlette.responses import Response
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
@@ -38,6 +39,17 @@ _STATIC_PATHS = {
     "/ambient.js",
     "/favicon.svg",
 }
+
+
+def _ensure_session_columns(conn: Connection) -> None:
+    """SQLite 兼容迁移：为既有库补齐 sessions.id_token（PostgreSQL 走 Alembic）。"""
+    if conn.dialect.name != "sqlite":
+        return
+    names = {
+        row[1] for row in conn.exec_driver_sql("PRAGMA table_info(sessions)").fetchall()
+    }
+    if "id_token" not in names:
+        conn.exec_driver_sql("ALTER TABLE sessions ADD COLUMN id_token TEXT")
 
 
 def _sqlite_path(database_url: str) -> Path | None:
@@ -84,6 +96,7 @@ def create_app(
             database_path.parent.mkdir(parents=True, exist_ok=True)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(_ensure_session_columns)
         subscriber: asyncio.Task[None] | None = None
         if redis_client is not None:
             await redis_client.ping()

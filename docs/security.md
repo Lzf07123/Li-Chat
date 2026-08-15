@@ -12,6 +12,7 @@
 | 会话守护 | RP 登出/回程登出/撤销授权均断开该用户 WS（Redis 时跨副本广播）；WS 心跳逐次重校验会话，失效即 4401 关闭 | `app/sso/routes.py`、`app/main.py` |
 | CSRF | 双提交令牌，支持请求头与表单字段，`secrets.compare_digest` 比对 | `app/auth/deps.py` |
 | RP 登出 state | HMAC-SHA256 签名，回跳验签 | `app/sso/signing.py` |
+| RP 登出 hint | `id_token` 仅存本地会话表作为 `end-session` 的 `id_token_hint`（5 分钟寿命令牌），随会话删除/过期一并清除，不落前端与日志 | `app/models.py`、`app/sso/routes.py` |
 | 回程登出 | 验 iss/aud/120 秒新鲜窗口/jti 防重放/events，命中清会话并断 WS；`sid` 缺失或未命中时回退删除该用户全部会话（防门户 sid 轮换导致撤销授权不生效） | `app/sso/routes.py`、`app/sso/replay.py`、`app/auth/session.py` |
 | 授权单飞 | 同一浏览器复用未完成 auth state（HttpOnly Cookie `lichat_auth` 记 state），完成后删除状态并清 Cookie，其余授权确认页随之作废，防止多确认页并行放行 | `app/sso/routes.py` |
 | jti 防重放（Redis） | 配置 `LICHAT_REDIS_URL` 后改用 `SET NX EX` 原子判重，多副本共享 | `app/sso/replay.py`、`app/redis.py` |

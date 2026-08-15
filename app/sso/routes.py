@@ -190,6 +190,7 @@ async def callback(
         user.sub,
         sid=str(claims["sid"]) if claims.get("sid") else None,
         acr=str(claims["acr"]) if claims.get("acr") else None,
+        id_token=id_token,
         sliding_ttl=settings.session_sliding_ttl,
         absolute_ttl=settings.session_absolute_ttl,
     )
@@ -218,9 +219,11 @@ async def logout(
 ) -> RedirectResponse:
     settings = _settings(request)
     session_id = request.cookies.get(settings.session_cookie_name)
+    id_token_hint: str | None = None
     if session_id:
         session = await db.get(Session, session_id)
         if session is not None:
+            id_token_hint = session.id_token
             await delete_session(db, session_id)
             manager = cast(ConnectionManager, request.app.state.ws_manager)
             await manager.disconnect_sub(session.user_sub)
@@ -229,13 +232,20 @@ async def logout(
                 await publish_logout(redis, session.user_sub)
     metadata = await _provider(request).discovery_metadata()
     signed = sign_state(settings.session_secret, secrets.token_urlsafe(24))
-    params = urlencode(
-        {
-            "client_id": settings.oidc_client_id,
-            "post_logout_redirect_uri": settings.oidc_post_logout_redirect_uri,
-            "state": signed,
-        }
+    logout_params = {
+        "client_id": settings.oidc_client_id,
+        "post_logout_redirect_uri": settings.oidc_post_logout_redirect_uri,
+        "state": signed,
+    }
+    if id_token_hint is not None:
+        logout_params = {"id_token_hint": id_token_hint, **logout_params}
+    logger.info(
+        "rp_logout",
+        client_id=settings.oidc_client_id,
+        post_logout_redirect_uri=settings.oidc_post_logout_redirect_uri,
+        has_id_token_hint=id_token_hint is not None,
     )
+    params = urlencode(logout_params)
     response = RedirectResponse(
         f"{metadata.end_session_endpoint}?{params}", status_code=302
     )

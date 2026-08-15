@@ -52,6 +52,7 @@ class Session(Base):
     )
     sid: Mapped[str | None] = mapped_column(String(128))
     acr: Mapped[str | None] = mapped_column(String(128))
+    id_token: Mapped[str | None] = mapped_column(Text)
     csrf_token: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
