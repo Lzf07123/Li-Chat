@@ -89,3 +89,16 @@ async def test_app_chat_contracts(api_client: httpx.AsyncClient) -> None:
     assert "encodeURIComponent" in text
     assert 'role="log"' in text
     assert "textContent" in text
+
+
+async def test_chat_styles_present(api_client: httpx.AsyncClient) -> None:
+    response = await api_client.get("/style.css")
+    assert response.status_code == 200
+    text = response.text
+    assert ".chat-sidebar" in text
+    assert ".chat-panel" in text
+    assert ".message-bubble" in text
+    assert ".message-own" in text
+    assert ".composer" in text
+    assert ".sr-only" in text
+    assert "max-width: 767px" in text
