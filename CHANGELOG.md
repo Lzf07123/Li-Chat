@@ -39,6 +39,7 @@
 - 登出回落不再误触授权确认：前端 401 与 WS 4401 一律回到登录卡片页（不再直接跳 `/oidc/login` 触发门户授权）；落地页增加 JS 跳转兜底，避免 meta refresh 偶发不生效
 - 撤销授权后会话未下线：门户 `sid` 轮换导致按 `(sub, sid)` 删除命中 0 条、会话留存；现 `sid` 缺失或未命中时回退删除该用户全部会话并断开 WS，保证撤销授权立即生效（记录诊断日志）
 - 登出后浏览器后退恢复旧页面：前端监听 `pageshow`（persisted）重新校验会话并重置界面，杜绝从往返缓存恢复出仍可交互的旧页面；`/api/*` 响应统一加 `Cache-Control: no-store`
+- 静态资源强制回源校验：首页与 `app.js/style.css/brand.js/theme.js/ambient.js/favicon.svg` 响应加 `Cache-Control: no-cache`（配合 ETag），杜绝网关/CDN 缓存旧前端导致登出后仍自动跳转授权确认
 
 ## v0.1.0 — 2026-08-15
 

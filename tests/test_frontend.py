@@ -80,6 +80,13 @@ async def test_ambient_script(api_client: httpx.AsyncClient) -> None:
     assert "prefers-reduced-motion" in response.text
 
 
+async def test_static_assets_force_revalidation(api_client: httpx.AsyncClient) -> None:
+    for path in ["/", "/app.js", "/style.css", "/brand.js", "/theme.js", "/ambient.js"]:
+        response = await api_client.get(path)
+        assert response.status_code == 200
+        assert response.headers.get("cache-control") == "no-cache"
+
+
 async def test_app_chat_contracts(api_client: httpx.AsyncClient) -> None:
     response = await api_client.get("/app.js")
     assert response.status_code == 200

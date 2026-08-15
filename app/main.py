@@ -29,6 +29,16 @@ from app.ws.manager import ConnectionManager
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 logger = get_logger(__name__)
 
+_STATIC_PATHS = {
+    "/",
+    "/app.js",
+    "/style.css",
+    "/brand.js",
+    "/theme.js",
+    "/ambient.js",
+    "/favicon.svg",
+}
+
 
 def _sqlite_path(database_url: str) -> Path | None:
     prefix = "sqlite+aiosqlite:///"
@@ -98,6 +108,15 @@ def create_app(
         response = await call_next(request)
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.middleware("http")
+    async def no_cache_static(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        if request.url.path in _STATIC_PATHS:
+            response.headers["Cache-Control"] = "no-cache"
         return response
 
     app.state.settings = app_settings
