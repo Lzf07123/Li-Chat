@@ -19,6 +19,14 @@ uv run uvicorn app.main:app --reload
 
 浏览器打开 `http://localhost:8000/`。测试套件内置模拟 IdP，无外网依赖。
 
+容器方式：
+
+```bash
+docker compose up -d --build
+```
+
+详见 [部署指南](docs/deployment.md)。
+
 ## 质量门禁
 
 ```bash
@@ -42,6 +50,8 @@ app/
 static/            # 同源前端（index.html + app/brand/theme/ambient.js + style.css 令牌）
 tests/             # 62 个测试 + 本地模拟 IdP
 design-system/     # 品牌设计（chat/ 项目方案 + template/ Li-Design 子模块）
+Dockerfile         # 容器镜像（python:3.12-slim + uv，非 root 运行）
+docker-compose.yaml # 容器编排（单服务 + SQLite 命名卷）
 docs/              # 架构、接口、部署、安全文档
 ```
 
