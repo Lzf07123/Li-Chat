@@ -24,7 +24,7 @@ docker compose down    # 停止并移除容器；SQLite 数据保留在命名卷
 - 端口只绑定 `127.0.0.1`，生产由 Nginx/Caddy 反代统一终止 TLS；镜像不含秘密，`.env` 被 `.dockerignore` 排除。
 - **必须单 worker**：单副本内 WS 连接表仍是进程内实现；多副本需共享数据库（PostgreSQL）并配置 Redis（见下）。
 - 本地 http 冒烟保持 `LICHAT_ENV=dev`；生产设 `LICHAT_ENV=prod` + ≥32 字符 `LICHAT_SESSION_SECRET`，且必须走 https（否则 Secure Cookie 不生效）。
-- 构建源可在 `.env` 覆盖 `IMAGE_REGISTRY` / `PYPI_INDEX_URL` / `APT_MIRROR`（默认中科大镜像）。
+- 构建源可在 `.env` 覆盖 `PYPI_INDEX_URL` / `APT_MIRROR`（默认中科大镜像）。基础镜像加速用 `BASE_IMAGE_REGISTRY`（已实测 `docker.m.daocloud.io/library/`，只作用于 python/redis 拉取）；`IMAGE_REGISTRY` 只作应用镜像标签前缀（推私有仓库时用），**不要把带 `/library/` 的加速前缀填给 `IMAGE_REGISTRY`**。
 
 ### Redis（jti 防重放与跨副本登出）
 
@@ -59,7 +59,7 @@ compose 默认随 `chat` 启动一个编排内 redis（7-alpine、AOF、192mb、
 | `LICHAT_LOGOUT_TOKEN_MAX_SKEW` | `120` | 回程登出令牌允许时钟偏差（秒）；jti 缓存保留 = 该值 + 60 |
 | `LICHAT_DISCOVERY_CACHE_TTL` | `300` | 发现文档缓存时长（秒） |
 
-compose 插值变量（应用忽略）：`LICHAT_PORT`（宿主机端口）、`REDIS_PASSWORD` / `REDIS_APPENDONLY` / `REDIS_MAXMEMORY`（编排内 redis）、`TZ`、`IMAGE_REGISTRY` / `PYPI_INDEX_URL` / `APT_MIRROR`（镜像源）。完整模板见 `.env.example`。
+compose 插值变量（应用忽略）：`LICHAT_PORT`（宿主机端口）、`REDIS_PASSWORD` / `REDIS_APPENDONLY` / `REDIS_MAXMEMORY`（编排内 redis）、`TZ`、`PYPI_INDEX_URL` / `APT_MIRROR`（构建镜像源）、`BASE_IMAGE_REGISTRY`（基础镜像加速）与 `IMAGE_REGISTRY`（应用镜像前缀）。完整模板见 `.env.example`。
 
 ## 生产部署
 

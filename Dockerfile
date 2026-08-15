@@ -1,7 +1,7 @@
-ARG IMAGE_REGISTRY=
+ARG BASE_IMAGE_REGISTRY=
 ARG PYPI_INDEX_URL=https://mirrors.ustc.edu.cn/pypi/simple
 ARG APT_MIRROR=http://mirrors.ustc.edu.cn/debian
-FROM ${IMAGE_REGISTRY}python:3.12-slim
+FROM ${BASE_IMAGE_REGISTRY}python:3.12-slim
 
 ARG PYPI_INDEX_URL=https://mirrors.ustc.edu.cn/pypi/simple
 ARG APT_MIRROR=http://mirrors.ustc.edu.cn/debian

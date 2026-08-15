@@ -2,7 +2,7 @@ name: lichat
 
 services:
   redis:
-    image: ${IMAGE_REGISTRY:-}redis:7-alpine
+    image: ${BASE_IMAGE_REGISTRY:-}redis:7-alpine
     restart: unless-stopped
     environment:
       TZ: ${TZ:-Asia/Shanghai}
@@ -36,7 +36,7 @@ services:
     build:
       context: .
       args:
-        IMAGE_REGISTRY: ${IMAGE_REGISTRY:-}
+        BASE_IMAGE_REGISTRY: ${BASE_IMAGE_REGISTRY:-}
         PYPI_INDEX_URL: ${PYPI_INDEX_URL:-https://mirrors.ustc.edu.cn/pypi/simple}
         APT_MIRROR: ${APT_MIRROR:-http://mirrors.ustc.edu.cn/debian}
     restart: unless-stopped

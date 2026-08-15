@@ -11,7 +11,7 @@
 
 - 新增 design-system/chat/BRAND.md、MASTER.md 与 preview 视觉基线
 - 新增 docs/superpowers UI 重构设计规格与实施计划
-- 补齐 .env.example 全部 LICHAT_* 配置项并同步部署指南环境变量表
+- 补齐 .env.example 全部配置项：LICHAT_*、compose 插值变量与镜像加速源（`BASE_IMAGE_REGISTRY` 与 `IMAGE_REGISTRY` 拆分，避免加速前缀污染应用镜像名）
 
 ### 运维工具
 

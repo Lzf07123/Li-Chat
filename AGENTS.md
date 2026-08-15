@@ -167,3 +167,4 @@ docker compose down
 - **Redis 配置后启动 PING**：不可达即拒绝启动（安全不回退）；测试用 fakeredis，禁止在测试里连真实 Redis。
 - **容器内勿用 `uv run` 启动服务**：`uv run` 会按默认组重新同步、把 dev 依赖拉进运行时；直接 `uv sync --frozen --no-dev` 后用 `.venv/bin/uvicorn`。
 - **容器本地冒烟用 `LICHAT_ENV=dev`**：`prod` 校验 ≥32 字符密钥并启用 Secure Cookie，http 下登录会失败；生产必须 https + `LICHAT_ENV=prod`。
+- **镜像加速前缀别填错变量**：`BASE_IMAGE_REGISTRY` 只管 python/redis 基础镜像（可填 `docker.m.daocloud.io/library/` 类加速前缀）；`IMAGE_REGISTRY` 是应用镜像标签前缀，填了 `/library/` 会把 `lichat:local` 指向错误仓库。
