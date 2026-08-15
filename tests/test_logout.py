@@ -62,3 +62,30 @@ async def test_post_logout_rejects_tampered_state(api_client: httpx.AsyncClient)
     signed = sign_state("test-session-secret", "token-1")
     response = await api_client.get("/oidc/post-logout", params={"state": signed + "x"})
     assert response.status_code == 400
+
+
+async def test_post_logout_accepts_post_form_state(api_client: httpx.AsyncClient) -> None:
+    signed = sign_state("test-session-secret", "token-1")
+    response = await api_client.post("/oidc/post-logout", data={"state": signed})
+    assert response.status_code == 302
+    assert response.headers["location"] == "/"
+
+
+async def test_post_logout_accepts_post_query_state(api_client: httpx.AsyncClient) -> None:
+    signed = sign_state("test-session-secret", "token-1")
+    response = await api_client.post("/oidc/post-logout", params={"state": signed})
+    assert response.status_code == 302
+    assert response.headers["location"] == "/"
+
+
+async def test_post_logout_rejects_invalid_post_state(api_client: httpx.AsyncClient) -> None:
+    signed = sign_state("test-session-secret", "token-1")
+    response = await api_client.post("/oidc/post-logout", data={"state": signed + "x"})
+    assert response.status_code == 400
+
+
+async def test_post_logout_post_without_state_returns_400(
+    api_client: httpx.AsyncClient,
+) -> None:
+    response = await api_client.post("/oidc/post-logout")
+    assert response.status_code == 400
