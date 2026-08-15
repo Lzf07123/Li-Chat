@@ -7,6 +7,7 @@ from urllib.parse import quote, urlencode
 import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import require_csrf
@@ -26,6 +27,7 @@ from app.oidc.provider import OIDCProvider, TokenExchangeError
 from app.oidc.state import create_auth_state, pop_auth_state
 from app.oidc.tokens import TokenValidationError, TokenVerifier
 from app.oidc.user_sync import upsert_user
+from app.redis import publish_logout
 from app.sso.replay import ReplayCache
 from app.sso.signing import sign_state, verify_state
 from app.ws.manager import ConnectionManager
@@ -224,11 +226,13 @@ async def backchannel_logout(
         raise HTTPException(status_code=400, detail="logout token missing claims")
 
     cache = cast(ReplayCache, request.app.state.replay_cache)
-    if cache.seen(jti):
+    if await cache.check_and_add(jti):
         return JSONResponse({"status": "ignored"})
-    cache.add(jti)
 
     await delete_sessions_for(db, sub, sid)
     manager = cast(ConnectionManager, request.app.state.ws_manager)
     await manager.disconnect_sub(sub)
+    redis = cast(Redis | None, request.app.state.redis)
+    if redis is not None:
+        await publish_logout(redis, sub)
     return JSONResponse({"status": "ok"})

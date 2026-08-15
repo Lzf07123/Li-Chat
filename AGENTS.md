@@ -30,6 +30,7 @@ app/
 ├── main.py        # 应用装配、生命周期（建表/建目录）、/ws、/healthz、静态挂载
 ├── config.py      # LICHAT_* 环境变量；prod 校验会话密钥强度
 ├── db.py          # 异步引擎与会话工厂
+├── redis.py       # Redis 客户端与登出广播订阅（LICHAT_REDIS_URL 可选启用）
 ├── models.py      # users / auth_states / sessions 三张表
 ├── logging.py     # 结构化日志（不落令牌）
 ├── timeutil.py    # 时间工具
@@ -162,6 +163,7 @@ docker compose down
 - **`.env` 按工作目录解析**：别在仓库根放会干扰测试的 `.env`。
 - **静态目录按包路径解析**：`static/` 相对 `app/main.py` 定位，与运行目录无关。
 - **SQLite 测试夹具 ≠ PostgreSQL**：生产切 PostgreSQL 后，JSON/时间/外键语义需真库验证。
-- **容器必须单 worker**：镜像 CMD 固定 `--workers 1`，多 worker 会破坏回程登出/WS 推送（进程内状态）；Redis 外置前不可扩副本。
+- **多副本条件**：镜像 CMD 固定 `--workers 1`（每副本单 worker）。配置 `LICHAT_REDIS_URL` 后 jti 防重放与跨副本登出广播由 Redis 承担，但**多副本还要求共享数据库**（SQLite 是本地卷只能单副本，需 PostgreSQL + Alembic）。
+- **Redis 配置后启动 PING**：不可达即拒绝启动（安全不回退）；测试用 fakeredis，禁止在测试里连真实 Redis。
 - **容器内勿用 `uv run` 启动服务**：`uv run` 会按默认组重新同步、把 dev 依赖拉进运行时；直接 `uv sync --frozen --no-dev` 后用 `.venv/bin/uvicorn`。
 - **容器本地冒烟用 `LICHAT_ENV=dev`**：`prod` 校验 ≥32 字符密钥并启用 Secure Cookie，http 下登录会失败；生产必须 https + `LICHAT_ENV=prod`。

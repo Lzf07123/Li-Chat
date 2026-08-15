@@ -22,7 +22,7 @@ uv run uvicorn app.main:app --reload
 容器方式：
 
 ```bash
-docker compose up -d --build
+docker compose up -d --build   # 默认附带编排内 redis（jti 防重放/跨副本登出广播）
 ```
 
 详见 [部署指南](docs/deployment.md)。

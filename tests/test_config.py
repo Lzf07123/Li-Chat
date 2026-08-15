@@ -28,3 +28,14 @@ def test_env_override_and_explicit_discovery_url() -> None:
 def test_prod_requires_strong_session_secret() -> None:
     with pytest.raises(ValidationError):
         Settings(_env_file=None, env="prod", session_secret="short")
+
+
+def test_redis_url_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("LICHAT_REDIS_URL", "redis://redis:6379/0")
+    settings = Settings(_env_file=None)
+    assert settings.redis_url == "redis://redis:6379/0"
+
+
+def test_redis_url_defaults_to_none() -> None:
+    settings = Settings(_env_file=None, session_secret="x" * 32)
+    assert settings.redis_url is None

@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     app_name: str = "Li&Chat"
     env: str = "dev"
     database_url: str = "sqlite+aiosqlite:///./data/lichat.db"
+    redis_url: str | None = None
 
     oidc_issuer: str = "https://account.lizf.cn"
     oidc_discovery_url: str | None = None
