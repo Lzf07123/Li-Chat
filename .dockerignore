@@ -1,0 +1,15 @@
+.venv/
+.git/
+.worktrees/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+*.db
+.env
+data/
+docs/
+design-system/
+tests/
+.DS_Store

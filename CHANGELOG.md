@@ -11,6 +11,10 @@
 - 新增 design-system/chat/BRAND.md、MASTER.md 与 preview 视觉基线
 - 新增 docs/superpowers UI 重构设计规格与实施计划
 
+### 运维工具
+
+- 容器化部署：Dockerfile（python:3.12-slim + uv、非 root、构建期导入冒烟）与 docker-compose.yaml（单服务、命名卷持久化 SQLite、healthcheck、127.0.0.1 端口绑定）
+
 ## v0.1.0 — 2026-08-15
 
 首个里程碑：Li&Pass OIDC 单点登录，按五个版本本地迭代交付，55 个测试、ruff、mypy 全绿。

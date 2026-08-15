@@ -42,6 +42,8 @@ static/            # 同源前端：index.html / app.js / brand.js / theme.js / 
 tests/             # 62 个测试 + 本地模拟 IdP（零外网依赖）
 docs/              # 架构、接口、部署、安全、设计规格与实施计划
 design-system/     # 品牌设计（chat/ 项目方案 + template/ Li-Design 子模块）
+Dockerfile         # 容器镜像（python:3.12-slim + uv，非 root）
+docker-compose.yaml # 容器编排（单服务 + SQLite 命名卷 + healthcheck）
 ```
 
 关键事实：单进程 FastAPI 同源托管前端；浏览器只与 Li&Chat 通信，登录时短暂跳转 Li&Pass。OIDC 路由在 `/oidc/*`，会话接口 `/api/me`，实时通道 `/ws`（握手携带同源 Cookie）。环境变量前缀 `LICHAT_`。
@@ -119,6 +121,15 @@ curl -fsS http://localhost:8000/healthz   # {"status":"ok"}
 
 > 测试不依赖外网；真实登录联调需先在 Li&Pass「授权网站管理」注册 client_id/client_secret（见 [docs/deployment.md](./docs/deployment.md)）。
 
+容器冒烟：
+
+```bash
+docker compose up -d --build
+docker compose ps      # 等待 healthy
+curl -fsS http://127.0.0.1:8000/healthz
+docker compose down
+```
+
 ## 八、提交与分支
 
 - 分支：`codex/<topic>`（kebab-case），完成后合并回 `main`（保留 merge 记录）。
@@ -151,3 +162,6 @@ curl -fsS http://localhost:8000/healthz   # {"status":"ok"}
 - **`.env` 按工作目录解析**：别在仓库根放会干扰测试的 `.env`。
 - **静态目录按包路径解析**：`static/` 相对 `app/main.py` 定位，与运行目录无关。
 - **SQLite 测试夹具 ≠ PostgreSQL**：生产切 PostgreSQL 后，JSON/时间/外键语义需真库验证。
+- **容器必须单 worker**：镜像 CMD 固定 `--workers 1`，多 worker 会破坏回程登出/WS 推送（进程内状态）；Redis 外置前不可扩副本。
+- **容器内勿用 `uv run` 启动服务**：`uv run` 会按默认组重新同步、把 dev 依赖拉进运行时；直接 `uv sync --frozen --no-dev` 后用 `.venv/bin/uvicorn`。
+- **容器本地冒烟用 `LICHAT_ENV=dev`**：`prod` 校验 ≥32 字符密钥并启用 Secure Cookie，http 下登录会失败；生产必须 https + `LICHAT_ENV=prod`。
