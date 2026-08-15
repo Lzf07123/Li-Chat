@@ -179,7 +179,11 @@ class Friendship(Base):
 class Message(Base):
     __tablename__ = "messages"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
     sender_sub: Mapped[str] = mapped_column(
         ForeignKey("users.sub", ondelete="CASCADE"), index=True
     )
@@ -199,6 +203,8 @@ class Message(Base):
         Index("ix_messages_conversation", "participant_lo", "participant_hi", "id"),
     )
 ```
+
+> 实现备注：SQLite 的 `BIGINT PRIMARY KEY` 不会自动生成 rowid（插入报 NOT NULL），故用 `BigInteger().with_variant(Integer, "sqlite")`——SQLite 走自增 `INTEGER`，PostgreSQL 保持 `BIGINT`（`Integer` 需加入 models 导入）。
 
 - [ ] **Step 4: 运行测试确认通过**
 

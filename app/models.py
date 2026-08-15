@@ -2,7 +2,17 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -47,3 +57,45 @@ class Session(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     absolute_expires_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class Friendship(Base):
+    __tablename__ = "friendships"
+
+    requester_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), primary_key=True
+    )
+    addressee_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), primary_key=True
+    )
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        CheckConstraint("requester_sub != addressee_sub", name="ck_friendships_no_self"),
+    )
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    sender_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), index=True
+    )
+    recipient_sub: Mapped[str] = mapped_column(ForeignKey("users.sub", ondelete="CASCADE"))
+    participant_lo: Mapped[str] = mapped_column(String(64))
+    participant_hi: Mapped[str] = mapped_column(String(64))
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    __table_args__ = (
+        CheckConstraint("sender_sub != recipient_sub", name="ck_messages_no_self"),
+        CheckConstraint("participant_lo < participant_hi", name="ck_messages_participant_order"),
+        Index("ix_messages_conversation", "participant_lo", "participant_hi", "id"),
+    )

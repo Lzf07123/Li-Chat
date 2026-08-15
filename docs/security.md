@@ -17,6 +17,11 @@
 | 账号封禁 | `account_blocked` 与 403 映射为友好提示，不泄露细节 | `app/sso/routes.py` |
 | 生产密钥强度 | prod 环境会话密钥不足 32 字符直接拒绝启动 | `app/config.py` |
 | 日志 | 结构化日志，仅记录错误码与 id，不落令牌 | `app/logging.py` |
+| 搜索信息泄露防护 | 匹配昵称/邮箱但只回传 sub/nickname/name/picture；查询 ≤64、结果 ≤20 | `app/friends/service.py` |
+| 好友申请生命周期鉴权 | 仅被申请人可 accept/reject；仅关系一方可解除；重复/自加 409/400 | `app/friends/service.py` |
+| 发消息关系校验 | 双方必须 accepted 好友；自聊 400、非好友 403 | `app/messages/service.py` |
+| 历史访问边界 | 会话键 `(participant_lo, participant_hi)` 天然限定参与者 | `app/messages/service.py` |
+| 消息长度与 XSS | 内容 1–2000 strip 校验；前端 `textContent`/escapeHtml 渲染不拼 HTML | `app/api/messages.py`、`static/app.js` |
 
 ## 遗留风险（上线前处理）
 

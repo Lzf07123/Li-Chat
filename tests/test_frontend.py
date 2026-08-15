@@ -74,3 +74,31 @@ async def test_ambient_script(api_client: httpx.AsyncClient) -> None:
     assert response.status_code == 200
     assert "canvas" in response.text
     assert "prefers-reduced-motion" in response.text
+
+
+async def test_app_chat_contracts(api_client: httpx.AsyncClient) -> None:
+    response = await api_client.get("/app.js")
+    assert response.status_code == 200
+    text = response.text
+    assert "/api/friends" in text
+    assert "/api/friends/requests" in text
+    assert "/api/users/search" in text
+    assert "/api/conversations/" in text
+    assert '"message"' in text
+    assert "friend_event" in text
+    assert "encodeURIComponent" in text
+    assert 'role="log"' in text
+    assert "textContent" in text
+
+
+async def test_chat_styles_present(api_client: httpx.AsyncClient) -> None:
+    response = await api_client.get("/style.css")
+    assert response.status_code == 200
+    text = response.text
+    assert ".chat-sidebar" in text
+    assert ".chat-panel" in text
+    assert ".message-bubble" in text
+    assert ".message-own" in text
+    assert ".composer" in text
+    assert ".sr-only" in text
+    assert "max-width: 767px" in text

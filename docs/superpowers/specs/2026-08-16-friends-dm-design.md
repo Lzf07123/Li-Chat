@@ -45,7 +45,7 @@
 
 | 列 | 类型 | 说明 |
 | --- | --- | --- |
-| id | BigInteger PK autoincrement | 全局单调，兼作历史游标 |
+| id | BigInteger PK autoincrement（SQLite INTEGER / PostgreSQL BIGINT，`with_variant`） | 全局单调，兼作历史游标 |
 | sender_sub / recipient_sub | String(64), FK users.sub | 发送方/接收方 |
 | participant_lo / participant_hi | String(64) | 双方 sub 字典序（lo < hi） |
 | content | Text | 纯文本 |
