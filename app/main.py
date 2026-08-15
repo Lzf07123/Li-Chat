@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import cast
 
@@ -15,14 +16,15 @@ from app.api.users import router as users_router
 from app.auth.session import get_session
 from app.config import Settings
 from app.db import Base, build_engine, build_sessionmaker
-from app.logging import configure_logging
+from app.logging import configure_logging, get_logger
 from app.oidc.discovery import DiscoveryStore
-from app.redis import build_redis
+from app.redis import build_redis, logout_subscriber
 from app.sso.replay import MemoryReplayCache, RedisReplayCache, ReplayCache
 from app.sso.routes import router as sso_router
 from app.ws.manager import ConnectionManager
 
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+logger = get_logger(__name__)
 
 
 def _sqlite_path(database_url: str) -> Path | None:
@@ -69,7 +71,17 @@ def create_app(
             database_path.parent.mkdir(parents=True, exist_ok=True)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+        subscriber: asyncio.Task[None] | None = None
+        if redis_client is not None:
+            await redis_client.ping()
+            manager = cast(ConnectionManager, app.state.ws_manager)
+            subscriber = asyncio.create_task(logout_subscriber(redis_client, manager))
+            logger.info("redis_connected", url=app_settings.redis_url)
         yield
+        if subscriber is not None:
+            subscriber.cancel()
+            with suppress(asyncio.CancelledError):
+                await subscriber
         await engine.dispose()
         if redis_client is not None:
             await redis_client.aclose()
