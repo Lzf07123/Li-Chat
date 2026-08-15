@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastapi import HTTPException
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Friendship, User
+from app.timeutil import iso_utc
 
 SEARCH_RESULT_LIMIT = 20
 
@@ -62,3 +64,66 @@ async def search_users(
         {**profile(user), "friend_status": await friend_status(db, me_sub, user.sub)}
         for user in users
     ]
+
+
+async def send_request(
+    db: AsyncSession, requester_sub: str, addressee_sub: str
+) -> Friendship:
+    if requester_sub == addressee_sub:
+        raise HTTPException(status_code=400, detail="cannot send friend request to yourself")
+    if await db.get(User, addressee_sub) is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    existing = await _pair_row(db, requester_sub, addressee_sub)
+    if existing is not None:
+        if existing.status == "accepted":
+            raise HTTPException(status_code=409, detail="already friends")
+        if existing.requester_sub == requester_sub:
+            raise HTTPException(status_code=409, detail="friend request already sent")
+        raise HTTPException(status_code=409, detail="incoming friend request already exists")
+    friendship = Friendship(
+        requester_sub=requester_sub, addressee_sub=addressee_sub, status="pending"
+    )
+    db.add(friendship)
+    await db.commit()
+    await db.refresh(friendship)
+    return friendship
+
+
+async def list_requests(db: AsyncSession, me_sub: str) -> dict[str, list[dict[str, Any]]]:
+    rows = (
+        await db.execute(
+            select(Friendship)
+            .where(Friendship.status == "pending")
+            .where(
+                or_(
+                    Friendship.requester_sub == me_sub,
+                    Friendship.addressee_sub == me_sub,
+                )
+            )
+            .order_by(Friendship.created_at.desc())
+        )
+    ).scalars().all()
+    subs = {
+        row.requester_sub if row.addressee_sub == me_sub else row.addressee_sub
+        for row in rows
+    }
+    users: dict[str, User] = {}
+    if subs:
+        found = (await db.execute(select(User).where(User.sub.in_(subs)))).scalars().all()
+        users = {user.sub: user for user in found}
+    incoming: list[dict[str, Any]] = []
+    outgoing: list[dict[str, Any]] = []
+    for row in rows:
+        if row.requester_sub == me_sub:
+            other = users.get(row.addressee_sub)
+            if other is not None:
+                outgoing.append(
+                    {"addressee": profile(other), "created_at": iso_utc(row.created_at)}
+                )
+        else:
+            other = users.get(row.requester_sub)
+            if other is not None:
+                incoming.append(
+                    {"requester": profile(other), "created_at": iso_utc(row.created_at)}
+                )
+    return {"incoming": incoming, "outgoing": outgoing}
