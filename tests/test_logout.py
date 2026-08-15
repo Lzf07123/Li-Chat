@@ -42,6 +42,15 @@ async def test_logout_without_csrf_returns_403(
     assert response.status_code == 403
 
 
+async def test_logout_accepts_csrf_form_field(
+    api_client: httpx.AsyncClient, mock_client: httpx.AsyncClient
+) -> None:
+    await _login(api_client, mock_client)
+    me = (await api_client.get("/api/me")).json()
+    response = await api_client.post("/oidc/logout", data={"csrf_token": me["csrf_token"]})
+    assert response.status_code == 302
+
+
 async def test_post_logout_accepts_valid_state(api_client: httpx.AsyncClient) -> None:
     signed = sign_state("test-session-secret", "token-1")
     response = await api_client.get("/oidc/post-logout", params={"state": signed})

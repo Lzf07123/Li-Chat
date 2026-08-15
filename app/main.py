@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import cast
 
 import httpx
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from app.api.users import router as users_router
@@ -17,6 +19,19 @@ from app.oidc.discovery import DiscoveryStore
 from app.sso.replay import ReplayCache
 from app.sso.routes import router as sso_router
 from app.ws.manager import ConnectionManager
+
+_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+
+def _sqlite_path(database_url: str) -> Path | None:
+    prefix = "sqlite+aiosqlite:///"
+    if not database_url.startswith(prefix):
+        return None
+    raw = database_url[len(prefix) :]
+    if raw == ":memory:" or raw.startswith("file:"):
+        return None
+    path = Path(raw)
+    return path if path.is_absolute() else Path.cwd() / path
 
 
 def create_app(
@@ -36,6 +51,9 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        database_path = _sqlite_path(app_settings.database_url)
+        if database_path is not None:
+            database_path.parent.mkdir(parents=True, exist_ok=True)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         yield
@@ -88,6 +106,7 @@ def create_app(
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
+    app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="static")
     return app
 
 

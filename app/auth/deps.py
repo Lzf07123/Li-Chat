@@ -45,6 +45,13 @@ async def require_csrf(
     )
     if session is None:
         raise HTTPException(status_code=401, detail="session invalid or expired")
-    header = request.headers.get("x-csrf-token", "")
-    if not header or not secrets.compare_digest(header, session.csrf_token):
+    token = request.headers.get("x-csrf-token")
+    content_type = request.headers.get("content-type", "")
+    if token is None and (
+        "application/x-www-form-urlencoded" in content_type
+        or "multipart/form-data" in content_type
+    ):
+        form = await request.form()
+        token = str(form.get("csrf_token") or "")
+    if not token or not secrets.compare_digest(token, session.csrf_token):
         raise HTTPException(status_code=403, detail="csrf token missing or invalid")
