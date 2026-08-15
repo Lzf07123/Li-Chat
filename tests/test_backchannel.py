@@ -122,7 +122,8 @@ async def test_post_logout_accepts_logout_token_and_clears_sessions(
         "/oidc/post-logout", data={"logout_token": _logout_token(mock_idp, "j-p1")}
     )
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert "text/html" in response.headers["content-type"]
+    assert "url=/" in response.text
     remaining = (await db_session.execute(select(Session.id))).scalars().all()
     assert remaining == [ids["keep"]]
     assert fake.closed_with == [4401]
@@ -142,7 +143,8 @@ async def test_post_logout_logout_token_replayed_ignored(
     assert first.status_code == 200
     second = await api_client.post("/oidc/post-logout", data={"logout_token": token})
     assert second.status_code == 200
-    assert second.json() == {"status": "ignored"}
+    assert "text/html" in second.headers["content-type"]
+    assert "url=/" in second.text
 
 
 async def test_post_logout_rejects_invalid_logout_token(
