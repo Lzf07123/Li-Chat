@@ -67,3 +67,10 @@ async def test_app_script_contracts(api_client: httpx.AsyncClient) -> None:
     assert "4401" in text
     assert 'role="status"' in text
     assert "LiChatTheme.initTheme" in text
+
+
+async def test_ambient_script(api_client: httpx.AsyncClient) -> None:
+    response = await api_client.get("/ambient.js")
+    assert response.status_code == 200
+    assert "canvas" in response.text
+    assert "prefers-reduced-motion" in response.text
