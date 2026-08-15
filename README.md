@@ -66,6 +66,7 @@ docs/              # 架构、接口、部署、安全文档
 - [接口文档](docs/api.md)
 - [部署指南](docs/deployment.md)
 - [安全设计清单](docs/security.md)
+- [OIDC 对接文档](docs/oidc-integration.md)
 - [品牌设计报告](design-system/chat/BRAND.md)
 - [设计系统速览](design-system/chat/MASTER.md)
 - [SSO 设计规格](docs/superpowers/specs/2026-08-15-li-chat-sso-design.md)

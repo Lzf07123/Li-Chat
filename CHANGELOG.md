@@ -14,6 +14,7 @@
 - 新增 design-system/chat/BRAND.md、MASTER.md 与 preview 视觉基线
 - 新增 docs/superpowers UI 重构设计规格与实施计划
 - 补齐 .env.example 全部配置项：LICHAT_*、compose 插值变量与镜像加速源（`BASE_IMAGE_REGISTRY` 与 `IMAGE_REGISTRY` 拆分，避免加速前缀污染应用镜像名）
+- 新增 OIDC 对接文档：门户接口契约与实现逐项对照、应用注册地址、§2.4 验收清单、上线注意事项与联调步骤
 
 ### 运维工具
 
