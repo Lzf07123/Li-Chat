@@ -8,6 +8,7 @@ from typing import cast
 import httpx
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from redis.asyncio import Redis
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from app.api.users import router as users_router
@@ -16,7 +17,8 @@ from app.config import Settings
 from app.db import Base, build_engine, build_sessionmaker
 from app.logging import configure_logging
 from app.oidc.discovery import DiscoveryStore
-from app.sso.replay import ReplayCache
+from app.redis import build_redis
+from app.sso.replay import MemoryReplayCache, RedisReplayCache, ReplayCache
 from app.sso.routes import router as sso_router
 from app.ws.manager import ConnectionManager
 
@@ -38,11 +40,22 @@ def create_app(
     settings: Settings | None = None,
     *,
     http_transport: httpx.AsyncBaseTransport | None = None,
+    redis: Redis | None = None,
 ) -> FastAPI:
     app_settings = settings or Settings()
     configure_logging(app_settings.env)
     engine = build_engine(app_settings.database_url)
     session_factory = build_sessionmaker(engine)
+    redis_client = redis if redis is not None else build_redis(app_settings.redis_url)
+    replay_cache: ReplayCache
+    if redis_client is not None:
+        replay_cache = RedisReplayCache(
+            redis_client, ttl=app_settings.logout_token_max_skew + 60
+        )
+    else:
+        replay_cache = MemoryReplayCache(
+            ttl=app_settings.logout_token_max_skew + 60
+        )
     discovery = DiscoveryStore(
         app_settings.discovery_url,
         transport=http_transport,
@@ -58,6 +71,8 @@ def create_app(
             await conn.run_sync(Base.metadata.create_all)
         yield
         await engine.dispose()
+        if redis_client is not None:
+            await redis_client.aclose()
 
     app = FastAPI(title=app_settings.app_name, lifespan=lifespan)
     app.state.settings = app_settings
@@ -65,8 +80,9 @@ def create_app(
     app.state.session_factory = session_factory
     app.state.discovery = discovery
     app.state.http_transport = http_transport
+    app.state.redis = redis_client
     app.state.ws_manager = ConnectionManager()
-    app.state.replay_cache = ReplayCache(ttl=app_settings.logout_token_max_skew + 60)
+    app.state.replay_cache = replay_cache
 
     app.include_router(sso_router)
     app.include_router(users_router)

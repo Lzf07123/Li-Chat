@@ -224,9 +224,8 @@ async def backchannel_logout(
         raise HTTPException(status_code=400, detail="logout token missing claims")
 
     cache = cast(ReplayCache, request.app.state.replay_cache)
-    if cache.seen(jti):
+    if await cache.check_and_add(jti):
         return JSONResponse({"status": "ignored"})
-    cache.add(jti)
 
     await delete_sessions_for(db, sub, sid)
     manager = cast(ConnectionManager, request.app.state.ws_manager)
