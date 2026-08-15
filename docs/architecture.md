@@ -23,8 +23,9 @@ flowchart LR
 | `app/models.py` | `users` / `auth_states` / `sessions` 三张表 |
 | `app/auth/` | 本地会话生命周期、Cookie、`get_current_user` / `require_csrf` |
 | `app/oidc/` | 依赖方实现：发现文档、PKCE、授权状态、令牌校验、用户同步 |
-| `app/sso/` | `/oidc/*` 路由、登出 state 签名、jti 防重放 |
-| `app/ws/` | 内存连接表，按用户 sub 管理 WebSocket |
+| `app/sso/` | `/oidc/*` 路由、登出 state 签名、jti 防重放（内存/Redis 双实现） |
+| `app/redis.py` | Redis 客户端构建与登出广播订阅（`LICHAT_REDIS_URL` 可选启用） |
+| `app/ws/` | 内存连接表，按用户 sub 管理 WebSocket；跨副本断开经 Redis 广播 |
 | `static/` | 同源前端（登录、资料、在线状态、退出） |
 | `tests/fixtures/mock_idp.py` | 本地模拟 IdP，测试零外网依赖 |
 

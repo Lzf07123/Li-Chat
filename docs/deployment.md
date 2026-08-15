@@ -22,9 +22,21 @@ docker compose down    # 停止并移除容器；SQLite 数据保留在命名卷
 ```
 
 - 端口只绑定 `127.0.0.1`，生产由 Nginx/Caddy 反代统一终止 TLS；镜像不含秘密，`.env` 被 `.dockerignore` 排除。
-- **必须单 worker**：jti 防重放、会话与 WS 连接表均为进程内实现，Redis 外置前不可多副本（见 [security.md](./security.md) 遗留风险）。
+- **必须单 worker**：单副本内 WS 连接表仍是进程内实现；多副本需共享数据库（PostgreSQL）并配置 Redis（见下）。
 - 本地 http 冒烟保持 `LICHAT_ENV=dev`；生产设 `LICHAT_ENV=prod` + ≥32 字符 `LICHAT_SESSION_SECRET`，且必须走 https（否则 Secure Cookie 不生效）。
 - 构建源可在 `.env` 覆盖 `IMAGE_REGISTRY` / `PYPI_INDEX_URL` / `APT_MIRROR`（默认中科大镜像）。
+
+### Redis（jti 防重放与跨副本登出）
+
+compose 默认随 `chat` 启动一个编排内 redis（7-alpine、AOF、192mb、`volatile-ttl` 淘汰、默认口令 `lichat-dev-redis`，可用 `REDIS_PASSWORD` 覆盖）。`chat` 默认 `LICHAT_REDIS_URL` 指向它；三种用法：
+
+| 模式 | 做法 |
+| --- | --- |
+| 编排内 redis | `docker compose up -d --build`（默认） |
+| 外部 redis | 在 `.env` 设 `LICHAT_REDIS_URL=redis://:密码@主机:6379/0`，再 `docker compose up chat`（跳过本地 redis） |
+| 不用 redis（单进程） | 在 `.env` 设 `LICHAT_REDIS_URL=`（空），`docker compose up chat` |
+
+配置了 `LICHAT_REDIS_URL` 后启动会先 PING，不可达即拒绝启动（防重放能力不允许静默降级）。未配置时回退进程内实现，行为与单进程部署一致。
 
 ## 环境变量（前缀 `LICHAT_`）
 
@@ -32,6 +44,7 @@ docker compose down    # 停止并移除容器；SQLite 数据保留在命名卷
 | --- | --- | --- |
 | `LICHAT_ENV` | `dev` | `prod` 时启用 Secure Cookie 并校验密钥强度 |
 | `LICHAT_DATABASE_URL` | `sqlite+aiosqlite:///./data/lichat.db` | 生产建议 PostgreSQL |
+| `LICHAT_REDIS_URL` | 空（进程内实现） | 如 `redis://:pass@redis:6379/0`；配置后 jti 防重放与跨副本登出广播走 Redis |
 | `LICHAT_OIDC_ISSUER` | `https://account.lizf.cn` | 发现文档地址由它推导，也可用 `OIDC_DISCOVERY_URL` 覆盖 |
 | `LICHAT_OIDC_CLIENT_ID` | `li-chat-local` | 门户注册的 client_id |
 | `LICHAT_OIDC_CLIENT_SECRET` | 空 | 机密客户端密钥 |
