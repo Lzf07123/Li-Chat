@@ -120,16 +120,31 @@ function headerHtml() {
   return `<header class="app-header">
     <div class="app-brand">${BRAND.logo}<span>${escapeHtml(BRAND.name)}</span></div>
     <div class="app-actions">
-      ${themeToggleHtml()}
       <div class="app-profile">
-        <div class="ws-status header-status">
-          <span id="ws-dot" class="status-dot status-connecting" aria-hidden="true"></span>
-          <span id="ws-text" role="status">连接中…</span>
+        <button id="profile-toggle" class="profile-toggle" type="button"
+          aria-haspopup="menu" aria-expanded="false" aria-label="个人菜单">
+          <div class="ws-status header-status">
+            <span id="ws-dot" class="status-dot status-connecting" aria-hidden="true"></span>
+            <span id="ws-text" role="status">连接中…</span>
+          </div>
+          ${avatarHtml(state.me)}
+          <span class="profile-name">${escapeHtml(displayName(state.me))}</span>
+          <svg class="profile-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 9l6 6 6-6"/>
+          </svg>
+        </button>
+        <div id="profile-dropdown" class="profile-dropdown" role="menu" aria-label="个人菜单" hidden>
+          <div class="profile-dropdown-header">
+            ${avatarHtml(state.me)}
+            <span class="profile-name">${escapeHtml(displayName(state.me))}</span>
+          </div>
+          <button id="logout" class="profile-menu-item" role="menuitem" type="button">
+            退出登录
+          </button>
         </div>
-        ${avatarHtml(state.me)}
-        <span class="profile-name">${escapeHtml(displayName(state.me))}</span>
       </div>
-      <button id="logout" class="btn btn-secondary btn-sm" type="button">退出登录</button>
+      ${themeToggleHtml()}
     </div>
   </header>`;
 }
@@ -193,6 +208,9 @@ function mainHtml() {
 function renderLoggedIn() {
   window.LiChatAmbient && window.LiChatAmbient.setDensity(8);
   mount("app-shell", `${headerHtml()} ${mainHtml()}`);
+  document.getElementById("profile-toggle").addEventListener("click", onProfileToggle);
+  document.addEventListener("click", onProfileClickOutside);
+  document.addEventListener("keydown", onProfileKeydown);
   document.getElementById("logout").addEventListener("click", logout);
   document.getElementById("search-form").addEventListener("submit", onSearch);
   document.getElementById("search-results").addEventListener("click", onSearchResultClick);
@@ -203,6 +221,33 @@ function renderLoggedIn() {
   document.getElementById("load-older").addEventListener("click", loadOlder);
   document.getElementById("chat-back").addEventListener("click", closeChat);
   refreshSidebar();
+}
+
+function setProfileMenu(open) {
+  const dropdown = document.getElementById("profile-dropdown");
+  const toggle = document.getElementById("profile-toggle");
+  dropdown.hidden = !open;
+  toggle.setAttribute("aria-expanded", String(open));
+}
+
+function onProfileToggle(event) {
+  event.stopPropagation();
+  setProfileMenu(document.getElementById("profile-dropdown").hidden);
+}
+
+function onProfileClickOutside(event) {
+  const dropdown = document.getElementById("profile-dropdown");
+  if (!dropdown.hidden && !event.target.closest(".app-profile")) {
+    setProfileMenu(false);
+  }
+}
+
+function onProfileKeydown(event) {
+  const dropdown = document.getElementById("profile-dropdown");
+  if (event.key === "Escape" && !dropdown.hidden) {
+    setProfileMenu(false);
+    document.getElementById("profile-toggle").focus();
+  }
 }
 
 async function refreshSidebar() {

@@ -99,6 +99,16 @@ async def test_app_header_profile_contracts(api_client: httpx.AsyncClient) -> No
     assert 'class="profile-name"' in text
     assert 'class="ws-status header-status"' in text
     assert "sidebar-status" not in text
+    assert 'id="profile-toggle"' in text
+    assert 'aria-haspopup="menu"' in text
+    assert 'class="profile-dropdown"' in text
+    assert 'role="menuitem"' in text
+    header = text.split("function headerHtml()", 1)[1]
+    assert (
+        header.index('class="app-profile"')
+        < header.index('id="logout"')
+        < header.index("themeToggleHtml()")
+    )
 
 
 async def test_chat_styles_present(api_client: httpx.AsyncClient) -> None:
@@ -113,6 +123,9 @@ async def test_chat_styles_present(api_client: httpx.AsyncClient) -> None:
     assert ".sr-only" in text
     assert ".app-profile" in text
     assert ".header-status" in text
+    assert ".profile-toggle" in text
+    assert ".profile-dropdown" in text
+    assert ".profile-menu-item" in text
     assert "flex-wrap: wrap" in text
     assert "margin-left: auto" in text
     assert "max-width: 767px" in text
