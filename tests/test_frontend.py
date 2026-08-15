@@ -113,4 +113,6 @@ async def test_chat_styles_present(api_client: httpx.AsyncClient) -> None:
     assert ".sr-only" in text
     assert ".app-profile" in text
     assert ".header-status" in text
+    assert "flex-wrap: wrap" in text
+    assert "margin-left: auto" in text
     assert "max-width: 767px" in text
