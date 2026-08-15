@@ -6,6 +6,7 @@ const state = {
   pingTimer: null,
   friends: [],
   requests: { incoming: [], outgoing: [] },
+  recommendations: [],
   searchResults: [],
   activeSub: null,
   activePeer: null,
@@ -167,6 +168,20 @@ function mainHtml() {
         <ul id="requests-list" class="contact-list"></ul>
       </section>
       <section class="sidebar-section">
+        <h2 class="sidebar-title">好友推荐
+          <button id="recommend-refresh" class="icon-btn refresh-btn" type="button"
+            aria-label="刷新推荐">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
+              <path d="M21 3v6h-6"/>
+            </svg>
+          </button>
+        </h2>
+        <p id="recommend-empty" class="sidebar-empty">暂时没有可推荐的人</p>
+        <ul id="recommend-list" class="contact-list"></ul>
+      </section>
+      <section class="sidebar-section">
         <h2 class="sidebar-title">好友</h2>
         <p id="friends-empty" class="sidebar-empty">还没有好友，先搜索添加</p>
         <ul id="friends-list" class="contact-list"></ul>
@@ -215,6 +230,8 @@ function renderLoggedIn() {
   document.getElementById("search-form").addEventListener("submit", onSearch);
   document.getElementById("search-results").addEventListener("click", onSearchResultClick);
   document.getElementById("requests-list").addEventListener("click", onRequestListClick);
+  document.getElementById("recommend-list").addEventListener("click", onRecommendListClick);
+  document.getElementById("recommend-refresh").addEventListener("click", loadRecommendations);
   document.getElementById("friends-list").addEventListener("click", onFriendListClick);
   document.getElementById("composer").addEventListener("submit", onComposerSubmit);
   document.getElementById("message-input").addEventListener("keydown", onComposerKeydown);
@@ -252,12 +269,16 @@ function onProfileKeydown(event) {
 
 async function refreshSidebar() {
   try {
-    const [friendsRes, requestsRes] = await Promise.all([
+    const [friendsRes, requestsRes, recommendRes] = await Promise.all([
       api("/api/friends"),
       api("/api/friends/requests"),
+      api("/api/friends/recommendations"),
     ]);
     if (friendsRes.ok) state.friends = (await friendsRes.json()).friends;
     if (requestsRes.ok) state.requests = await requestsRes.json();
+    if (recommendRes.ok) {
+      state.recommendations = (await recommendRes.json()).friends;
+    }
     renderSidebar();
   } catch {
     /* 登录失效已由 api() 统一跳转 */
@@ -274,6 +295,10 @@ function renderSidebar() {
     ...state.requests.incoming.map(requestIncomingHtml),
     ...state.requests.outgoing.map(requestOutgoingHtml),
   ].join("");
+  document.getElementById("recommend-empty").hidden = state.recommendations.length > 0;
+  document.getElementById("recommend-list").innerHTML = state.recommendations
+    .map(recommendHtml)
+    .join("");
   document.getElementById("friends-empty").hidden = state.friends.length > 0;
   document.getElementById("friends-list").innerHTML = state.friends.map(friendHtml).join("");
 }
@@ -301,6 +326,17 @@ function requestOutgoingHtml(item) {
     </div>
     <button class="btn btn-ghost btn-sm" type="button"
       data-action="cancel" data-sub="${escapeHtml(item.addressee.sub)}">撤回</button>
+  </li>`;
+}
+
+function recommendHtml(user) {
+  return `<li class="contact-item">
+    <div class="contact-info">
+      ${avatarHtml(user)}
+      <span class="contact-name">${escapeHtml(displayName(user))}</span>
+    </div>
+    <button class="btn btn-primary btn-sm" type="button"
+      data-action="add" data-sub="${escapeHtml(user.sub)}">添加</button>
   </li>`;
 }
 
@@ -381,6 +417,27 @@ async function onRequestListClick(event) {
     await api(`/api/friends/${encodeURIComponent(sub)}`, { method: "DELETE" });
   }
   await refreshSidebar();
+}
+
+async function onRecommendListClick(event) {
+  const button = event.target.closest("button[data-action='add']");
+  if (!button) return;
+  const response = await api("/api/friends/requests", {
+    method: "POST",
+    body: JSON.stringify({ to_sub: button.dataset.sub }),
+  });
+  if (response.ok || response.status === 409) await refreshSidebar();
+}
+
+async function loadRecommendations() {
+  const response = await api("/api/friends/recommendations");
+  if (response.ok) {
+    state.recommendations = (await response.json()).friends;
+    document.getElementById("recommend-empty").hidden = state.recommendations.length > 0;
+    document.getElementById("recommend-list").innerHTML = state.recommendations
+      .map(recommendHtml)
+      .join("");
+  }
 }
 
 function onFriendListClick(event) {

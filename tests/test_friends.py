@@ -353,3 +353,50 @@ def test_reject_pushed_over_ws(app: Any) -> None:
             rejected = ws.receive_json()
     assert rejected["event"] == "request_rejected"
     assert rejected["by_sub"] == "u-alice"
+
+
+async def test_recommendations_exclude_self_friends_and_pending(app: Any) -> None:
+    async with app.state.session_factory() as db:
+        await seed_user(db, "u-me", nickname="u-me")
+        await seed_user(db, "u-friend", nickname="u-friend")
+        await seed_user(db, "u-in", nickname="u-in")
+        await seed_user(db, "u-out", nickname="u-out")
+        await seed_user(db, "u-a", nickname="u-a")
+        await seed_user(db, "u-b", nickname="u-b")
+        await seed_user(db, "u-c", nickname="u-c")
+        db.add_all(
+            [
+                Friendship(requester_sub="u-me", addressee_sub="u-friend", status="accepted"),
+                Friendship(requester_sub="u-in", addressee_sub="u-me", status="pending"),
+                Friendship(requester_sub="u-me", addressee_sub="u-out", status="pending"),
+            ]
+        )
+        await db.commit()
+    client, _ = await _client_for(app, "u-me")
+    async with client:
+        response = await client.get("/api/friends/recommendations")
+    assert response.status_code == 200
+    subs = {item["sub"] for item in response.json()["friends"]}
+    assert subs == {"u-a", "u-b", "u-c"}
+    assert all("email" not in item for item in response.json()["friends"])
+
+
+async def test_recommendations_limit_and_validation(app: Any) -> None:
+    async with app.state.session_factory() as db:
+        await seed_user(db, "u-me", nickname="u-me")
+        for index in range(5):
+            await seed_user(db, f"u-{index}", nickname=f"u-{index}")
+    client, _ = await _client_for(app, "u-me")
+    async with client:
+        limited = await client.get("/api/friends/recommendations", params={"limit": 2})
+        too_small = await client.get("/api/friends/recommendations", params={"limit": 0})
+        too_large = await client.get("/api/friends/recommendations", params={"limit": 21})
+    assert limited.status_code == 200
+    assert len(limited.json()["friends"]) == 2
+    assert too_small.status_code == 422
+    assert too_large.status_code == 422
+
+
+async def test_recommendations_require_session(api_client: httpx.AsyncClient) -> None:
+    response = await api_client.get("/api/friends/recommendations")
+    assert response.status_code == 401

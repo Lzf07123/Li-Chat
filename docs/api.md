@@ -15,6 +15,7 @@
 | GET | `/api/users/search?q=` | 会话 | 昵称/邮箱关键词搜索（1–64 字符，≤20 条）；返回 `sub/nickname/name/picture/friend_status`，不回传邮箱 |
 | GET | `/api/friends` | 会话 | 已接受好友列表 `{"friends":[Profile]}` |
 | GET | `/api/friends/requests` | 会话 | `{"incoming":[{"requester":Profile,"created_at"}],"outgoing":[{"addressee":Profile,"created_at"}]}` |
+| GET | `/api/friends/recommendations?limit=` | 会话 | 随机推荐（默认 5、1–20）；排除自己、好友与双方待处理申请，返回 `{"friends":[Profile]}`，不回传邮箱 |
 | POST | `/api/friends/requests` | 会话 + CSRF | 发申请 `{"to_sub":"..."}`；201 返回申请对象；400 自加 / 404 未知 / 409 重复或已是好友 |
 | POST | `/api/friends/requests/{from_sub}/accept` | 会话 + CSRF | 仅被申请人可接受；`{"status":"accepted"}` |
 | POST | `/api/friends/requests/{from_sub}/reject` | 会话 + CSRF | 仅被申请人可拒绝；`{"status":"rejected"}` |

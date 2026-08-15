@@ -111,6 +111,16 @@ async def test_app_header_profile_contracts(api_client: httpx.AsyncClient) -> No
     )
 
 
+async def test_app_recommendations_contracts(api_client: httpx.AsyncClient) -> None:
+    response = await api_client.get("/app.js")
+    assert response.status_code == 200
+    text = response.text
+    assert 'id="recommend-list"' in text
+    assert 'id="recommend-refresh"' in text
+    assert 'aria-label="刷新推荐"' in text
+    assert "/api/friends/recommendations" in text
+
+
 async def test_chat_styles_present(api_client: httpx.AsyncClient) -> None:
     response = await api_client.get("/style.css")
     assert response.status_code == 200
@@ -126,6 +136,7 @@ async def test_chat_styles_present(api_client: httpx.AsyncClient) -> None:
     assert ".profile-toggle" in text
     assert ".profile-dropdown" in text
     assert ".profile-menu-item" in text
+    assert ".refresh-btn" in text
     assert "flex-wrap: wrap" in text
     assert "margin-left: auto" in text
     assert "max-width: 767px" in text
