@@ -195,11 +195,25 @@ async def logout(
     return response
 
 
-@router.get("/post-logout")
-async def post_logout(request: Request, state: str | None = None) -> RedirectResponse:
+def _finish_post_logout(request: Request, state: str | None) -> RedirectResponse:
     if not state or verify_state(_settings(request).session_secret, state) is None:
         raise HTTPException(status_code=400, detail="invalid logout state")
     return RedirectResponse("/", status_code=302)
+
+
+@router.get("/post-logout")
+async def post_logout(request: Request, state: str | None = None) -> RedirectResponse:
+    return _finish_post_logout(request, state)
+
+
+@router.post("/post-logout")
+async def post_logout_submit(
+    request: Request,
+    state: Annotated[str | None, Form()] = None,
+) -> RedirectResponse:
+    if state is None:
+        state = request.query_params.get("state")
+    return _finish_post_logout(request, state)
 
 
 @router.post("/backchannel-logout")
