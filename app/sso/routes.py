@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import secrets
 from typing import Annotated, cast
-from urllib.parse import quote, urlencode
+from urllib.parse import parse_qsl, quote, urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -206,14 +206,59 @@ async def post_logout(request: Request, state: str | None = None) -> RedirectRes
     return _finish_post_logout(request, state)
 
 
-@router.post("/post-logout")
-async def post_logout_submit(
+async def _extract_post_logout_state(
     request: Request,
-    state: Annotated[str | None, Form()] = None,
-) -> RedirectResponse:
-    if state is None:
-        state = request.query_params.get("state")
-    return _finish_post_logout(request, state)
+) -> tuple[str | None, str, list[str], list[str]]:
+    query_keys = sorted(request.query_params.keys())
+    query_state = request.query_params.get("state")
+    if query_state is not None:
+        return query_state, "query", query_keys, []
+    content_type = request.headers.get("content-type", "").lower()
+    if (
+        "application/x-www-form-urlencoded" in content_type
+        or "multipart/form-data" in content_type
+    ):
+        form = await request.form()
+        form_keys = sorted(form.keys())
+        value = form.get("state")
+        return str(value) if value is not None else None, "form", query_keys, form_keys
+    if not content_type:
+        raw = await request.body()
+        try:
+            pairs = parse_qsl(raw.decode("utf-8"), keep_blank_values=True)
+        except Exception:
+            pairs = []
+        form_keys = sorted({key for key, _ in pairs})
+        value = dict(pairs).get("state")
+        return value, "form", query_keys, form_keys
+    try:
+        body = await request.json()
+    except Exception:
+        return None, "json", query_keys, []
+    if isinstance(body, dict):
+        value = body.get("state")
+        return (
+            str(value) if value is not None else None,
+            "json",
+            query_keys,
+            sorted(body.keys()),
+        )
+    return None, "json", query_keys, []
+
+
+@router.post("/post-logout")
+async def post_logout_submit(request: Request) -> RedirectResponse:
+    state, source, query_keys, form_keys = await _extract_post_logout_state(request)
+    if not state or verify_state(_settings(request).session_secret, state) is None:
+        logger.warning(
+            "post_logout_state_invalid",
+            source=source,
+            content_type=request.headers.get("content-type", ""),
+            query_keys=query_keys,
+            form_keys=form_keys,
+        )
+        raise HTTPException(status_code=400, detail="invalid logout state")
+    return RedirectResponse("/", status_code=302)
 
 
 @router.post("/backchannel-logout")
