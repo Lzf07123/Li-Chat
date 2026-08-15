@@ -21,8 +21,9 @@ from app.auth.session import (
 from app.config import Settings
 from app.db import get_db
 from app.logging import get_logger
+from app.models import AuthState
 from app.oidc.discovery import DiscoveryStore, OIDCMetadata
-from app.oidc.pkce import generate_pkce_pair
+from app.oidc.pkce import challenge_for_verifier, generate_pkce_pair
 from app.oidc.provider import OIDCProvider, TokenExchangeError
 from app.oidc.state import create_auth_state, pop_auth_state
 from app.oidc.tokens import TokenValidationError, TokenVerifier
@@ -30,10 +31,13 @@ from app.oidc.user_sync import upsert_user
 from app.redis import publish_logout
 from app.sso.replay import ReplayCache
 from app.sso.signing import sign_state, verify_state
+from app.timeutil import utcnow
 from app.ws.manager import ConnectionManager
 
 router = APIRouter(prefix="/oidc", tags=["sso"])
 logger = get_logger(__name__)
+
+_AUTH_STATE_COOKIE = "lichat_auth"
 
 _POST_LOGOUT_LANDING_HTML = """<!doctype html>
 <html lang="zh-CN">
@@ -89,6 +93,16 @@ async def login(
     db: Annotated[AsyncSession, Depends(get_db)],
     redirect_after: str = "/",
 ) -> RedirectResponse:
+    settings = _settings(request)
+    existing_state = request.cookies.get(_AUTH_STATE_COOKIE)
+    if existing_state:
+        pending = await db.get(AuthState, existing_state)
+        if pending is not None and pending.expires_at >= utcnow():
+            challenge = challenge_for_verifier(pending.verifier)
+            url = await _provider(request).build_authorize_url(
+                pending.state, pending.nonce, challenge
+            )
+            return RedirectResponse(url, status_code=302)
     verifier, challenge = generate_pkce_pair()
     nonce = secrets.token_urlsafe(32)
     safe_redirect = _safe_redirect_after(redirect_after)
@@ -96,7 +110,17 @@ async def login(
         db, verifier=verifier, nonce=nonce, redirect_after=safe_redirect
     )
     url = await _provider(request).build_authorize_url(state, nonce, challenge)
-    return RedirectResponse(url, status_code=302)
+    response = RedirectResponse(url, status_code=302)
+    response.set_cookie(
+        _AUTH_STATE_COOKIE,
+        state,
+        max_age=600,
+        httponly=True,
+        secure=settings.is_prod,
+        samesite="lax",
+        path="/",
+    )
+    return response
 
 
 @router.get("/callback")
@@ -169,6 +193,7 @@ async def callback(
         absolute_ttl=settings.session_absolute_ttl,
     )
     response = RedirectResponse(auth_state.redirect_after, status_code=302)
+    response.delete_cookie(_AUTH_STATE_COOKIE, path="/")
     set_session_cookie(
         response,
         session.id,

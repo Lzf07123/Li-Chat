@@ -1,3 +1,5 @@
+from urllib.parse import parse_qs, urlparse
+
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +37,35 @@ async def test_login_creates_user_and_redirects(
 async def test_callback_with_unknown_state_rejected(api_client: httpx.AsyncClient) -> None:
     response = await api_client.get("/oidc/callback", params={"code": "c", "state": "bogus"})
     assert response.status_code == 400
+
+
+async def test_login_reuses_pending_state_for_same_browser(
+    api_client: httpx.AsyncClient,
+    mock_client: httpx.AsyncClient,
+) -> None:
+    first = await api_client.get("/oidc/login")
+    assert first.status_code == 302
+    assert api_client.cookies.get("lichat_auth") is not None
+    second = await api_client.get("/oidc/login")
+    assert second.status_code == 302
+    first_state = parse_qs(urlparse(first.headers["location"]).query)["state"][0]
+    second_state = parse_qs(urlparse(second.headers["location"]).query)["state"][0]
+    assert second_state == first_state
+
+
+async def test_completing_login_discards_other_authorizations(
+    api_client: httpx.AsyncClient,
+    mock_client: httpx.AsyncClient,
+) -> None:
+    first = await api_client.get("/oidc/login")
+    authorize_url = first.headers["location"]
+    authorize = await mock_client.get(authorize_url)
+    callback = await api_client.get(authorize.headers["location"])
+    assert callback.status_code == 302
+    assert api_client.cookies.get("lichat_auth") is None
+    authorize_again = await mock_client.get(authorize_url)
+    second_callback = await api_client.get(authorize_again.headers["location"])
+    assert second_callback.status_code == 400
 
 
 async def test_code_replay_rejected(
