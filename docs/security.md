@@ -12,6 +12,7 @@
 | CSRF | 双提交令牌，支持请求头与表单字段，`secrets.compare_digest` 比对 | `app/auth/deps.py` |
 | RP 登出 state | HMAC-SHA256 签名，回跳验签 | `app/sso/signing.py` |
 | 回程登出 | 验 iss/aud/120 秒新鲜窗口/jti 防重放/events，命中清会话并断 WS | `app/sso/routes.py`、`app/sso/replay.py` |
+| 授权单飞 | 同一浏览器复用未完成 auth state（HttpOnly Cookie `lichat_auth` 记 state），完成后删除状态并清 Cookie，其余授权确认页随之作废，防止多确认页并行放行 | `app/sso/routes.py` |
 | jti 防重放（Redis） | 配置 `LICHAT_REDIS_URL` 后改用 `SET NX EX` 原子判重，多副本共享 | `app/sso/replay.py`、`app/redis.py` |
 | 跨副本登出广播 | 回程登出后经 `lichat:logout` 频道广播，各副本断开该用户 WS（4401） | `app/redis.py`、`app/main.py` |
 | 账号封禁 | `account_blocked` 与 403 映射为友好提示，不泄露细节 | `app/sso/routes.py` |
