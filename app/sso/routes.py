@@ -14,6 +14,7 @@ from app.auth.deps import require_csrf
 from app.auth.session import (
     clear_session_cookie,
     create_session,
+    delete_all_sessions_for,
     delete_session,
     delete_sessions_for,
     set_session_cookie,
@@ -342,14 +343,26 @@ async def _process_logout_token(
     jti = claims.get("jti")
     sub = claims.get("sub")
     sid = claims.get("sid")
-    if not isinstance(jti, str) or not isinstance(sub, str) or not isinstance(sid, str):
+    if not isinstance(jti, str) or not isinstance(sub, str):
         raise HTTPException(status_code=400, detail="logout token missing claims")
 
     cache = cast(ReplayCache, request.app.state.replay_cache)
     if await cache.check_and_add(jti):
         return JSONResponse({"status": "ignored"})
 
-    await delete_sessions_for(db, sub, sid)
+    if isinstance(sid, str):
+        deleted = await delete_sessions_for(db, sub, sid)
+        if deleted == 0:
+            deleted = await delete_all_sessions_for(db, sub)
+            logger.info(
+                "backchannel_logout_sid_miss_fallback",
+                sub=sub,
+                sid=sid,
+                deleted=deleted,
+            )
+    else:
+        deleted = await delete_all_sessions_for(db, sub)
+        logger.info("backchannel_logout_sid_missing", sub=sub, deleted=deleted)
     manager = cast(ConnectionManager, request.app.state.ws_manager)
     await manager.disconnect_sub(sub)
     redis = cast(Redis | None, request.app.state.redis)

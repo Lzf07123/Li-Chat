@@ -15,7 +15,7 @@
 | 接口 | 路径/方法 | 行为 |
 | --- | --- | --- |
 | 授权回调 | `GET /oidc/callback` | 校验 `state` 且单次使用（取出即删、600 秒过期）；`error=access_denied`/`error_description=account_blocked` 按失败处理并提示；`code + code_verifier + client_secret` 换令牌；`id_token` 按 `kid` 选钥 RS256 验签并校验 `iss`、`aud=client_id`、`nonce`、`iat/exp`；`access_token` 只用于 userinfo 且不校验其 `aud`；userinfo `sub` 与 id_token `sub` 一致后 upsert 用户，本地会话绑定 `(sub, sid)`（`sid` 取自 id_token）；黑名单的 403 映射为友好提示 |
-| 回程登出 | `POST /oidc/backchannel-logout` | form 字段 `logout_token`；`kid` 选钥验签、`iss`、`aud=client_id`、`iat` 120 秒新鲜窗口 + `exp` 有效性、`jti` 已见缓存防重放（内存/Redis）、`events` 必须含 backchannel-logout；命中清 `(sub,sid)` 会话并断开 WS；成功返回 2xx JSON `{"status":"ok"/"ignored"}` |
+| 回程登出 | `POST /oidc/backchannel-logout` | form 字段 `logout_token`；`kid` 选钥验签、`iss`、`aud=client_id`、`iat` 120 秒新鲜窗口 + `exp` 有效性、`jti` 已见缓存防重放（内存/Redis）、`events` 必须含 backchannel-logout；优先清 `(sub,sid)` 会话，`sid` 缺失或未命中时回退删除该用户全部会话并断开 WS；成功返回 2xx JSON `{"status":"ok"/"ignored"}` |
 | 登出回跳 | `GET/POST /oidc/post-logout` | 兼容两种门户实际行为：带 `state`（query/form/JSON/原始 body）→ HMAC 验签后 302 首页；带 `logout_token` → 走与回程登出相同的完整校验，清会话断 WS 后返回 **200 HTML 跳转页**（meta refresh + JS 回 `/`，浏览器落回登录卡片页，门户侧仍 2xx）；无有效凭据返回 400 并记录来源/字段名（不落令牌值） |
 | RP 发起登出 | `POST /oidc/logout`（CSRF） | 清本地会话 → 302 门户 `end-session`（带 `client_id` + `post_logout_redirect_uri` + HMAC 签名 `state`）→ 门户回跳 `/oidc/post-logout` 验签 |
 | 授权单飞 | `GET /oidc/login` | 同一浏览器复用未完成的 auth state（HttpOnly Cookie `lichat_auth`）；任一授权完成后即删除 state 并清 Cookie，其余授权确认页随之作废，防止多个确认页并行放行出多个会话 |
