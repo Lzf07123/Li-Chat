@@ -136,10 +136,13 @@ flowchart LR
 
 ## 10. 技术选型
 
-- `authlib`：OIDC 客户端、JWT/JWKS 校验、密钥轮换
+- `pyjwt[crypto]`：`PyJWKClient` 负责 JWKS 拉取、按 `kid` 选钥与密钥轮换
+- `httpx`：OAuth2 授权码交换、userinfo 调用与发现文档拉取（异步）
 - `sqlalchemy + aiosqlite`（起步）/ PostgreSQL（生产）+ `alembic` 迁移
 - `pydantic-settings` 配置、`structlog` 结构化日志
 - 工具链：`uv` + Python 3.12，`pytest`、`ruff`、`mypy`
+
+> 相对初稿的调整：去掉 authlib，改用 pyjwt + httpx 显式实现校验步骤。安全校验（state/nonce/iss/aud/时间窗）是我们自己必须逐项确认的核心逻辑，显式写出来更利于学习和审计；JWKS 的 kid 选钥与轮换由 PyJWKClient 成熟实现承载。
 
 ## 11. SSO 相关目录结构
 
