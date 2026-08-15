@@ -154,7 +154,7 @@ docker compose down
 
 ## 十、常见坑（来自交付历史与遗留风险）
 
-- **issuer 字面量**：发现文档声明 `http://account.lizf.cn`，传输层走 `https://account.lizf.cn`；校验按发现文档原文，不自行改写（待 IdP 修正，见 [docs/security.md](./docs/security.md) 遗留风险）。
+- **issuer 字面量与端点升级**：发现文档声明 `http://account.lizf.cn`；代码把五个传输端点升级为 https、`issuer` 保留原文校验。新增改动时注意：80 端口的 301 不会被 httpx 的带体 POST 跟随，端点必须用 https 字面值调用（见 [docs/security.md](./docs/security.md) 遗留风险）。
 - **prod 会话密钥**：`LICHAT_SESSION_SECRET` 不足 32 字符直接拒绝启动；Secure Cookie 只在 prod 启用。
 - **WS 认证桥接**：会话无效在 accept 后以 4401 关闭；前端把 4401 视为被登出。改握手逻辑别破坏这条约定。
 - **开放重定向**：`redirect_after` 仅允许站内相对路径（`_safe_redirect_after`）；新回跳参数沿用同一思路。

@@ -24,4 +24,4 @@
 - Redis 未配置时进程内缓存与广播退化（仅单进程）；配置后启动 PING 失败即拒绝启动，避免静默降级。
 - 登录接口暂无频率限制，需在网关或应用层加限流。
 - 数据库迁移尚未引入 Alembic。
-- 发现文档 issuer 的 http/https 不一致问题待 IdP 侧修正。
+- 发现文档声明的 http 端点已在本端升级为 https 传输（2026-08-16 起，issuer 字面值仍按原文校验）；彻底收敛仍需 IdP 侧把 issuer 改为 https。注意 http→https 的 301 不会被 httpx 的带体 POST 跟随，端点必须用 https 字面值调用。

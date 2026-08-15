@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import httpx
@@ -62,8 +62,31 @@ class DiscoveryStore:
             logger.error("oidc_discovery_failed", url=self._url, error=str(exc))
             raise DiscoveryError(f"discovery fetch failed: {exc}") from exc
         metadata = self._parse(data)
+        if self._url.startswith("https://"):
+            metadata = self._upgrade_transport_scheme(metadata)
         self._cached = (now, metadata)
         return metadata
+
+    @staticmethod
+    def _upgrade_transport_scheme(metadata: OIDCMetadata) -> OIDCMetadata:
+        """发现文档经 https 拉取时，传输端点同样走 https。
+
+        Li&Pass 发现文档声明的端点是 http 字面值，而 80 端口只做 301；
+        httpx 对带体的 POST 不跟随该 301，会把它当成功响应导致令牌缺失。
+        issuer 保持文档原文，供 iss 严格校验。
+        """
+
+        def httpsize(url: str) -> str:
+            return url.replace("http://", "https://", 1) if url.startswith("http://") else url
+
+        return replace(
+            metadata,
+            authorization_endpoint=httpsize(metadata.authorization_endpoint),
+            token_endpoint=httpsize(metadata.token_endpoint),
+            userinfo_endpoint=httpsize(metadata.userinfo_endpoint),
+            jwks_uri=httpsize(metadata.jwks_uri),
+            end_session_endpoint=httpsize(metadata.end_session_endpoint),
+        )
 
     @classmethod
     def _parse(cls, data: dict[str, Any]) -> OIDCMetadata:
