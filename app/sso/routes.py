@@ -1,0 +1,139 @@
+from __future__ import annotations
+
+import secrets
+from typing import Annotated, cast
+from urllib.parse import quote
+
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse, RedirectResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import Settings
+from app.db import get_db
+from app.logging import get_logger
+from app.oidc.discovery import DiscoveryStore, OIDCMetadata
+from app.oidc.pkce import generate_pkce_pair
+from app.oidc.provider import OIDCProvider, TokenExchangeError
+from app.oidc.state import create_auth_state, pop_auth_state
+from app.oidc.tokens import TokenValidationError, TokenVerifier
+from app.oidc.user_sync import upsert_user
+
+router = APIRouter(prefix="/oidc", tags=["sso"])
+logger = get_logger(__name__)
+
+
+def _settings(request: Request) -> Settings:
+    return cast(Settings, request.app.state.settings)
+
+
+def _transport(request: Request) -> httpx.AsyncBaseTransport | None:
+    return cast(httpx.AsyncBaseTransport | None, request.app.state.http_transport)
+
+
+def _provider(request: Request) -> OIDCProvider:
+    discovery = cast(DiscoveryStore, request.app.state.discovery)
+    return OIDCProvider(_settings(request), discovery, transport=_transport(request))
+
+
+def _token_verifier(request: Request, metadata: OIDCMetadata) -> TokenVerifier:
+    return TokenVerifier(
+        issuer=metadata.issuer,
+        client_id=_settings(request).oidc_client_id,
+        jwks_uri=metadata.jwks_uri,
+        transport=_transport(request),
+    )
+
+
+def _safe_redirect_after(redirect_after: str) -> str:
+    if not redirect_after.startswith("/") or redirect_after.startswith("//"):
+        return "/"
+    return redirect_after
+
+
+def _error_redirect(message: str) -> RedirectResponse:
+    return RedirectResponse(f"/oidc/error?message={quote(message)}", status_code=302)
+
+
+@router.get("/login")
+async def login(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    redirect_after: str = "/",
+) -> RedirectResponse:
+    verifier, challenge = generate_pkce_pair()
+    nonce = secrets.token_urlsafe(32)
+    safe_redirect = _safe_redirect_after(redirect_after)
+    state = await create_auth_state(
+        db, verifier=verifier, nonce=nonce, redirect_after=safe_redirect
+    )
+    url = await _provider(request).build_authorize_url(state, nonce, challenge)
+    return RedirectResponse(url, status_code=302)
+
+
+@router.get("/callback")
+async def callback(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+) -> RedirectResponse:
+    if error is not None:
+        message = (
+            "该账号已被此网站限制访问"
+            if error_description == "account_blocked"
+            else "登录未完成"
+        )
+        return _error_redirect(message)
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="missing code or state")
+    auth_state = await pop_auth_state(db, state)
+    if auth_state is None:
+        raise HTTPException(status_code=400, detail="invalid or reused state")
+
+    provider = _provider(request)
+    try:
+        tokens = await provider.exchange_code(code, auth_state.verifier)
+    except TokenExchangeError as exc:
+        logger.warning("token_exchange_failed", error_code=exc.error_code)
+        message = (
+            "该账号已被此网站限制访问"
+            if exc.error_code == "account_blocked"
+            else "登录凭证已失效，请重新登录"
+        )
+        return _error_redirect(message)
+
+    id_token = tokens.get("id_token")
+    access_token = tokens.get("access_token")
+    if not isinstance(id_token, str) or not isinstance(access_token, str):
+        raise HTTPException(status_code=502, detail="idp response missing tokens")
+
+    metadata = await provider.discovery_metadata()
+    try:
+        claims = await _token_verifier(request, metadata).validate_id_token(
+            id_token, auth_state.nonce
+        )
+    except TokenValidationError as exc:
+        logger.warning("id_token_validation_failed", error=str(exc))
+        raise HTTPException(status_code=401, detail="id_token validation failed") from exc
+
+    try:
+        userinfo = await provider.fetch_userinfo(access_token)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 403:
+            return _error_redirect("该账号已被此网站限制访问")
+        raise HTTPException(status_code=502, detail="userinfo request failed") from exc
+
+    if userinfo.get("sub") != claims.get("sub"):
+        logger.warning("userinfo_sub_mismatch")
+        raise HTTPException(status_code=401, detail="user identity mismatch")
+
+    await upsert_user(db, userinfo)
+    return RedirectResponse(auth_state.redirect_after, status_code=302)
+
+
+@router.get("/error")
+async def error(message: str = "登录未完成") -> JSONResponse:
+    return JSONResponse({"message": message})

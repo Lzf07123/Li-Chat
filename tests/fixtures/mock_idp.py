@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import secrets
 import time
 from typing import Any
@@ -28,6 +29,8 @@ class MockIdP:
         user: dict[str, Any] | None = None,
         sid: str = "sid-1",
         acr: str = "urn:lipass:acr:2fa",
+        blocked: bool = False,
+        token_sub: str | None = None,
     ) -> None:
         self.client_id = client_id
         self.client_secret = client_secret
@@ -41,6 +44,8 @@ class MockIdP:
         }
         self.sid = sid
         self.acr = acr
+        self.blocked = blocked
+        self.token_sub = token_sub
         self.kid = "mock-rs256-1"
         self._private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         self._public_key = self._private_key.public_key()
@@ -85,12 +90,23 @@ class MockIdP:
     def sign_logout_token(self, claims: dict[str, Any]) -> str:
         return self.sign_id_token(claims)
 
+    def issue_code(
+        self,
+        *,
+        challenge: str,
+        nonce: str,
+        redirect_uri: str,
+    ) -> str:
+        code = secrets.token_urlsafe(32)
+        self._codes[code] = {
+            "challenge": challenge,
+            "nonce": nonce,
+            "redirect_uri": redirect_uri,
+        }
+        return code
+
     def _jwks(self) -> dict[str, Any]:
-        public_pem = self._public_key.public_bytes(
-            serialization.Encoding.PEM,
-            serialization.PublicFormat.SubjectPublicKeyInfo,
-        )
-        jwk = pyjwt.algorithms.RSAAlgorithm.to_jwk(public_pem)
+        jwk = json.loads(pyjwt.algorithms.RSAAlgorithm.to_jwk(self._public_key))
         jwk["kid"] = self.kid
         jwk["use"] = "sig"
         jwk["alg"] = "RS256"
@@ -142,6 +158,8 @@ class MockIdP:
 
         @app.post("/oauth2/token")
         async def token(request: Request):
+            if self.blocked:
+                return JSONResponse({"detail": "该账号已被此网站限制访问"}, status_code=403)
             form = await request.form()
             if form.get("client_secret") and form.get("client_secret") != self.client_secret:
                 return JSONResponse({"error": "invalid_client"}, status_code=401)
@@ -158,7 +176,7 @@ class MockIdP:
             self._access_tokens[access_token] = self.user["sub"]
             id_token = self.sign_id_token(
                 {
-                    "sub": self.user["sub"],
+                    "sub": self.token_sub or self.user["sub"],
                     "nonce": record["nonce"],
                     "sid": self.sid,
                     "acr": self.acr,
@@ -176,6 +194,8 @@ class MockIdP:
 
         @app.get("/oauth2/userinfo")
         async def userinfo(request: Request):
+            if self.blocked:
+                return JSONResponse({"detail": "该账号已被此网站限制访问"}, status_code=403)
             auth = request.headers.get("authorization", "")
             token = auth.removeprefix("Bearer ").strip()
             if token not in self._access_tokens:

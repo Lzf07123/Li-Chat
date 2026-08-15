@@ -10,6 +10,7 @@ from app.config import Settings
 from app.db import Base, build_engine, build_sessionmaker
 from app.logging import configure_logging
 from app.oidc.discovery import DiscoveryStore
+from app.sso.routes import router as sso_router
 
 
 def create_app(
@@ -39,6 +40,9 @@ def create_app(
     app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.discovery = discovery
+    app.state.http_transport = http_transport
+
+    app.include_router(sso_router)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
