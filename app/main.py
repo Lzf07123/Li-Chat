@@ -158,6 +158,13 @@ def create_app(
                 except ValueError:
                     continue
                 if message.get("type") == "ping":
+                    async with session_factory() as db:
+                        valid = await get_session(
+                            db, session_id, sliding_ttl=app_settings.session_sliding_ttl
+                        )
+                    if valid is None:
+                        await websocket.close(code=4401)
+                        return
                     await websocket.send_json({"type": "pong"})
         except WebSocketDisconnect:
             pass

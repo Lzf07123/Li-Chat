@@ -4,6 +4,7 @@ const state = {
   me: null,
   ws: null,
   pingTimer: null,
+  loggingOut: false,
   friends: [],
   requests: { incoming: [], outgoing: [] },
   recommendations: [],
@@ -574,6 +575,7 @@ function handleServerMessage(data) {
 }
 
 function logout() {
+  state.loggingOut = true;
   const form = document.createElement("form");
   form.method = "POST";
   form.action = "/oidc/logout";
@@ -613,6 +615,10 @@ function connectWebSocket() {
   });
   socket.addEventListener("close", (event) => {
     if (event.code === 4401) {
+      if (state.loggingOut) {
+        setStatus("disconnected", "已退出登录");
+        return;
+      }
       setStatus("invalid", "已退出登录，正在返回登录页…");
       window.location.href = "/";
       return;

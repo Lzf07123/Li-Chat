@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from app.auth.session import create_session
+from app.auth.session import create_session, delete_session
 from app.models import User
 
 
@@ -33,3 +33,21 @@ def test_ws_with_session_receives_hello_and_pong(app) -> None:
             assert ws.receive_json() == {"type": "hello", "sub": "u-1"}
             ws.send_json({"type": "ping"})
             assert ws.receive_json() == {"type": "pong"}
+
+
+def test_ws_ping_after_session_deletion_closes_4401(app) -> None:
+    session_id = _seed_session(app)
+    with TestClient(app) as client:
+        client.cookies.set("lichat_session", session_id)
+        with client.websocket_connect("/ws") as ws:
+            assert ws.receive_json() == {"type": "hello", "sub": "u-1"}
+
+            async def delete() -> None:
+                async with app.state.session_factory() as db:
+                    await delete_session(db, session_id)
+
+            asyncio.run(delete())
+            ws.send_json({"type": "ping"})
+            with pytest.raises(WebSocketDisconnect) as exc_info:
+                ws.receive_json()
+            assert exc_info.value.code == 4401

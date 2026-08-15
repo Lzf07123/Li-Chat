@@ -9,6 +9,7 @@
 | id_token 校验 | iss、aud=client_id、nonce、RS256、iat/exp、按 kid 从 JWKS 选钥，密钥轮换时自动刷新 | `app/oidc/tokens.py` |
 | access_token 用途限定 | 只用于调用 userinfo，不在本地校验 aud | `app/oidc/provider.py` |
 | 本地会话 | HttpOnly + SameSite=Lax（生产 Secure）、滑动 2h/绝对 7d、绑定门户 sid | `app/auth/session.py` |
+| 会话守护 | RP 登出/回程登出/撤销授权均断开该用户 WS（Redis 时跨副本广播）；WS 心跳逐次重校验会话，失效即 4401 关闭 | `app/sso/routes.py`、`app/main.py` |
 | CSRF | 双提交令牌，支持请求头与表单字段，`secrets.compare_digest` 比对 | `app/auth/deps.py` |
 | RP 登出 state | HMAC-SHA256 签名，回跳验签 | `app/sso/signing.py` |
 | 回程登出 | 验 iss/aud/120 秒新鲜窗口/jti 防重放/events，命中清会话并断 WS；`sid` 缺失或未命中时回退删除该用户全部会话（防门户 sid 轮换导致撤销授权不生效） | `app/sso/routes.py`、`app/sso/replay.py`、`app/auth/session.py` |

@@ -22,7 +22,7 @@ from app.auth.session import (
 from app.config import Settings
 from app.db import get_db
 from app.logging import get_logger
-from app.models import AuthState
+from app.models import AuthState, Session
 from app.oidc.discovery import DiscoveryStore, OIDCMetadata
 from app.oidc.pkce import challenge_for_verifier, generate_pkce_pair
 from app.oidc.provider import OIDCProvider, TokenExchangeError
@@ -219,7 +219,14 @@ async def logout(
     settings = _settings(request)
     session_id = request.cookies.get(settings.session_cookie_name)
     if session_id:
-        await delete_session(db, session_id)
+        session = await db.get(Session, session_id)
+        if session is not None:
+            await delete_session(db, session_id)
+            manager = cast(ConnectionManager, request.app.state.ws_manager)
+            await manager.disconnect_sub(session.user_sub)
+            redis = cast(Redis | None, request.app.state.redis)
+            if redis is not None:
+                await publish_logout(redis, session.user_sub)
     metadata = await _provider(request).discovery_metadata()
     signed = sign_state(settings.session_secret, secrets.token_urlsafe(24))
     params = urlencode(
