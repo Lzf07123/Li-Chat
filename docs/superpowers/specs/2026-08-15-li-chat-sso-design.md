@@ -34,11 +34,42 @@ flowchart LR
 
 | 参数 | 值/建议 | 说明 |
 | --- | --- | --- |
+| issuer | 发现文档声明 `http://account.lizf.cn`，传输层统一走 `https://account.lizf.cn` | `iss` 按发现文档原文校验，不自行改写（见 3.1） |
 | 客户端类型 | 机密客户端 + PKCE S256（推荐） | secret 仅存服务端；还能使用自助黑名单 API |
 | scope | `openid profile`（首版不含 `email`） | 避免"未验证邮箱用户"被挡在门外，昵称+头像足够聊天 |
 | redirect_uri | 按环境配置，**精确匹配白名单** | dev 与 prod 各注册一条 |
 | post_logout_redirect_uri | 按环境配置，精确匹配登出白名单 | RP 登出后回跳地址 |
 | backchannel_logout_uri | 生产环境必须 https 且非回环/私网 | 本地开发不支持回程登出 |
+
+### 3.1 实测发现文档（2026-08-15）
+
+`https://account.lizf.cn/.well-known/openid-configuration` 实测返回：
+
+```json
+{
+  "issuer": "http://account.lizf.cn",
+  "authorization_endpoint": "http://account.lizf.cn/oauth2/authorize",
+  "token_endpoint": "http://account.lizf.cn/oauth2/token",
+  "userinfo_endpoint": "http://account.lizf.cn/oauth2/userinfo",
+  "jwks_uri": "http://account.lizf.cn/oauth2/jwks",
+  "response_types_supported": ["code"],
+  "grant_types_supported": ["authorization_code"],
+  "subject_types_supported": ["public"],
+  "id_token_signing_alg_values_supported": ["RS256"],
+  "scopes_supported": ["openid", "profile", "email"],
+  "code_challenge_methods_supported": ["S256"],
+  "end_session_endpoint": "http://account.lizf.cn/oauth2/end-session",
+  "backchannel_logout_supported": true,
+  "frontchannel_logout_supported": false
+}
+```
+
+实测要点：
+
+- TLS 由 openresty 终止，`http://` 请求返回 301 跳转到 `https://`，HTTPS 各端点均可用。
+- 发现文档内所有 URL 均为 `http://` 字面值，与传输协议不一致——这是 IdP 侧配置问题，已列入风险（见第 15 节），建议 Li&Pass 团队将 issuer 改为 https。
+- JWKS 当前同时发布两把 RS256 公钥：`lipass-rs256-1` 与 `portal-rs256-1`（品牌改名轮换期），必须按 token 头部 `kid` 动态选钥，不能缓存单钥。
+- 结论：**传输一律用 `https://account.lizf.cn`，令牌校验用发现文档声明的 `iss` 原文（`http://account.lizf.cn`）**，发现文档启动时拉取并缓存（带 TTL），IdP 修正 issuer 后无需改代码。
 
 ## 4. 登录时序
 
@@ -145,8 +176,8 @@ li-chat/
 
 | 项 | 需要 |
 | --- | --- |
-| issuer URL | 例如 `https://auth.example.com` |
-| client_id / client_secret | 在 Li&Pass 授权网站管理创建并配置 |
+| issuer URL | ✅ 已提供：`https://account.lizf.cn`（注意 3.1 的 http/https 声明差异） |
+| client_id / client_secret | 在 Li&Pass 授权网站管理创建并配置后提供 |
 | redirect_uri | 本地开发用的完整回调地址（域名+端口） |
 | 登出回跳白名单 | 本地与生产各一条 |
 | 回程登出地址 | 生产域名（https） |
@@ -156,3 +187,11 @@ li-chat/
 ## 14. 与后续里程碑的衔接
 
 好友与单聊直接以 `users.sub`（门户 UUID）作为用户主键，全程无本地密码字段。后续任何需要强认证的能力（如敏感设置）可基于会话中记录的 `acr` 值做二次校验。
+
+## 15. 风险与开放问题
+
+| 风险 | 影响 | 处置 |
+| --- | --- | --- |
+| 发现文档 issuer 为 http 字面值 | 严格按 OIDC 校验 `iss` 时必须照原文比对，若 IdP 侧修正为 https，旧缓存可能短暂不匹配 | 本方案以发现文档为准；建议推动 IdP 修正，我方用短 TTL 缓存降低影响 |
+| 授权码 10 分钟、令牌无刷新 | 登录态只能靠本地会话维持 | 本地会话滑动 2h/绝对 7d 兜底，过期即重新走授权 |
+| 回程登出仅生产可用 | 本地开发期间门户登出无法即时同步 | 开发环境降级为会话过期兜底，生产必须配置回程地址 |
