@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.session import create_session, set_session_cookie
 from app.config import Settings
 from app.db import get_db
 from app.logging import get_logger
@@ -130,8 +131,25 @@ async def callback(
         logger.warning("userinfo_sub_mismatch")
         raise HTTPException(status_code=401, detail="user identity mismatch")
 
-    await upsert_user(db, userinfo)
-    return RedirectResponse(auth_state.redirect_after, status_code=302)
+    user = await upsert_user(db, userinfo)
+    settings = _settings(request)
+    session = await create_session(
+        db,
+        user.sub,
+        sid=str(claims["sid"]) if claims.get("sid") else None,
+        acr=str(claims["acr"]) if claims.get("acr") else None,
+        sliding_ttl=settings.session_sliding_ttl,
+        absolute_ttl=settings.session_absolute_ttl,
+    )
+    response = RedirectResponse(auth_state.redirect_after, status_code=302)
+    set_session_cookie(
+        response,
+        session.id,
+        cookie_name=settings.session_cookie_name,
+        max_age=settings.session_absolute_ttl,
+        secure=settings.is_prod,
+    )
+    return response
 
 
 @router.get("/error")

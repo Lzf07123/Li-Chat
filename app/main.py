@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
 
+from app.api.users import router as users_router
 from app.config import Settings
 from app.db import Base, build_engine, build_sessionmaker
 from app.logging import configure_logging
@@ -43,6 +44,7 @@ def create_app(
     app.state.http_transport = http_transport
 
     app.include_router(sso_router)
+    app.include_router(users_router)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

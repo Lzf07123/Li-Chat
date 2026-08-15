@@ -32,8 +32,8 @@ def settings(tmp_path, mock_idp: MockIdP) -> Settings:
         oidc_discovery_url=f"{mock_idp.ISSUER}/.well-known/openid-configuration",
         oidc_client_id=mock_idp.client_id,
         oidc_client_secret=mock_idp.client_secret,
-        oidc_redirect_uri="http://localhost:8000/oidc/callback",
-        oidc_post_logout_redirect_uri="http://localhost:8000/",
+        oidc_redirect_uri="http://test/oidc/callback",
+        oidc_post_logout_redirect_uri="http://test/",
         session_secret="test-session-secret",
     )
 
