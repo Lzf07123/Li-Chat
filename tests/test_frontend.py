@@ -43,3 +43,27 @@ async def test_favicon_served(api_client: httpx.AsyncClient) -> None:
     assert response.status_code == 200
     assert "image/svg+xml" in response.headers["content-type"]
     assert "<svg" in response.text
+
+
+async def test_index_brand_chrome(api_client: httpx.AsyncClient) -> None:
+    response = await api_client.get("/")
+    assert response.status_code == 200
+    text = response.text
+    assert 'rel="icon"' in text
+    assert 'href="/favicon.svg"' in text
+    assert 'name="theme-color"' in text
+    assert "chat-theme" in text
+    assert 'src="/brand.js"' in text
+    assert 'src="/theme.js"' in text
+    assert 'src="/ambient.js"' in text
+
+
+async def test_app_script_contracts(api_client: httpx.AsyncClient) -> None:
+    response = await api_client.get("/app.js")
+    assert response.status_code == 200
+    text = response.text
+    assert 'href="/oidc/login"' in text
+    assert "csrf_token" in text
+    assert "4401" in text
+    assert 'role="status"' in text
+    assert "LiChatTheme.initTheme" in text

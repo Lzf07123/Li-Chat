@@ -4,12 +4,30 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Li&Chat</title>
+    <meta name="description" content="Li&Chat——一次登录，直连你的小圈子" />
+    <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b1220" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="stylesheet" href="/style.css" />
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem("chat-theme");
+          var dark =
+            saved === "dark" ||
+            (saved !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.classList.toggle("dark", dark);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
-    <main id="app" class="card">
+    <main id="app" class="auth-shell" aria-live="polite">
       <noscript>Li&Chat 需要启用 JavaScript。</noscript>
     </main>
-    <script src="/app.js"></script>
+    <script src="/brand.js" defer></script>
+    <script src="/theme.js" defer></script>
+    <script src="/ambient.js" defer></script>
+    <script src="/app.js" defer></script>
   </body>
 </html>
