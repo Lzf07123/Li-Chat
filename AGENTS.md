@@ -38,10 +38,10 @@ app/
 ├── sso/           # /oidc/* 路由、登出签名、jti 防重放
 ├── ws/            # 进程内 WebSocket 连接管理
 └── api/           # /api/me
-static/            # 同源前端：index.html / app.js / style.css
-tests/             # 55 个测试 + 本地模拟 IdP（零外网依赖）
+static/            # 同源前端：index.html / app.js / brand.js / theme.js / ambient.js / style.css
+tests/             # 62 个测试 + 本地模拟 IdP（零外网依赖）
 docs/              # 架构、接口、部署、安全、设计规格与实施计划
-design-system/     # 品牌设计（template = Li-Design 子模块，仅首次设计参考）
+design-system/     # 品牌设计（chat/ 项目方案 + template/ Li-Design 子模块）
 ```
 
 关键事实：单进程 FastAPI 同源托管前端；浏览器只与 Li&Chat 通信，登录时短暂跳转 Li&Pass。OIDC 路由在 `/oidc/*`，会话接口 `/api/me`，实时通道 `/ws`（握手携带同源 Cookie）。环境变量前缀 `LICHAT_`。
@@ -105,7 +105,7 @@ design-system/     # 品牌设计（template = Li-Design 子模块，仅首次�
 
 ```bash
 uv sync --dev
-uv run pytest -q      # 55 个测试（当前数量），必须全绿
+uv run pytest -q      # 62 个测试（当前数量），必须全绿
 uv run ruff check .
 uv run mypy app
 ```
@@ -126,6 +126,8 @@ curl -fsS http://localhost:8000/healthz   # {"status":"ok"}
 - CHANGELOG 分区：破坏性变更 / 功能 / 安全加固 / 行为变更 / 缺陷修复。
 
 ## 九、品牌与设计规范（首次设计专属流程）
+
+**当前状态：首次设计已完成（2026-08-16）。** 视觉决策以 [design-system/chat/BRAND.md](./design-system/chat/BRAND.md) 与 [MASTER.md](./design-system/chat/MASTER.md) 为唯一事实来源，令牌在 `static/style.css`、品牌单点在 `static/brand.js`；UI 改动先读这两份文档，不再依赖 `template` 子模块（可经评审后移除）。
 
 `design-system/template/` 是 [Li-Design](https://github.com/Lzf07123/Li-Design) 的子模块，**只在 Li&Chat 第一次做视觉设计时参考**，不参与日常开发。
 

@@ -22,7 +22,7 @@ uv run uvicorn app.main:app --reload
 ## 质量门禁
 
 ```bash
-uv run pytest -q      # 55 个测试
+uv run pytest -q      # 62 个测试
 uv run ruff check .
 uv run mypy app
 ```
@@ -39,8 +39,9 @@ app/
 ├── sso/           # /oidc/* 路由、登出签名、jti 防重放
 ├── ws/            # WebSocket 连接管理
 └── api/           # /api/me
-static/            # 同源前端
-tests/             # 55 个测试 + 本地模拟 IdP
+static/            # 同源前端（index.html + app/brand/theme/ambient.js + style.css 令牌）
+tests/             # 62 个测试 + 本地模拟 IdP
+design-system/     # 品牌设计（chat/ 项目方案 + template/ Li-Design 子模块）
 docs/              # 架构、接口、部署、安全文档
 ```
 
@@ -50,8 +51,12 @@ docs/              # 架构、接口、部署、安全文档
 - [接口文档](docs/api.md)
 - [部署指南](docs/deployment.md)
 - [安全设计清单](docs/security.md)
+- [品牌设计报告](design-system/chat/BRAND.md)
+- [设计系统速览](design-system/chat/MASTER.md)
 - [SSO 设计规格](docs/superpowers/specs/2026-08-15-li-chat-sso-design.md)
+- [UI 重构设计规格](docs/superpowers/specs/2026-08-16-li-chat-ui-rebrand-design.md)
 - [实施计划](docs/superpowers/plans/2026-08-15-li-chat-sso.md)
+- [UI 重构实施计划](docs/superpowers/plans/2026-08-16-li-chat-ui-rebrand.md)
 - [变更记录](CHANGELOG.md)
 
 ## 路线图
