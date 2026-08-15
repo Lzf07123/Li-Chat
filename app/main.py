@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import cast
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
+from starlette.responses import Response
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from app.api.friends import router as friends_router
@@ -89,6 +90,16 @@ def create_app(
             await redis_client.aclose()
 
     app = FastAPI(title=app_settings.app_name, lifespan=lifespan)
+
+    @app.middleware("http")
+    async def no_store_api(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
     app.state.settings = app_settings
     app.state.engine = engine
     app.state.session_factory = session_factory

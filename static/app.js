@@ -587,6 +587,10 @@ function logout() {
 }
 
 function connectWebSocket() {
+  if (state.pingTimer) {
+    window.clearInterval(state.pingTimer);
+    state.pingTimer = null;
+  }
   const scheme = window.location.protocol === "https:" ? "wss" : "ws";
   const socket = new WebSocket(`${scheme}://${window.location.host}/ws`);
   state.ws = socket;
@@ -622,5 +626,22 @@ function connectWebSocket() {
     }
   }, 25000);
 }
+
+window.addEventListener("pageshow", (event) => {
+  if (!event.persisted) return;
+  if (state.pingTimer) {
+    window.clearInterval(state.pingTimer);
+    state.pingTimer = null;
+  }
+  state.friends = [];
+  state.requests = { incoming: [], outgoing: [] };
+  state.recommendations = [];
+  state.searchResults = [];
+  state.messages = [];
+  state.activeSub = null;
+  state.activePeer = null;
+  state.nextBefore = null;
+  loadMe();
+});
 
 loadMe();

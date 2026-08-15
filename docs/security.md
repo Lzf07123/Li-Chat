@@ -23,6 +23,7 @@
 | 发消息关系校验 | 双方必须 accepted 好友；自聊 400、非好友 403 | `app/messages/service.py` |
 | 历史访问边界 | 会话键 `(participant_lo, participant_hi)` 天然限定参与者 | `app/messages/service.py` |
 | 消息长度与 XSS | 内容 1–2000 strip 校验；前端 `textContent`/escapeHtml 渲染不拼 HTML | `app/api/messages.py`、`static/app.js` |
+| 敏感接口禁缓存 | `/api/*` 响应统一 `Cache-Control: no-store`，防浏览器/代理缓存会话数据 | `app/main.py` |
 
 ## 遗留风险（上线前处理）
 
