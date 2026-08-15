@@ -553,6 +553,10 @@ a {
   .brand-name {
     font-size: 1.25rem;
   }
+
+  .profile-name {
+    display: none;
+  }
 }
 
 /* ===== 好友与单聊双栏布局（里程碑二） ===== */
@@ -683,13 +687,30 @@ a {
   flex-shrink: 0;
 }
 
-.sidebar-status {
-  padding: 4px 8px;
-  font-size: 0.875rem;
-  color: var(--chat-muted);
+.app-profile {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  padding: 0 4px;
+}
+
+.app-profile .avatar {
+  width: 32px;
+  height: 32px;
+  font-size: 0.875rem;
+  flex-shrink: 0;
+}
+
+.profile-name {
+  font-weight: 600;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-status {
+  font-size: 0.875rem;
 }
 
 .chat-panel {

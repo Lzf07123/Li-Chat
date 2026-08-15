@@ -121,6 +121,14 @@ function headerHtml() {
     <div class="app-brand">${BRAND.logo}<span>${escapeHtml(BRAND.name)}</span></div>
     <div class="app-actions">
       ${themeToggleHtml()}
+      <div class="app-profile">
+        <div class="ws-status header-status">
+          <span id="ws-dot" class="status-dot status-connecting" aria-hidden="true"></span>
+          <span id="ws-text" role="status">连接中…</span>
+        </div>
+        ${avatarHtml(state.me)}
+        <span class="profile-name">${escapeHtml(displayName(state.me))}</span>
+      </div>
       <button id="logout" class="btn btn-secondary btn-sm" type="button">退出登录</button>
     </div>
   </header>`;
@@ -148,10 +156,6 @@ function mainHtml() {
         <p id="friends-empty" class="sidebar-empty">还没有好友，先搜索添加</p>
         <ul id="friends-list" class="contact-list"></ul>
       </section>
-      <div class="ws-status sidebar-status">
-        <span id="ws-dot" class="status-dot status-connecting" aria-hidden="true"></span>
-        <span id="ws-text" role="status">连接中…</span>
-      </div>
     </aside>
     <section id="chat-panel" class="chat-panel" aria-label="聊天">
       <div id="chat-empty" class="chat-empty">

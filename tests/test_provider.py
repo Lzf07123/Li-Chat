@@ -38,7 +38,7 @@ async def test_build_authorize_url_has_required_params(
     assert parsed.path == "/oauth2/authorize"
     assert query["response_type"] == ["code"]
     assert query["client_id"] == [settings.oidc_client_id]
-    assert query["scope"] == ["openid profile"]
+    assert query["scope"] == ["openid profile email"]
     assert query["state"] == ["state-1"]
     assert query["nonce"] == ["nonce-1"]
     assert query["code_challenge"] == ["challenge-1"]

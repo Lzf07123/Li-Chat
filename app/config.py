@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     oidc_client_secret: str | None = None
     oidc_redirect_uri: str = "http://localhost:8000/oidc/callback"
     oidc_post_logout_redirect_uri: str = "http://localhost:8000/"
-    oidc_scope: str = "openid profile"
+    oidc_scope: str = "openid profile email"
 
     session_secret: str = "dev-only-change-me"
     session_sliding_ttl: int = 7200

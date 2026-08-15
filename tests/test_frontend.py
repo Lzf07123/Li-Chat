@@ -91,6 +91,16 @@ async def test_app_chat_contracts(api_client: httpx.AsyncClient) -> None:
     assert "textContent" in text
 
 
+async def test_app_header_profile_contracts(api_client: httpx.AsyncClient) -> None:
+    response = await api_client.get("/app.js")
+    assert response.status_code == 200
+    text = response.text
+    assert 'class="app-profile"' in text
+    assert 'class="profile-name"' in text
+    assert 'class="ws-status header-status"' in text
+    assert "sidebar-status" not in text
+
+
 async def test_chat_styles_present(api_client: httpx.AsyncClient) -> None:
     response = await api_client.get("/style.css")
     assert response.status_code == 200
@@ -101,4 +111,6 @@ async def test_chat_styles_present(api_client: httpx.AsyncClient) -> None:
     assert ".message-own" in text
     assert ".composer" in text
     assert ".sr-only" in text
+    assert ".app-profile" in text
+    assert ".header-status" in text
     assert "max-width: 767px" in text
