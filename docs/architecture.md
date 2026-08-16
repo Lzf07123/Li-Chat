@@ -20,7 +20,7 @@ flowchart LR
 | `app/main.py` | 应用装配、生命周期（建表/建目录）、`/ws`、`/healthz`、静态挂载 |
 | `app/config.py` | `LICHAT_*` 环境变量，生产环境校验会话密钥强度 |
 | `app/db.py` | 异步引擎、`get_db` 依赖 |
-| `app/models.py` | `users` / `auth_states` / `sessions` / `friendships` / `messages` / `dm_reads` / `reactions` / `message_mentions` / `user_stars` / `user_conversation_settings` / `groups` / `group_members` / `group_reads` / `uploads` / `call_logs` 十五张表 |
+| `app/models.py` | `users` / `auth_states` / `sessions` / `friendships` / `messages` / `dm_reads` / `reactions` / `message_mentions` / `user_stars` / `user_conversation_settings` / `groups` / `group_members` / `group_reads` / `polls` / `poll_votes` / `notifications` / `user_message_deletes` / `uploads` / `call_logs` 十九张表 |
 | `app/auth/` | 本地会话生命周期、Cookie、`get_current_user` / `require_csrf` |
 | `app/oidc/` | 依赖方实现：发现文档、PKCE、授权状态、令牌校验、用户同步 |
 | `app/sso/` | `/oidc/*` 路由、登出 state 签名、jti 防重放（内存/Redis 双实现） |
@@ -32,6 +32,8 @@ flowchart LR
 | `app/groups/` | 群聊业务：建群、成员、角色与权限矩阵 |
 | `app/uploads/` | 附件业务：内容嗅探、随机文件名、鉴权回源 |
 | `app/search/` | 搜索业务：消息检索（可见范围 + 游标 + snippet）与联系人检索 |
+| `app/polls/` | 群投票业务：创建、投票/改票、关闭、计数聚合 |
+| `app/notifications/` | 站内通知业务：落账、倒序游标列表、全部已读 |
 | `static/` | 同源前端（登录、好友双栏、单聊、在线状态、退出） |
 | `tests/fixtures/mock_idp.py` | 本地模拟 IdP，测试零外网依赖 |
 
@@ -42,17 +44,21 @@ flowchart LR
 | `users` | `sub`(PK)、nickname、name、picture、email、bio、last_seen_at | 门户 UUID 作主键，登录时 upsert；昵称/头像仅空值回填（本地编辑优先），bio 仅好友可见；last_seen_at 在 WS 连接与心跳时刷新 |
 | `auth_states` | `state`(PK)、verifier、nonce、redirect_after、expires_at | 授权状态，单次使用 |
 | `sessions` | `id`(PK)、user_sub、sid、acr、csrf_token、expires_at、absolute_expires_at | 绑定门户会话 `(sub, sid)`，支撑回程登出 |
-| `friendships` | `requester_sub+addressee_sub`(复合 PK)、status、created_at、updated_at | 申请方向由 requester 表达；`pending`/`accepted`，无自环约束 |
-| `messages` | `id`(自增，SQLite INTEGER/PostgreSQL BIGINT)、sender_sub、recipient_sub、participant_lo/hi、content、conversation_type(dm/group)、group_id、reply_to_id(自引用)、content_type(text/image/file)、forwarded、attachment_*、edited_at、deleted_at、created_at | DM 用 `(participant_lo, participant_hi, id)` 索引；群消息按 `(group_id, id)` 索引，recipient/participant 以 `group:{id}` 哨兵占位兼容旧约束；撤回清空 content 留墓碑；引用预览不递归嵌套；转发复制内容并置 forwarded |
+| `friendships` | `requester_sub+addressee_sub`(复合 PK)、status、remark、reason、created_at、updated_at | 申请方向由 requester 表达；`pending`/`accepted`，无自环约束；remark 为本人视角备注名（≤32，仅自己可见）；reason 为申请附言（≤200，双方可见） |
+| `messages` | `id`(自增，SQLite INTEGER/PostgreSQL BIGINT)、sender_sub、recipient_sub、participant_lo/hi、content、conversation_type(dm/group)、group_id、reply_to_id(自引用)、content_type(text/image/file/audio/poll)、poll_id、forwarded、attachment_*、edited_at、deleted_at、created_at | DM 用 `(participant_lo, participant_hi, id)` 索引；群消息按 `(group_id, id)` 索引，recipient/participant 以 `group:{id}` 哨兵占位兼容旧约束；撤回清空 content 留墓碑；引用预览不递归嵌套；转发复制内容并置 forwarded；poll 消息以 poll_id 关联投票，投票不可转发 |
 | `dm_reads` | `user_sub+participant_lo+participant_hi`(复合 PK)、last_read_message_id、updated_at | 单聊已读游标，只前进；未读 = 对方消息 id 大于游标 |
 | `reactions` | `message_id+user_sub+emoji`(复合 PK)、created_at | 幂等 toggle；聚合计数回显，不泄露非上榜用户 |
 | `message_mentions` | `message_id+user_sub`(复合 PK) | @提及落账；发送时校验成员/对端 |
 | `user_stars` | `user_sub+message_id`(复合 PK)、created_at | 收藏幂等 toggle；列表按 message_id 倒序游标 |
-| `user_conversation_settings` | `user_sub+kind+key`(复合 PK)、pinned、muted | 会话置顶/免打扰；key：单聊 pair 排序键 / 群 id |
+| `user_conversation_settings` | `user_sub+kind+key`(复合 PK)、pinned、muted、archived | 会话置顶/免打扰/归档；key：单聊 pair 排序键 / 群 id；归档会话从默认摘要隐藏（`?archived=true` 可见） |
 | `call_logs` | `id`、caller_sub、callee_sub、kind、status、started_at、ended_at | 呼叫落账：missed/accepted/rejected |
-| `groups` | `id`、name、owner_sub、announcement、avatar_url、created_at、updated_at | 群元数据；公告/头像由 owner/admin 维护，owner 变更随转让同步 |
-| `group_members` | `group_id+user_sub`(复合 PK)、role(owner/admin/member)、joined_at | 角色约束 + 权限矩阵在 service 层强校验 |
+| `groups` | `id`、name、owner_sub、announcement、announcement_updated_at、avatar_url、created_at、updated_at | 群元数据；公告/头像由 owner/admin 维护，owner 变更随转让同步；公告发布/清空时刷新 announcement_updated_at |
+| `group_members` | `group_id+user_sub`(复合 PK)、role(owner/admin/member)、muted、joined_at | 角色约束 + 权限矩阵在 service 层强校验；muted 由 owner/admin 维护，禁言成员发消息 403 |
 | `group_reads` | `user_sub+group_id`(复合 PK)、last_read_message_id、updated_at | 群已读游标，只前进；未读 = 群消息 id 大于游标且非本人发送 |
+| `polls` | `id`、group_id、creator_sub、question(≤120)、options(JSON ≤10 项各 ≤60)、multiple、closed、created_at | 群投票；选项以 JSON 落库；关闭后禁投；解散群级联清理 |
+| `poll_votes` | `poll_id+user_sub`(复合 PK)、option_indexes(JSON)、updated_at | 每人一票（可含多选下标），投票即更新；聚合计数不回传他人选择明细 |
+| `notifications` | `id`、user_sub、type、actor_sub、group_id、payload(JSON)、read_at、created_at | 站内通知：好友申请/@提及/禁言/角色变更/群解散；按用户倒序游标；payload 存展示所需快照（群名/消息 id/角色） |
+| `user_message_deletes` | `user_sub+message_id`(复合 PK)、created_at | 仅自己删除（幂等）；历史/摘要按查看者过滤，他人视角不受影响 |
 | `uploads` | `id`、owner_sub、filename(唯一)、original_name、mime、size、created_at | 随机文件名防遍历；仅上传者可回源 |
 
 ## 关键链路

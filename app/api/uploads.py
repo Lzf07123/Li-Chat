@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import get_current_user, require_csrf
+from app.auth.deps import get_current_user, require_action_rate, require_csrf
 from app.config import Settings
 from app.db import get_db
 from app.models import User
@@ -32,6 +32,7 @@ async def upload_file(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     _csrf: Annotated[None, Depends(require_csrf)],
+    _rate: Annotated[None, Depends(require_action_rate)],
     file: Annotated[UploadFile, File()],
 ) -> UploadOut:
     settings = cast(Settings, request.app.state.settings)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
@@ -10,6 +11,7 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
+from sqlalchemy import text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
@@ -18,6 +20,8 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from app.api.friends import router as friends_router
 from app.api.groups import router as groups_router
 from app.api.messages import router as messages_router
+from app.api.notifications import router as notifications_router
+from app.api.polls import router as polls_router
 from app.api.search import router as search_router
 from app.api.uploads import router as uploads_router
 from app.api.users import router as users_router
@@ -42,7 +46,9 @@ _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 logger = get_logger(__name__)
 
 # 前端构建版本：升级 static/ 资源时同步修改此处与 static/app.js 的 FRONTEND_VERSION
-FRONTEND_VERSION = "0.3.0"
+FRONTEND_VERSION = "1.0.0"
+APP_VERSION = "1.0.0"
+SLOW_REQUEST_MS = 500.0
 
 _STATIC_PATHS = {
     "/",
@@ -77,6 +83,19 @@ def _ensure_user_columns(conn: Connection) -> None:
         conn.exec_driver_sql("ALTER TABLE users ADD COLUMN last_seen_at DATETIME")
     if "bio" not in names:
         conn.exec_driver_sql("ALTER TABLE users ADD COLUMN bio VARCHAR(200)")
+
+
+def _ensure_friendship_columns(conn: Connection) -> None:
+    """SQLite 兼容迁移：为既有库补齐 friendships.remark（PostgreSQL 走 Alembic）。"""
+    if conn.dialect.name != "sqlite":
+        return
+    names = {
+        row[1] for row in conn.exec_driver_sql("PRAGMA table_info(friendships)").fetchall()
+    }
+    if "remark" not in names:
+        conn.exec_driver_sql("ALTER TABLE friendships ADD COLUMN remark VARCHAR(32)")
+    if "reason" not in names:
+        conn.exec_driver_sql("ALTER TABLE friendships ADD COLUMN reason VARCHAR(200)")
 
 
 def _ensure_message_columns(conn: Connection) -> None:
@@ -119,6 +138,8 @@ def _ensure_message_columns(conn: Connection) -> None:
         conn.exec_driver_sql(
             "ALTER TABLE messages ADD COLUMN forwarded BOOLEAN NOT NULL DEFAULT 0"
         )
+    if "poll_id" not in names:
+        conn.exec_driver_sql("ALTER TABLE messages ADD COLUMN poll_id INTEGER")
 
 
 def _ensure_group_columns(conn: Connection) -> None:
@@ -132,6 +153,41 @@ def _ensure_group_columns(conn: Connection) -> None:
         conn.exec_driver_sql("ALTER TABLE groups ADD COLUMN announcement TEXT")
     if "avatar_url" not in names:
         conn.exec_driver_sql("ALTER TABLE groups ADD COLUMN avatar_url VARCHAR(255)")
+    if "announcement_updated_at" not in names:
+        conn.exec_driver_sql(
+            "ALTER TABLE groups ADD COLUMN announcement_updated_at DATETIME"
+        )
+
+
+def _ensure_group_member_columns(conn: Connection) -> None:
+    """SQLite 兼容迁移：为既有库补齐 group_members.muted（PostgreSQL 走 Alembic）。"""
+    if conn.dialect.name != "sqlite":
+        return
+    names = {
+        row[1]
+        for row in conn.exec_driver_sql("PRAGMA table_info(group_members)").fetchall()
+    }
+    if "muted" not in names:
+        conn.exec_driver_sql(
+            "ALTER TABLE group_members ADD COLUMN muted BOOLEAN NOT NULL DEFAULT 0"
+        )
+
+
+def _ensure_settings_columns(conn: Connection) -> None:
+    """SQLite 兼容迁移：为既有库补齐 user_conversation_settings.archived。"""
+    if conn.dialect.name != "sqlite":
+        return
+    names = {
+        row[1]
+        for row in conn.exec_driver_sql(
+            "PRAGMA table_info(user_conversation_settings)"
+        ).fetchall()
+    }
+    if "archived" not in names:
+        conn.exec_driver_sql(
+            "ALTER TABLE user_conversation_settings "
+            "ADD COLUMN archived BOOLEAN NOT NULL DEFAULT 0"
+        )
 
 
 async def _friend_subs(db: AsyncSession, sub: str) -> list[str]:
@@ -186,8 +242,11 @@ def create_app(
             await conn.run_sync(Base.metadata.create_all)
             await conn.run_sync(_ensure_session_columns)
             await conn.run_sync(_ensure_user_columns)
+            await conn.run_sync(_ensure_friendship_columns)
             await conn.run_sync(_ensure_message_columns)
             await conn.run_sync(_ensure_group_columns)
+            await conn.run_sync(_ensure_group_member_columns)
+            await conn.run_sync(_ensure_settings_columns)
         subscriber: asyncio.Task[None] | None = None
         if redis_client is not None:
             await redis_client.ping()
@@ -204,6 +263,22 @@ def create_app(
             await redis_client.aclose()
 
     app = FastAPI(title=app_settings.app_name, lifespan=lifespan)
+
+    @app.middleware("http")
+    async def slow_request_log(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        started = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - started) * 1000
+        if duration_ms >= SLOW_REQUEST_MS:
+            logger.info(
+                "slow_request",
+                method=request.method,
+                path=request.url.path,
+                duration_ms=round(duration_ms, 1),
+            )
+        return response
 
     @app.middleware("http")
     async def no_store_api(
@@ -235,14 +310,19 @@ def create_app(
     app.state.login_limiter = SlidingWindowRateLimiter(
         app_settings.login_rate_limit, app_settings.login_rate_window
     )
+    app.state.action_limiter = SlidingWindowRateLimiter(
+        app_settings.action_rate_limit, app_settings.action_rate_window
+    )
 
     app.include_router(sso_router)
     app.include_router(users_router)
     app.include_router(friends_router)
     app.include_router(groups_router)
+    app.include_router(polls_router)
     app.include_router(messages_router)
     app.include_router(uploads_router)
     app.include_router(search_router)
+    app.include_router(notifications_router)
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:
@@ -316,11 +396,25 @@ def create_app(
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
-        return {"status": "ok"}
+        try:
+            async with session_factory() as db:
+                await db.execute(text("SELECT 1"))
+            database = "ok"
+        except Exception:
+            logger.exception("healthz_database_check_failed")
+            database = "error"
+        return {
+            "status": "ok" if database == "ok" else "degraded",
+            "database": database,
+            "version": APP_VERSION,
+        }
 
     @app.get("/api/version")
     async def api_version() -> dict[str, str]:
-        return {"frontend_version": FRONTEND_VERSION}
+        return {
+            "frontend_version": FRONTEND_VERSION,
+            "app_version": APP_VERSION,
+        }
 
     app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="static")
     return app

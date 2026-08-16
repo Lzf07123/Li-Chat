@@ -10,6 +10,7 @@ from app.auth.session import get_session
 from app.config import Settings
 from app.db import get_db
 from app.models import User
+from app.sso.ratelimit import SlidingWindowRateLimiter
 
 
 async def get_current_user(
@@ -30,6 +31,20 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="user not found")
     request.state.session = session
     return user
+
+
+async def require_action_rate(
+    request: Request,
+    user: Annotated[User, Depends(get_current_user)],
+) -> None:
+    limiter = cast(SlidingWindowRateLimiter, request.app.state.action_limiter)
+    allowed, retry_after = limiter.check(user.sub)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="too many requests",
+            headers={"Retry-After": str(retry_after)},
+        )
 
 
 async def require_csrf(

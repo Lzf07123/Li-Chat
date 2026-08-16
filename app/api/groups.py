@@ -17,11 +17,14 @@ from app.api.messages import (
     ReadIn,
     ReadOut,
 )
-from app.auth.deps import get_current_user, require_csrf
+from app.api.notifications import push_notification
+from app.auth.deps import get_current_user, require_action_rate, require_csrf
 from app.db import get_db
 from app.groups import service
 from app.messages import service as messages_service
-from app.models import Message, User
+from app.models import Group, GroupRead, Message, Poll, User
+from app.notifications.service import create as create_notification
+from app.polls import service as polls_service
 from app.timeutil import iso_utc, utcnow
 from app.ws.manager import ConnectionManager
 
@@ -38,6 +41,7 @@ class UserOut(BaseModel):
 class MemberOut(BaseModel):
     user: UserOut
     role: str
+    muted: bool = False
     joined_at: str
 
 
@@ -46,9 +50,42 @@ class GroupOut(BaseModel):
     name: str
     owner_sub: str
     announcement: str | None = None
+    announcement_updated_at: str | None = None
     avatar_url: str | None = None
     created_at: str
     members: list[MemberOut]
+
+
+class GroupFileOut(BaseModel):
+    message_id: int
+    sender_sub: str
+    name: str | None = None
+    size: int | None = None
+    mime: str | None = None
+    url: str | None = None
+    created_at: str
+
+
+class GroupFilesOut(BaseModel):
+    files: list[GroupFileOut]
+    next_before: int | None
+
+
+class ReaderOut(BaseModel):
+    sub: str
+    nickname: str | None = None
+    name: str | None = None
+    picture: str | None = None
+
+
+class GroupReadsOut(BaseModel):
+    read_count: int
+    total_members: int
+    readers: list[ReaderOut]
+
+
+class HideOut(BaseModel):
+    status: str
 
 
 class AnnouncementIn(BaseModel):
@@ -124,6 +161,10 @@ class RoleIn(BaseModel):
     role: Literal["admin", "member"]
 
 
+class MuteIn(BaseModel):
+    muted: bool
+
+
 class TransferIn(BaseModel):
     new_owner_sub: str
 
@@ -183,6 +224,39 @@ async def group_detail(
     return GroupOut.model_validate(await service.get_group(db, user.sub, group_id))
 
 
+@router.get("/{group_id}/files", response_model=GroupFilesOut)
+async def group_files(
+    group_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    before: Annotated[int | None, Query(ge=1)] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 50,
+) -> GroupFilesOut:
+    files, next_before = await messages_service.group_files(
+        db, user.sub, group_id, before=before, limit=limit
+    )
+    return GroupFilesOut(files=files, next_before=next_before)
+
+
+@router.get("/{group_id}/messages/{message_id}/reads", response_model=GroupReadsOut)
+async def group_message_reads(
+    group_id: int,
+    message_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> GroupReadsOut:
+    readers, read_count, total_members = (
+        await messages_service.group_message_readers(
+            db, user.sub, group_id, message_id
+        )
+    )
+    return GroupReadsOut(
+        read_count=read_count,
+        total_members=total_members,
+        readers=readers,
+    )
+
+
 @router.patch("/{group_id}", response_model=GroupOut)
 async def rename_group(
     request: Request,
@@ -239,7 +313,41 @@ async def set_member_role(
     await service.set_member_role(db, user.sub, group_id, target_sub, body.role)
     group = await service.get_group(db, user.sub, group_id)
     await _broadcast(request, db, group_id, "role_changed", group, user.sub)
+    notification = await create_notification(
+        db,
+        target_sub,
+        "role_changed",
+        actor_sub=user.sub,
+        group_id=group_id,
+        payload={"group_name": group["name"], "role": body.role},
+    )
+    await push_notification(request, db, notification)
     return StatusOut(status=body.role)
+
+
+@router.patch("/{group_id}/members/{target_sub}/mute", response_model=StatusOut)
+async def set_member_mute(
+    request: Request,
+    group_id: int,
+    target_sub: str,
+    body: MuteIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> StatusOut:
+    await service.set_member_mute(db, user.sub, group_id, target_sub, body.muted)
+    group = await service.get_group(db, user.sub, group_id)
+    await _broadcast(request, db, group_id, "member_muted", group, user.sub)
+    notification = await create_notification(
+        db,
+        target_sub,
+        "muted" if body.muted else "unmuted",
+        actor_sub=user.sub,
+        group_id=group_id,
+        payload={"group_name": group["name"]},
+    )
+    await push_notification(request, db, notification)
+    return StatusOut(status="muted" if body.muted else "unmuted")
 
 
 @router.post("/{group_id}/leave", response_model=StatusOut)
@@ -254,6 +362,38 @@ async def leave_group(
     await service.leave_group(db, user.sub, group_id)
     await _broadcast(request, db, group_id, "member_left", group, user.sub)
     return StatusOut(status="left")
+
+
+@router.post("/{group_id}/dissolve", response_model=StatusOut)
+async def dissolve_group(
+    request: Request,
+    group_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> StatusOut:
+    payload, member_subs = await service.dissolve_group(db, user.sub, group_id)
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    event = {
+        "type": "group_event",
+        "event": "dissolved",
+        "group_id": group_id,
+        "group": payload,
+        "by_sub": user.sub,
+        "at": iso_utc(utcnow()),
+    }
+    for sub in member_subs:
+        await manager.send_to(sub, event)
+        notification = await create_notification(
+            db,
+            sub,
+            "group_dissolved",
+            actor_sub=user.sub,
+            group_id=group_id,
+            payload={"group_name": payload["name"]},
+        )
+        await push_notification(request, db, notification)
+    return StatusOut(status="dissolved")
 
 
 @router.post("/{group_id}/transfer", response_model=StatusOut)
@@ -307,6 +447,7 @@ async def send_group_message(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     _csrf: Annotated[None, Depends(require_csrf)],
+    _rate: Annotated[None, Depends(require_action_rate)],
 ) -> MessageOut:
     message = await messages_service.send_group_message(
         db,
@@ -317,6 +458,7 @@ async def send_group_message(
         attachment=body.attachment.model_dump() if body.attachment else None,
         reply_to_id=body.reply_to_id,
         mentions=body.mentions,
+        poll=body.poll.model_dump() if body.poll else None,
     )
     mention_subs = list(dict.fromkeys(body.mentions))
     reply = (
@@ -325,10 +467,38 @@ async def send_group_message(
         else None
     )
     payload = messages_service.message_payload(message, reply, mention_subs)
+    if message.poll_id is not None:
+        poll_row = await db.get(Poll, message.poll_id)
+        if poll_row is not None:
+            payload["poll"] = await polls_service.poll_payload(db, poll_row, user.sub)
+    if message.sender_sub == user.sub:
+        read_rows = (
+            await db.execute(
+                select(GroupRead).where(
+                    GroupRead.group_id == group_id,
+                    GroupRead.last_read_message_id >= message.id,
+                )
+            )
+        ).scalars().all()
+        payload["read_count"] = len(read_rows)
     manager = cast(ConnectionManager, request.app.state.ws_manager)
     event = {"type": "message", "message": payload}
     for sub in await service.member_subs(db, group_id):
         await manager.send_to(sub, event)
+    group_row = await db.get(Group, group_id)
+    for mention_sub in set(mention_subs) - {user.sub}:
+        notification = await create_notification(
+            db,
+            mention_sub,
+            "mention",
+            actor_sub=user.sub,
+            group_id=group_id,
+            payload={
+                "group_name": group_row.name if group_row else None,
+                "message_id": message.id,
+            },
+        )
+        await push_notification(request, db, notification)
     return MessageOut(**payload)
 
 
@@ -352,6 +522,15 @@ async def group_history(
     starred_ids = await messages_service.starred_for(
         db, user.sub, [item.id for item in rows]
     )
+    poll_ids = [item.poll_id for item in rows if item.poll_id is not None]
+    polls_map: dict[int, dict[str, Any]] = {}
+    for poll_id in set(poll_ids):
+        poll_row = await db.get(Poll, poll_id)
+        if poll_row is not None:
+            polls_map[poll_id] = await polls_service.poll_payload(db, poll_row, user.sub)
+    read_rows = (
+        await db.execute(select(GroupRead).where(GroupRead.group_id == group_id))
+    ).scalars().all()
     reply_ids = [item.reply_to_id for item in rows if item.reply_to_id is not None]
     replies: dict[int, Message] = {}
     if reply_ids:
@@ -369,6 +548,14 @@ async def group_history(
             else None
         )
         data = messages_service.message_payload(item, reply)
+        if item.poll_id is not None and item.poll_id in polls_map:
+            data["poll"] = polls_map[item.poll_id]
+        if item.sender_sub == user.sub:
+            data["read_count"] = sum(
+                1
+                for row in read_rows
+                if row.last_read_message_id >= item.id
+            )
         if "mentions" in data:
             data["mentions"] = mentions.get(item.id, [])
         aggregate = reaction_map.get(item.id, {})
@@ -434,6 +621,7 @@ async def edit_group_message(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     _csrf: Annotated[None, Depends(require_csrf)],
+    _rate: Annotated[None, Depends(require_action_rate)],
 ) -> MessageOut:
     message = await messages_service.edit_group_message(
         db, user.sub, group_id, message_id, body.content
@@ -469,6 +657,20 @@ async def delete_group_message(
     for sub in await service.member_subs(db, group_id):
         await manager.send_to(sub, event)
     return MessageOut(**payload)
+
+
+@router.delete("/{group_id}/messages/{message_id}/me", response_model=HideOut)
+async def hide_group_message(
+    group_id: int,
+    message_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> HideOut:
+    await messages_service.hide_message_for_self(
+        db, user.sub, message_id, group_id=group_id
+    )
+    return HideOut(status="hidden")
 
 
 @router.put(

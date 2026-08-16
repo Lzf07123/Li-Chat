@@ -45,7 +45,9 @@ services:
       - no-new-privileges:true
     environment:
       TZ: ${TZ:-Asia/Shanghai}
+      # 生产：LICHAT_ENV=prod（启用 Secure Cookie，要求 https + ≥32 字符会话密钥）
       LICHAT_ENV: ${LICHAT_ENV:-dev}
+      # 生产切 PostgreSQL：postgresql+psycopg://user:pass@host:5432/lichat（多副本前提）
       LICHAT_DATABASE_URL: ${LICHAT_DATABASE_URL:-sqlite+aiosqlite:////app/data/lichat.db}
       # 默认连编排内 redis；外部 Redis 在 .env 覆盖 LICHAT_REDIS_URL
       LICHAT_REDIS_URL: ${LICHAT_REDIS_URL:-redis://:${REDIS_PASSWORD:-lichat-dev-redis}@redis:6379/0}
@@ -56,6 +58,9 @@ services:
       LICHAT_OIDC_POST_LOGOUT_REDIRECT_URI: ${LICHAT_OIDC_POST_LOGOUT_REDIRECT_URI:-http://localhost:8000/}
       LICHAT_OIDC_SCOPE: ${LICHAT_OIDC_SCOPE:-openid profile email}
       LICHAT_SESSION_SECRET: ${LICHAT_SESSION_SECRET:-dev-only-change-me}
+      LICHAT_ACTION_RATE_LIMIT: ${LICHAT_ACTION_RATE_LIMIT:-60}
+      LICHAT_ACTION_RATE_WINDOW: ${LICHAT_ACTION_RATE_WINDOW:-60}
+      LICHAT_UPLOAD_MAX_MB: ${LICHAT_UPLOAD_MAX_MB:-10}
     ports:
       - "127.0.0.1:${LICHAT_PORT:-8000}:8000"
     volumes:

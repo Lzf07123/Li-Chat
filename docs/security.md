@@ -29,8 +29,17 @@
 | 消息编辑/撤回鉴权 | 仅发送者、5 分钟窗口、撤回后不可再编辑；撤回清空 content 落库，历史与 WS 只回墓碑不泄露原文 | `app/messages/service.py` |
 | 表情回应防护 | 仅会话参与者可回应；emoji 1–8 字符、禁空白与控制符；已撤回消息 409；聚合只回 `{emoji,count}` 不泄露用户清单 | `app/messages/service.py` |
 | 群聊权限矩阵 | 详情仅成员可见；改名/邀请需 owner/admin；移除规则（admin 不可移除 owner/admin）；角色调整/转让仅 owner；退出 owner 需先转让；邀请好友闸 + 容量上限 | `app/groups/service.py` |
+| 群成员禁言 | 仅 owner/admin 可设置；不得禁言 owner/admin 与自己；被禁言成员发群消息 403（发送入口禁用仅前端体验，服务端强校验） | `app/groups/service.py`、`app/messages/service.py` |
+| 群解散 | 仅 owner 可解散；显式清理群消息/回应/提及/收藏/成员/已读/会话设置（不依赖数据库级联，兼容哨兵占位设计）；WS `dissolved` 广播后成员再访问 404 | `app/groups/service.py`、`app/api/groups.py` |
 | 群消息访问边界 | 发/读/已读仅群成员；群已读游标只前进且消息必须属于该群；退群后群摘要消失、历史不可见 | `app/messages/service.py` |
-| 附件安全 | 内容嗅探白名单（jpeg/png/gif/webp/pdf/txt），拒绝 SVG/HTML 与伪造类型；大小 ≤20MB；随机文件名防遍历；回源会话鉴权（上传者或引用该附件的会话参与者）+ nosniff；附件消息归属校验 | `app/uploads/`、`app/messages/service.py` |
+| 群文件聚合 | 仅群成员可列出附件；排除已撤回消息；按消息倒序游标分页，不泄露退群后的内容 | `app/messages/service.py`、`app/api/groups.py` |
+| 群投票边界 | 投票仅群成员；选项下标白名单校验、单选最多 1 项；已关闭 409；结束仅创建者/owner/admin；选项文本与问题长度上限、去重；他人选择明细不聚合回传（只回计数与本人选择）；投票消息不可转发 | `app/polls/service.py`、`app/api/polls.py` |
+| 群已读明细 | 仅成员可查；消息须属该群且未撤回；只回传成员资料清单与计数，不泄露游标数值以外的信息 | `app/messages/service.py`、`app/api/groups.py` |
+| 已读游标一致性 | 退群/被移除时清理该用户的群已读游标与群会话设置（不依赖数据库级联，显式删除孤儿行）；游标只前进不回退 | `app/groups/service.py`、`app/messages/service.py` |
+| 通知中心边界 | 通知只发给目标用户（事件产生时定向落账 + WS 定向推送）；列表仅能查自己；payload 只存展示快照（群名/消息 id/角色），不存敏感内容；全部已读走 CSRF | `app/notifications/service.py`、`app/api/notifications.py` |
+| 仅自己删除边界 | 删除前校验消息归属（单聊 pair / 群成员）；隐藏只作用于本人视角（历史/摘要过滤），对方/群成员视角不变；幂等 | `app/messages/service.py` |
+| 数据导出边界 | 仅登录用户可导出；内容限定自己可见范围（好友列表、加入的群、参与会话消息、自己的收藏），附 `Content-Disposition` 下载；每会话分页上限防资源滥用 | `app/api/users.py` |
+| 附件安全 | 内容嗅探白名单（jpeg/png/gif/webp/pdf/txt/audio webm/mp4，魔数校验），拒绝 SVG/HTML 与伪造类型；大小 ≤20MB；随机文件名防遍历；回源会话鉴权（上传者或引用该附件的会话参与者）+ nosniff；附件/语音消息归属校验 | `app/uploads/`、`app/messages/service.py` |
 | 转发边界 | 源消息必须自己可见（单聊双方/群成员）且未撤回；目标好友/群成员校验；不得转发给自己 | `app/messages/service.py` |
 | 提及防护 | 单聊仅可提及对方、群仅可提及成员；≤50 去重；非法提及 422 | `app/messages/service.py` |
 | 收藏边界 | 只能收藏自己可见范围（单聊双方/群成员）的消息；越权 404 | `app/messages/service.py` |
@@ -39,8 +48,10 @@
 | 群消息操作边界 | 编辑/撤回仅发送者且 5 分钟内；表情仅群成员；非成员 404 | `app/messages/service.py` |
 | 搜索信息泄露防护 | 消息搜索限定自己可见范围（单聊双方 / 群成员）；排除已撤回；命中片段截断；q ≤64、limit ≤50 | `app/search/service.py` |
 | 资料与头像防护 | 昵称/简介长度校验；简介仅好友可见（搜索不回传）；头像必须为本人上传的图片；CSRF 保护 | `app/api/users.py`、`app/friends/service.py` |
+| 备注名边界 | 备注仅本人可见、长度 ≤32（空串清除）；仅已接受好友关系可设置，非好友 404；不下发他人 | `app/friends/service.py`、`app/api/friends.py` |
 | 呼叫信令防护 | 仅好友间、载荷 ≤16KB、ICE 限频、状态机校验非法迁移；信令不落库、SDP 不记日志；媒体 P2P 不经服务端 | `app/ws/calls.py` |
 | 登录限流 | `/oidc/login` 与 `/oidc/callback` IP 粒度滑动窗口，超限 429 + Retry-After（进程内实现） | `app/sso/ratelimit.py`、`app/sso/routes.py` |
+| 写操作限流 | 发消息/编辑/上传/投票按用户滑动窗口限流（`LICHAT_ACTION_RATE_*`），超限 429 + Retry-After（进程内实现，多副本需共享存储） | `app/auth/deps.py`、`app/sso/ratelimit.py` |
 | 会话治理 | 仅能列出/撤销自己的会话；撤销即断对应 WS（4401）；退出其他设备保留当前会话 | `app/api/users.py`、`app/ws/manager.py` |
 | 呼叫记录边界 | 仅自己作为主叫/被叫的记录可见；状态如实落账 | `app/api/users.py`、`app/ws/calls.py` |
 | 消息长度与 XSS | 内容 1–2000 strip 校验；前端 `textContent`/escapeHtml 渲染不拼 HTML | `app/api/messages.py`、`static/app.js` |

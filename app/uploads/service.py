@@ -18,6 +18,8 @@ EXT_BY_MIME = {
     "image/png": ".png",
     "image/gif": ".gif",
     "image/webp": ".webp",
+    "audio/webm": ".webm",
+    "audio/mp4": ".m4a",
     "application/pdf": ".pdf",
     "text/plain": ".txt",
 }
@@ -34,6 +36,10 @@ def detect_mime(data: bytes) -> str | None:
         return "image/gif"
     if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "image/webp"
+    if data.startswith(b"\x1aE\xdf\xa3"):
+        return "audio/webm"
+    if len(data) >= 12 and data[4:8] == b"ftyp":
+        return "audio/mp4"
     if data.startswith(b"%PDF-"):
         return "application/pdf"
     if data.lstrip().startswith(b"<"):

@@ -12,6 +12,8 @@ from app.timeutil import iso_utc, utcnow
 SEARCH_RESULT_LIMIT = 20
 RECOMMENDATION_DEFAULT_LIMIT = 5
 RECOMMENDATION_MAX_LIMIT = 20
+REMARK_MAX_LENGTH = 32
+REQUEST_REASON_MAX_LENGTH = 200
 
 
 def profile(user: User) -> dict[str, str | None]:
@@ -69,12 +71,21 @@ async def search_users(
 
 
 async def send_request(
-    db: AsyncSession, requester_sub: str, addressee_sub: str
+    db: AsyncSession,
+    requester_sub: str,
+    addressee_sub: str,
+    message: str | None = None,
 ) -> Friendship:
     if requester_sub == addressee_sub:
         raise HTTPException(status_code=400, detail="cannot send friend request to yourself")
     if await db.get(User, addressee_sub) is None:
         raise HTTPException(status_code=404, detail="user not found")
+    reason = (message or "").strip() or None
+    if reason is not None and len(reason) > REQUEST_REASON_MAX_LENGTH:
+        raise HTTPException(
+            status_code=422,
+            detail=f"message must be at most {REQUEST_REASON_MAX_LENGTH} characters",
+        )
     existing = await _pair_row(db, requester_sub, addressee_sub)
     if existing is not None:
         if existing.status == "accepted":
@@ -83,7 +94,10 @@ async def send_request(
             raise HTTPException(status_code=409, detail="friend request already sent")
         raise HTTPException(status_code=409, detail="incoming friend request already exists")
     friendship = Friendship(
-        requester_sub=requester_sub, addressee_sub=addressee_sub, status="pending"
+        requester_sub=requester_sub,
+        addressee_sub=addressee_sub,
+        status="pending",
+        reason=reason,
     )
     db.add(friendship)
     await db.commit()
@@ -120,13 +134,21 @@ async def list_requests(db: AsyncSession, me_sub: str) -> dict[str, list[dict[st
             other = users.get(row.addressee_sub)
             if other is not None:
                 outgoing.append(
-                    {"addressee": profile(other), "created_at": iso_utc(row.created_at)}
+                    {
+                        "addressee": profile(other),
+                        "reason": row.reason,
+                        "created_at": iso_utc(row.created_at),
+                    }
                 )
         else:
             other = users.get(row.requester_sub)
             if other is not None:
                 incoming.append(
-                    {"requester": profile(other), "created_at": iso_utc(row.created_at)}
+                    {
+                        "requester": profile(other),
+                        "reason": row.reason,
+                        "created_at": iso_utc(row.created_at),
+                    }
                 )
     return {"incoming": incoming, "outgoing": outgoing}
 
@@ -168,6 +190,7 @@ async def list_friends(db: AsyncSession, me_sub: str) -> list[dict[str, str | No
         row.addressee_sub if row.requester_sub == me_sub else row.requester_sub
         for row in rows
     ]
+    remark_by_sub = {other: row.remark for other, row in zip(others, rows, strict=True)}
     users: dict[str, User] = {}
     if others:
         found = (
@@ -179,9 +202,29 @@ async def list_friends(db: AsyncSession, me_sub: str) -> list[dict[str, str | No
             **profile(user),
             "last_seen_at": iso_utc(user.last_seen_at) if user.last_seen_at else None,
             "bio": user.bio,
+            "remark": remark_by_sub.get(user.sub),
         }
 
     return [_with_seen(users[sub]) for sub in others if sub in users]
+
+
+async def set_remark(
+    db: AsyncSession, me_sub: str, other_sub: str, remark: str
+) -> str | None:
+    row = await _pair_row(db, me_sub, other_sub)
+    if row is None or row.status != "accepted":
+        raise HTTPException(status_code=404, detail="friend not found")
+    cleaned = remark.strip()
+    if len(cleaned) > REMARK_MAX_LENGTH:
+        raise HTTPException(
+            status_code=422,
+            detail=f"remark must be at most {REMARK_MAX_LENGTH} characters",
+        )
+    row.remark = cleaned or None
+    row.updated_at = utcnow()
+    await db.commit()
+    await db.refresh(row)
+    return row.remark
 
 
 async def remove_relationship(

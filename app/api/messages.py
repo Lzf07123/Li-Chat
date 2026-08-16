@@ -7,22 +7,32 @@ from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import get_current_user, require_csrf
+from app.api.notifications import push_notification
+from app.api.polls import PollOut
+from app.auth.deps import get_current_user, require_action_rate, require_csrf
 from app.db import get_db
 from app.messages import service
 from app.messages.service import MAX_MESSAGE_LENGTH
 from app.models import Message, User
+from app.notifications.service import create as create_notification
+from app.polls.service import (
+    POLL_OPTION_MAX,
+    POLL_OPTIONS_MAX,
+    POLL_OPTIONS_MIN,
+    POLL_QUESTION_MAX,
+)
 from app.ws.manager import ConnectionManager
 
 router = APIRouter(prefix="/api/conversations", tags=["messages"])
 
 
 class MessageIn(BaseModel):
-    content_type: Literal["text", "image", "file"] = "text"
+    content_type: Literal["text", "image", "file", "audio", "poll"] = "text"
     content: str = ""
     attachment: AttachmentIn | None = None
     reply_to_id: int | None = Field(default=None, ge=1)
     mentions: list[str] = []
+    poll: PollIn | None = None
 
     @field_validator("content")
     @classmethod
@@ -46,6 +56,36 @@ class MessageIn(BaseModel):
 
 class AttachmentIn(BaseModel):
     url: str
+
+
+class PollIn(BaseModel):
+    question: str
+    options: list[str]
+    multiple: bool = False
+
+    @field_validator("question")
+    @classmethod
+    def _validate_question(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped or len(stripped) > POLL_QUESTION_MAX:
+            raise ValueError(
+                f"question must be 1-{POLL_QUESTION_MAX} characters"
+            )
+        return stripped
+
+    @field_validator("options")
+    @classmethod
+    def _validate_options(cls, value: list[str]) -> list[str]:
+        cleaned = list(dict.fromkeys(option.strip() for option in value))
+        if any(not option or len(option) > POLL_OPTION_MAX for option in cleaned):
+            raise ValueError(
+                f"each option must be 1-{POLL_OPTION_MAX} characters"
+            )
+        if len(cleaned) < POLL_OPTIONS_MIN or len(cleaned) > POLL_OPTIONS_MAX:
+            raise ValueError(
+                f"need {POLL_OPTIONS_MIN}-{POLL_OPTIONS_MAX} distinct options"
+            )
+        return cleaned
 
 
 class AttachmentOut(BaseModel):
@@ -90,6 +130,8 @@ class MessageOut(BaseModel):
     created_at: str
     reactions: list[ReactionCountOut] = []
     my_reactions: list[str] = []
+    poll: PollOut | None = None
+    read_count: int = 0
 
 
 class ReactionIn(BaseModel):
@@ -131,6 +173,7 @@ class ConversationSummaryOut(BaseModel):
     last_read_id: int
     pinned: bool = False
     muted: bool = False
+    archived: bool = False
 
 
 class ConversationSettingsIn(BaseModel):
@@ -138,6 +181,7 @@ class ConversationSettingsIn(BaseModel):
     key: str
     pinned: bool | None = None
     muted: bool | None = None
+    archived: bool | None = None
 
 
 class ConversationSettingsOut(BaseModel):
@@ -145,6 +189,7 @@ class ConversationSettingsOut(BaseModel):
     key: str
     pinned: bool
     muted: bool
+    archived: bool
 
 
 class GroupSummaryOut(BaseModel):
@@ -168,13 +213,22 @@ class ReadOut(BaseModel):
     last_read_id: int
 
 
+class HideOut(BaseModel):
+    status: str
+
+
 @router.get("", response_model=ConversationsOut)
 async def conversations_list(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    archived: bool = False,
 ) -> ConversationsOut:
     return ConversationsOut.model_validate(
-        {"conversations": await service.conversation_summaries(db, user.sub)}
+        {
+            "conversations": await service.conversation_summaries(
+                db, user.sub, archived=archived
+            )
+        }
     )
 
 
@@ -186,7 +240,7 @@ async def update_conversation_settings(
     _csrf: Annotated[None, Depends(require_csrf)],
 ) -> ConversationSettingsOut:
     result = await service.set_conversation_setting(
-        db, user.sub, body.kind, body.key, body.pinned, body.muted
+        db, user.sub, body.kind, body.key, body.pinned, body.muted, body.archived
     )
     return ConversationSettingsOut(**result)
 
@@ -222,6 +276,7 @@ async def send_message(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     _csrf: Annotated[None, Depends(require_csrf)],
+    _rate: Annotated[None, Depends(require_action_rate)],
 ) -> MessageOut:
     message = await service.send_message(
         db,
@@ -244,6 +299,15 @@ async def send_message(
     event = {"type": "message", "message": payload}
     await manager.send_to(message.sender_sub, event)
     await manager.send_to(message.recipient_sub, event)
+    if other_sub in mention_subs:
+        notification = await create_notification(
+            db,
+            other_sub,
+            "mention",
+            actor_sub=user.sub,
+            payload={"message_id": message.id},
+        )
+        await push_notification(request, db, notification)
     return MessageOut(**payload)
 
 
@@ -320,6 +384,7 @@ async def edit_message(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     _csrf: Annotated[None, Depends(require_csrf)],
+    _rate: Annotated[None, Depends(require_action_rate)],
 ) -> MessageOut:
     message = await service.edit_message(db, user.sub, other_sub, message_id, body.content)
     reply = (
@@ -351,6 +416,18 @@ async def delete_message(
     await manager.send_to(message.sender_sub, event)
     await manager.send_to(message.recipient_sub, event)
     return MessageOut(**payload)
+
+
+@router.delete("/{other_sub}/messages/{message_id}/me", response_model=HideOut)
+async def hide_message(
+    other_sub: str,
+    message_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> HideOut:
+    await service.hide_message_for_self(db, user.sub, message_id, other_sub=other_sub)
+    return HideOut(status="hidden")
 
 
 @router.put("/{other_sub}/messages/{message_id}/reactions", response_model=ReactionOut)

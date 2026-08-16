@@ -3,12 +3,24 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.friends.service import are_friends
-from app.models import Group, GroupMember, User
-from app.timeutil import iso_utc
+from app.models import (
+    Group,
+    GroupMember,
+    GroupRead,
+    Message,
+    MessageMention,
+    Poll,
+    PollVote,
+    Reaction,
+    User,
+    UserConversationSetting,
+    UserStar,
+)
+from app.timeutil import iso_utc, utcnow
 from app.uploads.service import get_upload
 
 GROUP_NAME_MAX = 64
@@ -81,6 +93,7 @@ async def group_payload(db: AsyncSession, group: Group) -> dict[str, Any]:
             {
                 "user": profile(user),
                 "role": row.role,
+                "muted": row.muted,
                 "joined_at": iso_utc(row.joined_at),
             }
         )
@@ -89,6 +102,11 @@ async def group_payload(db: AsyncSession, group: Group) -> dict[str, Any]:
         "name": group.name,
         "owner_sub": group.owner_sub,
         "announcement": group.announcement,
+        "announcement_updated_at": (
+            iso_utc(group.announcement_updated_at)
+            if group.announcement_updated_at
+            else None
+        ),
         "avatar_url": group.avatar_url,
         "created_at": iso_utc(group.created_at),
         "members": members,
@@ -194,6 +212,18 @@ async def remove_member(
     if target_sub == actor_sub:
         raise HTTPException(status_code=400, detail="use leave instead")
     await db.delete(target)
+    await db.execute(
+        delete(GroupRead).where(
+            GroupRead.group_id == group_id, GroupRead.user_sub == target_sub
+        )
+    )
+    await db.execute(
+        delete(UserConversationSetting).where(
+            UserConversationSetting.kind == "group",
+            UserConversationSetting.key == str(group_id),
+            UserConversationSetting.user_sub == target_sub,
+        )
+    )
     await db.commit()
 
 
@@ -214,6 +244,21 @@ async def set_member_role(
     await db.commit()
 
 
+async def set_member_mute(
+    db: AsyncSession, actor_sub: str, group_id: int, target_sub: str, muted: bool
+) -> None:
+    await _require_role(db, group_id, actor_sub, {"owner", "admin"})
+    target = await membership(db, group_id, target_sub)
+    if target is None:
+        raise HTTPException(status_code=404, detail="member not found")
+    if target_sub == actor_sub:
+        raise HTTPException(status_code=400, detail="cannot mute yourself")
+    if target.role in {"owner", "admin"}:
+        raise HTTPException(status_code=403, detail="cannot mute owners or admins")
+    target.muted = muted
+    await db.commit()
+
+
 async def leave_group(db: AsyncSession, me_sub: str, group_id: int) -> None:
     member_row = await membership(db, group_id, me_sub)
     if member_row is None:
@@ -221,6 +266,18 @@ async def leave_group(db: AsyncSession, me_sub: str, group_id: int) -> None:
     if member_row.role == "owner":
         raise HTTPException(status_code=409, detail="owner must transfer before leaving")
     await db.delete(member_row)
+    await db.execute(
+        delete(GroupRead).where(
+            GroupRead.group_id == group_id, GroupRead.user_sub == me_sub
+        )
+    )
+    await db.execute(
+        delete(UserConversationSetting).where(
+            UserConversationSetting.kind == "group",
+            UserConversationSetting.key == str(group_id),
+            UserConversationSetting.user_sub == me_sub,
+        )
+    )
     await db.commit()
 
 
@@ -250,8 +307,44 @@ async def set_announcement(
     if group is None:
         raise HTTPException(status_code=404, detail="group not found")
     group.announcement = text
+    group.announcement_updated_at = utcnow()
     await db.commit()
     return await group_payload(db, group)
+
+
+async def dissolve_group(
+    db: AsyncSession, me_sub: str, group_id: int
+) -> tuple[dict[str, Any], list[str]]:
+    await _require_role(db, group_id, me_sub, {"owner"})
+    group = await db.get(Group, group_id)
+    if group is None:
+        raise HTTPException(status_code=404, detail="group not found")
+    subs = await member_subs(db, group_id)
+    payload = {
+        "id": group.id,
+        "name": group.name,
+        "owner_sub": group.owner_sub,
+        "member_count": len(subs),
+    }
+    message_ids = select(Message.id).where(Message.group_id == group_id)
+    poll_ids = select(Poll.id).where(Poll.group_id == group_id)
+    await db.execute(delete(PollVote).where(PollVote.poll_id.in_(poll_ids)))
+    await db.execute(delete(Poll).where(Poll.group_id == group_id))
+    await db.execute(delete(MessageMention).where(MessageMention.message_id.in_(message_ids)))
+    await db.execute(delete(Reaction).where(Reaction.message_id.in_(message_ids)))
+    await db.execute(delete(UserStar).where(UserStar.message_id.in_(message_ids)))
+    await db.execute(delete(Message).where(Message.group_id == group_id))
+    await db.execute(delete(GroupRead).where(GroupRead.group_id == group_id))
+    await db.execute(delete(GroupMember).where(GroupMember.group_id == group_id))
+    await db.execute(
+        delete(UserConversationSetting).where(
+            UserConversationSetting.kind == "group",
+            UserConversationSetting.key == str(group_id),
+        )
+    )
+    await db.execute(delete(Group).where(Group.id == group_id))
+    await db.commit()
+    return payload, subs
 
 
 async def set_avatar(

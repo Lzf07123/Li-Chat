@@ -23,6 +23,15 @@
 | .icon-btn / .theme-toggle | 44px 图标按钮；明暗图标随 .dark 切换 |
 | .spinner / .page-enter | 加载与入场 |
 | .ambient-layer | Canvas 氛围层容器（z-0、pointer-events:none） |
+| .toast / .toast-region | 全局反馈（success/error/info，安全区置顶，自动消退） |
+| .skeleton-* | 骨架屏 shimmer（reduced-motion 静止） |
+| .message-day / .message-sender / .message-merged | 日期分组与连续消息合并 |
+| .message-check / .select-bar | 消息多选与批量操作条 |
+| .poll-card / .poll-option-* | 群投票卡片（百分比条、选中态、结束态） |
+| .emoji-panel / .emoji-option | 输入框表情面板（分类网格） |
+| .upload-progress-* | 上传进度条（含失败/重试态） |
+| .image-viewer-* | 图片全屏查看器（深色遮罩） |
+| .char-count | 输入剩余字数提示（接近上限/超限变红） |
 
 ## 页面模式
 
@@ -39,6 +48,9 @@ AppShell（已登录，微信式全高双栏）：`100dvh` 应用外壳、页面
 
 密度策略：桌面端（≥768px）走紧凑密度层——按钮/图标钮/头像/气泡/间距整体收紧；移动端
 （<768px）恢复 44px 触控热区与更宽松的消息排版，保证可点击性与可读性不降级。
+
+新增组件一律复用品牌令牌（`--chat-*`）；全屏遮罩类（图片查看器/呼叫浮层）为固定深色，
+语义色用 `color-mix` 派生，不引入新硬编码色板。
 
 ## 品牌单点
 

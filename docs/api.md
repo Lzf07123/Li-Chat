@@ -4,8 +4,8 @@
 
 | 方法 | 路径 | 鉴权 | 说明 |
 | --- | --- | --- | --- |
-| GET | `/healthz` | 无 | 健康检查，返回 `{"status":"ok"}` |
-| GET | `/api/version` | 无 | 前端版本 `{"frontend_version":"0.3.0"}`（`no-store`；前端据此检测落后并强制刷新） |
+| GET | `/healthz` | 无 | 健康检查：`{"status":"ok|degraded","database":"ok|error","version"}`；数据库探测失败降级并记结构化日志 |
+| GET | `/api/version` | 无 | 前端版本 `{"frontend_version":"1.0.0","app_version":"1.0.0"}`（`no-store`；前端据此检测落后并强制刷新） |
 | GET | `/oidc/login?redirect_after=/` | 无 | 生成 PKCE 并 302 到授权页；`redirect_after` 仅接受站内相对路径 |
 | GET | `/oidc/callback` | 无 | 授权回调（code/state/error/error_description），成功 302 回 `redirect_after` 并种会话 Cookie |
 | GET | `/oidc/error?message=` | 无 | 登录错误页，返回 `{"message": ...}` |
@@ -22,13 +22,17 @@
 | DELETE | `/api/me/sessions/{id}` | 会话 + CSRF | 撤销我的某个会话并断其 WS（4401）；越权 404 |
 | DELETE | `/api/me/sessions` | 会话 + CSRF | 撤销除当前外全部会话（退出其他设备） |
 | GET | `/api/me/calls?cursor=&limit=` | 会话 | 通话记录（倒序游标 ≤50，附对端资料）；`{"calls":[{id,kind,status,started_at,ended_at,peer}],"next_before"}` |
+| GET | `/api/me/notifications?cursor=&limit=` | 会话 | 站内通知（倒序游标 ≤50）；`{"notifications":[{id,type,actor,group,payload,read,created_at}],"next_cursor","unread_count"}` |
+| POST | `/api/me/notifications/read` | 会话 + CSRF | 全部通知标记已读；`{"status":"ok"}` |
+| GET | `/api/me/export` | 会话 | 导出我的数据（JSON 附件下载）：资料/好友/群/单聊与群消息（仅自己可见范围，每会话上限 20×100 条）/收藏 |
 | GET | `/api/users/search?q=` | 会话 | 昵称/邮箱关键词搜索（1–64 字符，≤20 条）；返回 `sub/nickname/name/picture/friend_status`，不回传邮箱 |
 | GET | `/api/search?kind=messages&q=&limit=&before=` | 会话 | 消息全文搜索（仅自己可见范围：单聊双方/群成员；LIKE 不区分大小写、倒序游标、命中片段）；`{"messages":[{id,sender_sub,conversation:{type,peer_sub,peer_name,group_id,group_name},snippet,created_at}],"next_before"}` |
 | GET | `/api/search?kind=contacts&q=` | 会话 | 联系人搜索（语义同 `/api/users/search`）；`{"contacts":[{sub,nickname,name,picture,friend_status}]}` |
 | GET | `/api/friends` | 会话 | 已接受好友列表 `{"friends":[{...Profile,bio,online:bool,last_seen_at:str|null}]}`（bio 仅好友可见） |
+| PATCH | `/api/friends/{sub}/remark` | 会话 + CSRF | 设置/清除好友备注名 `{"remark"}`（≤32，空串清除，仅好友关系内）；`{"remark":...}` |
 | GET | `/api/friends/requests` | 会话 | `{"incoming":[{"requester":Profile,"created_at"}],"outgoing":[{"addressee":Profile,"created_at"}]}` |
 | GET | `/api/friends/recommendations?limit=` | 会话 | 随机推荐（默认 5、1–20）；排除自己、好友与双方待处理申请，返回 `{"friends":[Profile]}`，不回传邮箱 |
-| POST | `/api/friends/requests` | 会话 + CSRF | 发申请 `{"to_sub":"..."}`；201 返回申请对象；400 自加 / 404 未知 / 409 重复或已是好友 |
+| POST | `/api/friends/requests` | 会话 + CSRF | 发申请 `{"to_sub":"...","message"?:≤200}`；201 返回申请对象（附 `reason`）；400 自加 / 404 未知 / 409 重复或已是好友 / 422 附言超长 |
 | POST | `/api/friends/requests/{from_sub}/accept` | 会话 + CSRF | 仅被申请人可接受；`{"status":"accepted"}` |
 | POST | `/api/friends/requests/{from_sub}/reject` | 会话 + CSRF | 仅被申请人可拒绝；`{"status":"rejected"}` |
 | DELETE | `/api/friends/{sub}` | 会话 + CSRF | 解除与对方的任何关系（好友或撤回申请）；`{"status":"removed"}` |
@@ -39,29 +43,37 @@
 | POST | `/api/groups/{id}/members` | 会话 + CSRF | 邀请（owner/admin；被邀者须为邀请人好友，≤20） |
 | DELETE | `/api/groups/{id}/members/{sub}` | 会话 + CSRF | 移除（owner/admin；admin 不可移除 owner/admin，owner 可移除 admin） |
 | PATCH | `/api/groups/{id}/members/{sub}` | 会话 + CSRF | 调整角色 `{"role":"admin|member"}`（仅 owner，不可改 owner 自身） |
+| PATCH | `/api/groups/{id}/members/{sub}/mute` | 会话 + CSRF | 禁言/解除禁言 `{"muted":bool}`（owner/admin；不得禁言 owner/admin 与自己）；被禁言者发消息 403 |
 | POST | `/api/groups/{id}/leave` | 会话 + CSRF | 退出（owner 须先转让，409） |
+| POST | `/api/groups/{id}/dissolve` | 会话 + CSRF | 解散（仅 owner）；级联清理群消息/成员/已读/会话设置，WS `dissolved` 广播全体 |
 | POST | `/api/groups/{id}/transfer` | 会话 + CSRF | 转让 `{"new_owner_sub"}`（仅 owner，目标须为成员） |
 | PATCH | `/api/groups/{id}/announcement` | 会话 + CSRF | 公告 `{"text"}`（≤2000，可清空；owner/admin） |
 | POST | `/api/groups/{id}/avatar` | 会话 + CSRF | 群头像 `{"url"}`（本人上传的图片；owner/admin） |
-| POST | `/api/groups/{id}/messages` | 会话 + CSRF | 群发消息（文本/附件/引用/提及，语义同单聊；仅成员；mentions 须为群成员）；201 返回消息（附 `group_id`）；WS 推全成员 |
+| POST | `/api/groups/{id}/messages` | 会话 + CSRF | 群发消息（文本/附件/语音/投票/引用/提及，语义同单聊；仅成员；mentions 须为群成员）；投票消息 `content_type:"poll"` + `poll:{question,options,multiple}`（问题 ≤120、2–10 个选项各 ≤60，不可带附件/引用）；201 返回消息（附 `group_id`/`poll`）；WS 推全成员 |
 | GET | `/api/groups/{id}/messages?limit=&before=` | 会话 | 群历史倒序分页（仅成员；参数语义同单聊） |
+| GET | `/api/groups/{id}/messages/{mid}/reads` | 会话 | 群消息已读明细（仅成员、消息须属该群且未撤回）；`{"read_count","total_members","readers":[{sub,nickname,name,picture}]}`；自己的群消息载荷附 `read_count` |
+| GET | `/api/groups/{id}/files?limit=&before=` | 会话 | 群内文件/语音附件聚合（仅成员，倒序游标 ≤50）；`{"files":[{message_id,sender_sub,name,size,mime,url,created_at}],"next_before"}` |
+| PUT | `/api/groups/{id}/polls/{pid}/vote` | 会话 + CSRF | 投票/改票 `{"option_indexes":[...]}`（仅成员；单选投票最多 1 项；已关闭 409；非法下标 422）；WS `poll_event(voted)` 群内广播 |
+| POST | `/api/groups/{id}/polls/{pid}/close` | 会话 + CSRF | 结束投票（创建者或 owner/admin）；WS `poll_event(closed)` 群内广播 |
 | PATCH | `/api/groups/{id}/messages/{mid}` | 会话 + CSRF | 群消息编辑（发送者、未撤回、5 分钟内；非成员 404 / 非发送者 403） |
 | DELETE | `/api/groups/{id}/messages/{mid}` | 会话 + CSRF | 群消息撤回（同上鉴权；墓碑不含原文） |
+| DELETE | `/api/groups/{id}/messages/{mid}/me` | 会话 + CSRF | 仅自己删除（幂等；消息须属该群、本人为成员）；自己视角历史/摘要隐藏，他人仍可见 |
 | PUT | `/api/groups/{id}/messages/{mid}/reactions` | 会话 + CSRF | 群消息回应（仅成员，幂等） |
 | DELETE | `/api/groups/{id}/messages/{mid}/reactions?emoji=` | 会话 + CSRF | 群消息移除回应（仅成员，幂等） |
 | POST | `/api/groups/{id}/read` | 会话 + CSRF | 群已读 `{"last_read_id"}`（仅成员、消息须属该群、游标只前进）；WS 推全成员 |
 | POST | `/api/groups/{id}/forward` | 会话 + CSRF | 转发到群 `{"message_id"}`（仅成员、源消息自己可见、未撤回）；`forwarded:true` |
-| POST | `/api/uploads` | 会话 + CSRF | multipart `file`；大小 ≤ `LICHAT_UPLOAD_MAX_MB`、内容嗅探白名单（jpeg/png/gif/webp/pdf/txt）；413 超限 / 415 非法类型；201 `{id,url,name,size,mime}` |
+| POST | `/api/uploads` | 会话 + CSRF | multipart `file`；大小 ≤ `LICHAT_UPLOAD_MAX_MB`、内容嗅探白名单（jpeg/png/gif/webp/pdf/txt/audio/webm/audio/mp4）；413 超限 / 415 非法类型；201 `{id,url,name,size,mime}` |
 | GET | `/api/uploads/{filename}` | 会话 | 回源（上传者或引用该附件的会话参与者；图片 inline，其他 attachment；nosniff）；401 未登录 / 403 越权 / 404 不存在 |
-| POST | `/api/conversations/{sub}/messages` | 会话 + CSRF | 发消息 `{"content","content_type":"text|image|file","attachment":{url},"reply_to_id","mentions"}`；文本 1–2000 strip 校验，附件消息可带 ≤2000 说明且附件必须属于发送者；reply_to_id 必须同会话（否则 404）；mentions 仅允许对方（否则 422）；201 返回完整消息；400 自聊 / 403 非好友 / 404 未知 |
+| POST | `/api/conversations/{sub}/messages` | 会话 + CSRF | 发消息 `{"content","content_type":"text|image|file|audio","attachment":{url},"reply_to_id","mentions"}`；文本 1–2000 strip 校验，附件/语音消息可带 ≤2000 说明且附件必须属于发送者；reply_to_id 必须同会话（否则 404）；mentions 仅允许对方（否则 422）；201 返回完整消息；400 自聊 / 403 非好友 / 404 未知 |
 | POST | `/api/conversations/{sub}/forward` | 会话 + CSRF | 转发 `{"message_id"}`（源消息须自己可见、未撤回；目标须好友）；`forwarded:true` |
 | GET | `/api/conversations/{sub}/messages?limit=&before=` | 会话 | 历史倒序分页（limit 默认 50、1–100；before 为上一页最小 id 不含）；`{"messages":[...],"next_before":int|null}` |
 | PATCH | `/api/conversations/{sub}/messages/{id}` | 会话 + CSRF | 编辑 `{"content"}`；仅发送者、未撤回、5 分钟内；403 非发送者 / 404 不存在 / 409 已撤回或超窗 |
 | DELETE | `/api/conversations/{sub}/messages/{id}` | 会话 + CSRF | 撤回；同上鉴权；返回墓碑 `{id,sender_sub,recipient_sub,deleted:true,created_at}`（不含原文） |
+| DELETE | `/api/conversations/{sub}/messages/{id}/me` | 会话 + CSRF | 仅自己删除（幂等；消息须属该会话）；自己视角历史/摘要隐藏，对方仍可见 |
 | PUT | `/api/conversations/{sub}/messages/{id}/reactions` | 会话 + CSRF | 回应 `{"emoji"}`（1–8 字符，禁空白/控制符；幂等）；404 非参与者 / 409 已撤回；`{"message_id","emoji","action":"added","count"}` |
 | DELETE | `/api/conversations/{sub}/messages/{id}/reactions?emoji=` | 会话 + CSRF | 移除回应（幂等）；`{"message_id","emoji","action":"removed","count"}` |
-| GET | `/api/conversations` | 会话 | 单聊 + 群聊摘要合并，置顶优先、其余按最后消息倒序；每项 `{peer:Profile|null,group:{id,name,owner_sub,member_count}|null,last_message:Message|null,unread_count:int,last_read_id:int,pinned:bool,muted:bool}`（peer/group 二选一出现） |
-| PATCH | `/api/conversations/settings` | 会话 + CSRF | 置顶/免打扰 `{"kind":"dm|group","key","pinned"?, "muted"?}`（至少一项；键须归属本人，否则 404）；返回 `{kind,key,pinned,muted}` |
+| GET | `/api/conversations?archived=` | 会话 | 单聊 + 群聊摘要合并，置顶优先、其余按最后消息倒序；每项 `{peer:Profile|null,group:{id,name,owner_sub,member_count}|null,last_message:Message|null,unread_count:int,last_read_id:int,pinned:bool,muted:bool,archived:bool}`（peer/group 二选一出现）；`archived=true` 只回归档会话，缺省只回未归档 |
+| PATCH | `/api/conversations/settings` | 会话 + CSRF | 置顶/免打扰/归档 `{"kind":"dm|group","key","pinned"?, "muted"?, "archived"?}`（至少一项；键须归属本人，否则 404）；返回 `{kind,key,pinned,muted,archived}` |
 | POST | `/api/conversations/{sub}/read` | 会话 + CSRF | 标记已读 `{"last_read_id":int>=1}`；403 非好友 / 404 消息不属于该会话；游标只前进；`{"status":"ok","last_read_id":n}` |
 | GET | `/` | 无 | 同源前端页面 |
 
@@ -91,7 +103,7 @@
 | 401 | 未登录、会话过期、id_token 校验失败、userinfo sub 不一致 |
 | 403 | CSRF 校验失败 |
 | 409 | 好友/申请冲突（已申请、已是好友、对方已申请） |
-| 429 | 登录限流（`/oidc/login`、`/oidc/callback` 超窗口配额，附 `Retry-After`） |
+| 429 | 登录限流（`/oidc/login`、`/oidc/callback`）或写操作限流（发消息/编辑/上传/投票），附 `Retry-After` |
 | 422 | 参数校验失败（搜索串、消息内容、分页参数越界） |
 | 502 | IdP 响应缺令牌、userinfo 请求失败 |
 | 302 | 登录/登出跳转 |

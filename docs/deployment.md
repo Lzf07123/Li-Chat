@@ -62,6 +62,8 @@ compose 默认随 `chat` 启动一个编排内 redis（7-alpine、AOF、192mb、
 | `LICHAT_UPLOAD_DIR` | `./data/uploads` | 附件存储目录；容器部署建议挂卷持久化 |
 | `LICHAT_LOGIN_RATE_LIMIT` | `10` | 登录限流：每 IP 窗口内允许次数（1–1000） |
 | `LICHAT_LOGIN_RATE_WINDOW` | `60` | 登录限流窗口秒数（≥1） |
+| `LICHAT_ACTION_RATE_LIMIT` | `60` | 写操作限流：每用户窗口内允许次数（1–10000，发消息/编辑/上传/投票） |
+| `LICHAT_ACTION_RATE_WINDOW` | `60` | 写操作限流窗口秒数（≥1） |
 
 compose 插值变量（应用忽略）：`LICHAT_PORT`（宿主机端口）、`REDIS_PASSWORD` / `REDIS_APPENDONLY` / `REDIS_MAXMEMORY`（编排内 redis）、`TZ`、`PYPI_INDEX_URL` / `APT_MIRROR`（构建镜像源）、`BASE_IMAGE_REGISTRY`（基础镜像加速）与 `IMAGE_REGISTRY`（应用镜像前缀）。完整模板见 `.env.example`。
 
@@ -73,6 +75,17 @@ compose 插值变量（应用忽略）：`LICHAT_PORT`（宿主机端口）、`R
 4. 数据库换 PostgreSQL，接入 Alembic 管理迁移。
 5. 多副本时把 jti 防重放与会话状态迁到 Redis（当前为进程内实现）。
 6. 在网关或应用层给登录/回程接口加限流。
+
+### PostgreSQL 兼容性验证
+
+- 驱动：`postgresql+psycopg://user:pass@host:5432/lichat`，需在镜像/虚拟环境安装
+  `psycopg[binary]>=3.2`（生产镜像可在 Dockerfile 追加运行时依赖）。
+- 建表：`Base.metadata.create_all` 生成的 15+ 张表均使用通用类型（BigInteger 变体、
+  DateTime、Text/JSON-as-Text），无 SQLite 专有语法；SQLite 侧增量补列逻辑在
+  PostgreSQL 下自动跳过（`conn.dialect.name != "sqlite"` 直接返回）。
+- 语义差异需真库回归：时间精度、外键级联（本项目显式清理依赖数据、不依赖数据库级联）、
+  群消息 `group:{id}` 哨兵列（占位字符串满足非空约束，不依赖 FK 强制）。
+- 多副本上线前仍必须引入 Alembic 并把 jti 防重放/会话状态迁到 Redis。
 
 ## Issuer 注意事项
 

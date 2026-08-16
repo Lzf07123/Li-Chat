@@ -10,5 +10,7 @@ async def test_api_version_exposes_frontend_version(
 ) -> None:
     response = await api_client.get("/api/version")
     assert response.status_code == 200
-    assert response.json() == {"frontend_version": FRONTEND_VERSION}
+    body = response.json()
+    assert body["frontend_version"] == FRONTEND_VERSION
+    assert body["app_version"] == "1.0.0"
     assert response.headers.get("cache-control") == "no-store"

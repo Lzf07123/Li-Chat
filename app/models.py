@@ -72,6 +72,8 @@ class Friendship(Base):
         ForeignKey("users.sub", ondelete="CASCADE"), primary_key=True
     )
     status: Mapped[str] = mapped_column(String(16), default="pending")
+    remark: Mapped[str | None] = mapped_column(String(32))
+    reason: Mapped[str | None] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
@@ -110,6 +112,10 @@ class Message(Base):
     attachment_size: Mapped[int | None] = mapped_column(Integer)
     attachment_mime: Mapped[str | None] = mapped_column(String(64))
     attachment_url: Mapped[str | None] = mapped_column(String(255))
+    poll_id: Mapped[int | None] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("polls.id", ondelete="SET NULL"),
+    )
     edited_at: Mapped[datetime | None] = mapped_column(DateTime)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -193,6 +199,7 @@ class UserConversationSetting(Base):
     key: Mapped[str] = mapped_column(String(160), primary_key=True)
     pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     muted: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
@@ -229,6 +236,7 @@ class Group(Base):
         ForeignKey("users.sub", ondelete="CASCADE"), index=True
     )
     announcement: Mapped[str | None] = mapped_column(Text)
+    announcement_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
     avatar_url: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
@@ -246,6 +254,7 @@ class GroupMember(Base):
         ForeignKey("users.sub", ondelete="CASCADE"), primary_key=True, index=True
     )
     role: Mapped[str] = mapped_column(String(16), default="member")
+    muted: Mapped[bool] = mapped_column(Boolean, default=False)
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     __table_args__ = (
@@ -270,6 +279,79 @@ class GroupRead(Base):
         BigInteger().with_variant(Integer, "sqlite"), default=0
     )
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class Poll(Base):
+    __tablename__ = "polls"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    group_id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("groups.id", ondelete="CASCADE"),
+        index=True,
+    )
+    creator_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), index=True
+    )
+    question: Mapped[str] = mapped_column(String(120))
+    options: Mapped[str] = mapped_column(Text)
+    multiple: Mapped[bool] = mapped_column(Boolean, default=False)
+    closed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PollVote(Base):
+    __tablename__ = "poll_votes"
+
+    poll_id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("polls.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    option_indexes: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    user_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), index=True
+    )
+    type: Mapped[str] = mapped_column(String(32))
+    actor_sub: Mapped[str | None] = mapped_column(String(64))
+    group_id: Mapped[int | None] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite")
+    )
+    payload: Mapped[str] = mapped_column(Text, default="{}")
+    read_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class UserMessageDelete(Base):
+    __tablename__ = "user_message_deletes"
+
+    user_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), primary_key=True
+    )
+    message_id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Upload(Base):

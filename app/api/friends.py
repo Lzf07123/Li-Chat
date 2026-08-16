@@ -6,10 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.notifications import push_notification
 from app.auth.deps import get_current_user, require_csrf
 from app.db import get_db
 from app.friends import service
 from app.models import User
+from app.notifications.service import create as create_notification
 from app.timeutil import iso_utc, utcnow
 from app.ws.manager import ConnectionManager
 
@@ -27,6 +29,7 @@ class FriendPresenceOut(ProfileOut):
     online: bool
     last_seen_at: str | None = None
     bio: str | None = None
+    remark: str | None = None
 
 
 class FriendsPresenceOut(BaseModel):
@@ -35,22 +38,26 @@ class FriendsPresenceOut(BaseModel):
 
 class FriendRequestIn(BaseModel):
     to_sub: str
+    message: str | None = None
 
 
 class FriendRequestOut(BaseModel):
     requester_sub: str
     addressee_sub: str
     status: str
+    reason: str | None = None
     created_at: str
 
 
 class IncomingRequestOut(BaseModel):
     requester: ProfileOut
+    reason: str | None = None
     created_at: str
 
 
 class OutgoingRequestOut(BaseModel):
     addressee: ProfileOut
+    reason: str | None = None
     created_at: str
 
 
@@ -61,6 +68,14 @@ class RequestsOut(BaseModel):
 
 class FriendsOut(BaseModel):
     friends: list[ProfileOut]
+
+
+class RemarkIn(BaseModel):
+    remark: str
+
+
+class RemarkOut(BaseModel):
+    remark: str | None
 
 
 class StatusOut(BaseModel):
@@ -98,7 +113,7 @@ async def create_request(
     db: Annotated[AsyncSession, Depends(get_db)],
     _csrf: Annotated[None, Depends(require_csrf)],
 ) -> FriendRequestOut:
-    friendship = await service.send_request(db, user.sub, body.to_sub)
+    friendship = await service.send_request(db, user.sub, body.to_sub, body.message)
     await _manager(request).send_to(
         friendship.addressee_sub,
         {
@@ -108,10 +123,15 @@ async def create_request(
             "at": iso_utc(friendship.created_at),
         },
     )
+    notification = await create_notification(
+        db, friendship.addressee_sub, "friend_request", actor_sub=user.sub
+    )
+    await push_notification(request, db, notification)
     return FriendRequestOut(
         requester_sub=friendship.requester_sub,
         addressee_sub=friendship.addressee_sub,
         status=friendship.status,
+        reason=friendship.reason,
         created_at=iso_utc(friendship.created_at),
     )
 
@@ -136,9 +156,22 @@ async def friends_list(
                 online=manager.has(sub),
                 last_seen_at=friend["last_seen_at"],
                 bio=friend["bio"],
+                remark=friend["remark"],
             )
         )
     return FriendsPresenceOut(friends=items)
+
+
+@router.patch("/{other_sub}/remark", response_model=RemarkOut)
+async def set_friend_remark(
+    other_sub: str,
+    body: RemarkIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> RemarkOut:
+    remark = await service.set_remark(db, user.sub, other_sub, body.remark)
+    return RemarkOut(remark=remark)
 
 
 @router.post("/requests/{from_sub}/accept", response_model=StatusOut)

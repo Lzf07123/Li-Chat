@@ -5,7 +5,7 @@ from datetime import timedelta
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.friends.service import are_friends, list_friends
@@ -20,8 +20,10 @@ from app.models import (
     Reaction,
     User,
     UserConversationSetting,
+    UserMessageDelete,
     UserStar,
 )
+from app.polls import service as polls_service
 from app.timeutil import iso_utc, utcnow
 from app.uploads.service import get_upload
 
@@ -197,6 +199,8 @@ async def send_message(
 ) -> Message:
     if sender_sub == recipient_sub:
         raise HTTPException(status_code=400, detail="cannot message yourself")
+    if content_type == "poll":
+        raise HTTPException(status_code=422, detail="polls are only available in groups")
     if await db.get(User, recipient_sub) is None:
         raise HTTPException(status_code=404, detail="user not found")
     if not await are_friends(db, sender_sub, recipient_sub):
@@ -204,9 +208,12 @@ async def send_message(
     if reply_to_id is not None:
         await validate_reply(db, sender_sub, reply_to_id, other_sub=recipient_sub)
     mention_subs = await validate_mentions(db, mentions or [], other_sub=recipient_sub)
-    attachment_fields = await resolve_attachment(
-        db, sender_sub, content_type, attachment
-    )
+    if content_type == "poll":
+        attachment_fields: dict[str, Any] = {}
+    else:
+        attachment_fields = await resolve_attachment(
+            db, sender_sub, content_type, attachment
+        )
     lo, hi = pair_key(sender_sub, recipient_sub)
     message = Message(
         sender_sub=sender_sub,
@@ -240,6 +247,7 @@ async def history(
     stmt = (
         select(Message)
         .where(Message.participant_lo == lo, Message.participant_hi == hi)
+        .where(Message.id.not_in(_hidden_message_ids(db, me_sub)))
         .order_by(Message.id.desc())
         .limit(limit + 1)
     )
@@ -252,7 +260,9 @@ async def history(
     return page, next_before
 
 
-async def conversation_summaries(db: AsyncSession, me_sub: str) -> list[dict[str, Any]]:
+async def conversation_summaries(
+    db: AsyncSession, me_sub: str, *, archived: bool | None = None
+) -> list[dict[str, Any]]:
     dm_summaries = await _dm_conversation_summaries(db, me_sub)
     group_summaries = await _group_conversation_summaries(db, me_sub)
     summaries = [*dm_summaries, *group_summaries]
@@ -267,6 +277,9 @@ async def conversation_summaries(db: AsyncSession, me_sub: str) -> list[dict[str
         row = settings.get((kind, key))
         item["pinned"] = row.pinned if row is not None else False
         item["muted"] = row.muted if row is not None else False
+        item["archived"] = row.archived if row is not None else False
+    if archived is not None:
+        summaries = [item for item in summaries if item["archived"] == archived]
     summaries.sort(
         key=lambda item: (
             0 if item["pinned"] else 1,
@@ -287,11 +300,14 @@ async def set_conversation_setting(
     key: str,
     pinned: bool | None,
     muted: bool | None,
+    archived: bool | None,
 ) -> dict[str, Any]:
     if kind not in {"dm", "group"}:
         raise HTTPException(status_code=422, detail="invalid kind")
-    if pinned is None and muted is None:
-        raise HTTPException(status_code=422, detail="pinned or muted is required")
+    if pinned is None and muted is None and archived is None:
+        raise HTTPException(
+            status_code=422, detail="pinned, muted or archived is required"
+        )
     if kind == "dm":
         parts = key.split(":", 1)
         if len(parts) != 2 or parts[0] == parts[1]:
@@ -315,9 +331,17 @@ async def set_conversation_setting(
         row.pinned = pinned
     if muted is not None:
         row.muted = muted
+    if archived is not None:
+        row.archived = archived
     await db.commit()
     await db.refresh(row)
-    return {"kind": kind, "key": key, "pinned": row.pinned, "muted": row.muted}
+    return {
+        "kind": kind,
+        "key": key,
+        "pinned": row.pinned,
+        "muted": row.muted,
+        "archived": row.archived,
+    }
 
 
 async def conversation_settings_for(
@@ -364,9 +388,13 @@ async def _dm_conversation_summaries(
     last_by_peer: dict[str, Message] = {}
     unread_by_peer: dict[str, int] = {}
     if subs:
-        rows = (
+        grouped = (
             await db.execute(
-                select(Message)
+                select(
+                    Message.participant_lo,
+                    Message.participant_hi,
+                    func.max(Message.id).label("max_id"),
+                )
                 .where(
                     or_(
                         and_(
@@ -379,21 +407,43 @@ async def _dm_conversation_summaries(
                         ),
                     )
                 )
-                .order_by(Message.id.desc())
+                .where(Message.id.not_in(_hidden_message_ids(db, me_sub)))
+                .group_by(Message.participant_lo, Message.participant_hi)
             )
-        ).scalars().all()
-        for message in rows:
-            peer = (
-                message.recipient_sub
-                if message.sender_sub == me_sub
-                else message.sender_sub
+        ).all()
+        last_ids = [row.max_id for row in grouped]
+        if last_ids:
+            last_rows = (
+                await db.execute(select(Message).where(Message.id.in_(last_ids)))
+            ).scalars().all()
+            for message in last_rows:
+                peer = (
+                    message.recipient_sub
+                    if message.sender_sub == me_sub
+                    else message.sender_sub
+                )
+                last_by_peer[peer] = message
+        for peer_sub in subs:
+            cursor = reads.get(peer_sub)
+            last_read_id = cursor.last_read_message_id if cursor else 0
+            lo, hi = pair_key(me_sub, peer_sub)
+            unread = int(
+                (
+                    await db.execute(
+                        select(func.count())
+                        .select_from(Message)
+                        .where(
+                            Message.participant_lo == lo,
+                            Message.participant_hi == hi,
+                            Message.sender_sub == peer_sub,
+                            Message.id > last_read_id,
+                            Message.id.not_in(_hidden_message_ids(db, me_sub)),
+                        )
+                    )
+                ).scalar_one()
             )
-            last_by_peer.setdefault(peer, message)
-            if message.sender_sub != me_sub:
-                cursor = reads.get(peer)
-                last_read_id = cursor.last_read_message_id if cursor else 0
-                if message.id > last_read_id:
-                    unread_by_peer[peer] = unread_by_peer.get(peer, 0) + 1
+            if unread > 0:
+                unread_by_peer[peer_sub] = unread
     summaries: list[dict[str, Any]] = []
     for friend in friends:
         friend_sub = friend["sub"]
@@ -434,26 +484,62 @@ async def _group_conversation_summaries(
         )
     ).scalars().all()
     cursors = {row.group_id: row.last_read_message_id for row in read_rows}
-    messages = (
+    grouped = (
         await db.execute(
-            select(Message)
+            select(
+                Message.group_id,
+                func.max(Message.id).label("max_id"),
+            )
             .where(
                 Message.conversation_type == "group",
                 Message.group_id.in_(list(group_ids)),
             )
-            .order_by(Message.id.desc())
+            .where(Message.id.not_in(_hidden_message_ids(db, me_sub)))
+            .group_by(Message.group_id)
         )
-    ).scalars().all()
+    ).all()
     last_by_group: dict[int, Message] = {}
+    last_ids = [row.max_id for row in grouped]
+    if last_ids:
+        last_rows = (
+            await db.execute(select(Message).where(Message.id.in_(last_ids)))
+        ).scalars().all()
+        for message in last_rows:
+            if message.group_id is not None:
+                last_by_group[message.group_id] = message
     unread_by_group: dict[int, int] = {}
-    for message in messages:
-        group_id = message.group_id
-        if group_id is None:
-            continue
-        last_by_group.setdefault(group_id, message)
-        if message.sender_sub != me_sub and message.id > cursors.get(group_id, 0):
-            unread_by_group[group_id] = unread_by_group.get(group_id, 0) + 1
+    for group_id in group_ids:
+        unread = int(
+            (
+                await db.execute(
+                    select(func.count())
+                    .select_from(Message)
+                    .where(
+                        Message.conversation_type == "group",
+                        Message.group_id == group_id,
+                        Message.sender_sub != me_sub,
+                        Message.id > cursors.get(group_id, 0),
+                        Message.id.not_in(_hidden_message_ids(db, me_sub)),
+                    )
+                )
+            ).scalar_one()
+        )
+        if unread > 0:
+            unread_by_group[group_id] = unread
     summaries: list[dict[str, Any]] = []
+    member_rows = (
+        await db.execute(
+            select(
+                GroupMember.group_id,
+                func.count().label("member_count"),
+            )
+            .where(GroupMember.group_id.in_(list(group_ids)))
+            .group_by(GroupMember.group_id)
+        )
+    ).all()
+    member_counts: dict[int, int] = {
+        group_id: count for group_id, count in member_rows
+    }
     for group in groups:
         last = last_by_group.get(group.id)
         summaries.append(
@@ -463,7 +549,7 @@ async def _group_conversation_summaries(
                     "id": group.id,
                     "name": group.name,
                     "owner_sub": group.owner_sub,
-                    "member_count": await _group_member_count(db, group.id),
+                    "member_count": member_counts.get(group.id, 0),
                     "avatar_url": group.avatar_url,
                 },
                 "last_message": message_payload(last) if last is not None else None,
@@ -491,19 +577,34 @@ async def send_group_message(
     attachment: dict[str, Any] | None = None,
     reply_to_id: int | None = None,
     mentions: list[str] | None = None,
+    poll: dict[str, Any] | None = None,
 ) -> Message:
     member_row = await group_membership(db, group_id, sender_sub)
     if member_row is None:
         raise HTTPException(status_code=403, detail="not a group member")
+    if member_row.muted:
+        raise HTTPException(status_code=403, detail="you are muted")
     group = await db.get(Group, group_id)
     if group is None:
         raise HTTPException(status_code=404, detail="group not found")
+    if content_type == "poll":
+        if poll is None:
+            raise HTTPException(status_code=422, detail="poll required")
+        if attachment is not None:
+            raise HTTPException(status_code=422, detail="poll cannot have attachments")
+        if reply_to_id is not None:
+            raise HTTPException(status_code=422, detail="poll cannot reply to a message")
+    elif poll is not None:
+        raise HTTPException(status_code=422, detail="poll only valid for poll messages")
     if reply_to_id is not None:
         await validate_reply(db, sender_sub, reply_to_id, group_id=group_id)
     mention_subs = await validate_mentions(db, mentions or [], group_id=group_id)
-    attachment_fields = await resolve_attachment(
-        db, sender_sub, content_type, attachment
-    )
+    if content_type == "poll":
+        attachment_fields = {}
+    else:
+        attachment_fields = await resolve_attachment(
+            db, sender_sub, content_type, attachment
+        )
     marker = f"{GROUP_RECIPIENT_PREFIX}{group_id}"
     message = Message(
         sender_sub=sender_sub,
@@ -515,8 +616,19 @@ async def send_group_message(
         group_id=group_id,
         content_type=content_type,
         reply_to_id=reply_to_id,
+        poll_id=None,
         **attachment_fields,
     )
+    if poll is not None:
+        poll_row = await polls_service.create_poll(
+            db,
+            sender_sub,
+            group_id,
+            str(poll["question"]),
+            list(poll["options"]),
+            multiple=bool(poll.get("multiple", False)),
+        )
+        message.poll_id = poll_row.id
     db.add(message)
     await db.flush()
     for sub in mention_subs:
@@ -555,6 +667,7 @@ async def group_history(
     stmt = (
         select(Message)
         .where(Message.conversation_type == "group", Message.group_id == group_id)
+        .where(Message.id.not_in(_hidden_message_ids(db, me_sub)))
         .order_by(Message.id.desc())
         .limit(limit + 1)
     )
@@ -565,6 +678,132 @@ async def group_history(
     page = list(rows[:limit])
     next_before = page[-1].id if has_more and page else None
     return page, next_before
+
+
+async def group_files(
+    db: AsyncSession,
+    me_sub: str,
+    group_id: int,
+    *,
+    before: int | None = None,
+    limit: int = HISTORY_DEFAULT_LIMIT,
+) -> tuple[list[dict[str, Any]], int | None]:
+    if await group_membership(db, group_id, me_sub) is None:
+        raise HTTPException(status_code=404, detail="group not found")
+    stmt = (
+        select(Message)
+        .where(
+            Message.conversation_type == "group",
+            Message.group_id == group_id,
+            Message.content_type.in_(["file", "audio"]),
+        )
+        .order_by(Message.id.desc())
+        .limit(limit + 1)
+    )
+    if before is not None:
+        stmt = stmt.where(Message.id < before)
+    rows = (await db.execute(stmt)).scalars().all()
+    has_more = len(rows) > limit
+    page = list(rows[:limit])
+    items = [
+        {
+            "message_id": message.id,
+            "sender_sub": message.sender_sub,
+            "name": message.attachment_name,
+            "size": message.attachment_size,
+            "mime": message.attachment_mime,
+            "url": message.attachment_url,
+            "created_at": iso_utc(message.created_at),
+        }
+        for message in page
+        if message.attachment_url is not None and message.deleted_at is None
+    ]
+    next_before = page[-1].id if has_more and page else None
+    return items, next_before
+
+
+async def group_message_readers(
+    db: AsyncSession, me_sub: str, group_id: int, message_id: int
+) -> tuple[list[dict[str, Any]], int, int]:
+    if await group_membership(db, group_id, me_sub) is None:
+        raise HTTPException(status_code=404, detail="group not found")
+    message = await db.get(Message, message_id)
+    if (
+        message is None
+        or message.conversation_type != "group"
+        or message.group_id != group_id
+        or message.deleted_at is not None
+    ):
+        raise HTTPException(status_code=404, detail="message not found")
+    read_rows = (
+        await db.execute(
+            select(GroupRead).where(
+                GroupRead.group_id == group_id,
+                GroupRead.last_read_message_id >= message_id,
+            )
+        )
+    ).scalars().all()
+    member_count = int(
+        (
+            await db.execute(
+                select(func.count())
+                .select_from(GroupMember)
+                .where(GroupMember.group_id == group_id)
+            )
+        ).scalar_one()
+    )
+    subs = [row.user_sub for row in read_rows]
+    users: dict[str, User] = {}
+    if subs:
+        found = (await db.execute(select(User).where(User.sub.in_(subs)))).scalars().all()
+        users = {user.sub: user for user in found}
+    readers = [
+        {
+            "sub": sub,
+            "nickname": users[sub].nickname,
+            "name": users[sub].name,
+            "picture": users[sub].picture,
+        }
+        for sub in subs
+        if sub in users
+    ]
+    return readers, len(read_rows), member_count
+
+
+def _hidden_message_ids(db: AsyncSession, me_sub: str) -> Select[tuple[int]]:
+    return select(UserMessageDelete.message_id).where(
+        UserMessageDelete.user_sub == me_sub
+    )
+
+
+async def hide_message_for_self(
+    db: AsyncSession,
+    me_sub: str,
+    message_id: int,
+    *,
+    other_sub: str | None = None,
+    group_id: int | None = None,
+) -> None:
+    message = await db.get(Message, message_id)
+    if message is None:
+        raise HTTPException(status_code=404, detail="message not found")
+    if group_id is not None:
+        if message.conversation_type != "group" or message.group_id != group_id:
+            raise HTTPException(status_code=404, detail="message not found")
+        if await group_membership(db, group_id, me_sub) is None:
+            raise HTTPException(status_code=404, detail="group not found")
+    else:
+        assert other_sub is not None
+        lo, hi = pair_key(me_sub, other_sub)
+        if message.conversation_type != "dm" or (
+            message.participant_lo,
+            message.participant_hi,
+        ) != (lo, hi):
+            raise HTTPException(status_code=404, detail="message not found")
+    row = await db.get(UserMessageDelete, (me_sub, message_id))
+    if row is None:
+        db.add(UserMessageDelete(user_sub=me_sub, message_id=message_id))
+        await db.commit()
 
 
 async def mark_group_read(
@@ -605,6 +844,8 @@ async def forward_message(
         raise HTTPException(status_code=404, detail="message not found")
     if source.deleted_at is not None:
         raise HTTPException(status_code=409, detail="cannot forward deleted message")
+    if source.content_type == "poll":
+        raise HTTPException(status_code=422, detail="cannot forward polls")
     attachment_fields: dict[str, Any] = {}
     if source.attachment_url is not None:
         attachment_fields = {

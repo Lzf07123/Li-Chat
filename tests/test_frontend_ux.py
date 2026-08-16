@@ -1,0 +1,360 @@
+"""阶段一（v21–v30）前端体验优化的内容契约测试。"""
+
+from __future__ import annotations
+
+import httpx
+
+
+async def _app_js(api_client: httpx.AsyncClient) -> str:
+    response = await api_client.get("/app.js")
+    assert response.status_code == 200
+    return response.text
+
+
+async def _style_css(api_client: httpx.AsyncClient) -> str:
+    response = await api_client.get("/style.css")
+    assert response.status_code == 200
+    return response.text
+
+
+async def test_v21_toast_system_present(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function toast(" in text
+    assert 'aria-live="polite"' in text
+    assert '"toast-close"' in text
+    assert "friendlyError" in text
+    assert "window.alert" not in text
+
+
+async def test_v21_toast_styles_present(api_client: httpx.AsyncClient) -> None:
+    text = await _style_css(api_client)
+    assert ".toast-region" in text
+    assert ".toast-error" in text
+    assert ".toast-success" in text
+
+
+async def test_v22_websocket_auto_reconnect(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function scheduleReconnect(" in text
+    assert "state.wsReconnectTimer" in text
+    assert "state.wsRetry" in text
+    assert "Math.min(30000" in text
+    assert '"visibilitychange"' in text
+    assert "已重新连接" in text
+    assert "state.loggingOut" in text
+
+
+async def test_v23_day_grouping_and_merged_messages(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function dayLabel(" in text
+    assert "message-day" in text
+    assert "message-merged" in text
+    assert "message-sender" in text
+    assert '"今天"' in text
+    css = await _style_css(api_client)
+    assert ".message-day" in css
+    assert ".message-merged" in css
+    assert ".message-sender" in css
+
+
+async def test_v24_image_viewer(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function openImageViewer(" in text
+    assert "image-viewer" in text
+    assert "attachment-image" in text
+    assert '"Escape"' in text
+    css = await _style_css(api_client)
+    assert ".image-viewer" in css
+    assert ".image-viewer-img" in css
+
+
+async def test_v25_paste_drop_and_multi_upload(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function sendFiles(" in text
+    assert '"paste"' in text
+    assert '"dragover"' in text
+    assert '"drop"' in text
+    assert "dataTransfer" in text
+    assert "multiple" in text
+
+
+async def test_v26_upload_progress(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "XMLHttpRequest" in text
+    assert "xhr.upload" in text
+    assert '"progress"' in text
+    assert "upload-progress" in text
+    assert "uploadCancel" in text
+    css = await _style_css(api_client)
+    assert ".upload-progress" in css
+    assert ".upload-progress-fill" in css
+
+
+async def test_v27_search_hit_locate_and_highlight(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function locateMessage(" in text
+    assert "function scrollToMessage(" in text
+    assert "data-message-id" in text
+    assert "scrollIntoView" in text
+    assert "data-message=" in text
+    css = await _style_css(api_client)
+    assert ".message-flash" in css
+
+
+async def test_v28_conversation_filter_and_skeleton(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "conv-filter" in text
+    assert "convFilter" in text
+    assert "skeleton" in text
+    assert "sidebarLoading" in text
+    css = await _style_css(api_client)
+    assert ".skeleton" in css
+    assert "shimmer" in css
+
+
+async def test_v29_title_badge_and_desktop_notifications(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function updateTitleBadge(" in text
+    assert "document.title" in text
+    assert "Notification" in text
+    assert "lichat-desktop-notify" in text
+    assert "open-notify-settings" in text
+
+
+async def test_v30_keyboard_shortcuts_and_help(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function onGlobalKeydown(" in text
+    assert "function openShortcutsModal(" in text
+    assert "event.metaKey" in text
+    assert "event.ctrlKey" in text
+    assert '"?"' in text
+    assert "open-shortcuts" in text
+
+
+async def test_v31_friend_remark(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function openRemarkModal(" in text
+    assert "friend-remark" in text
+    assert "/remark" in text
+    assert "user.remark" in text
+
+
+async def test_v32_group_mute_ui(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "group-mute" in text
+    assert "你已被禁言" in text
+
+
+async def test_v33_group_dissolve_ui(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "group-dissolve" in text
+    assert "function confirmModal(" in text
+    assert '"dissolved"' in text
+
+
+async def test_v34_voice_message_ui(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "MediaRecorder" in text
+    assert "function toggleVoice(" in text
+    assert "voice-btn" in text
+    assert "voice-player" in text
+    assert "<audio" in text
+
+
+async def test_v35_group_files_panel(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function loadGroupFiles(" in text
+    assert "group-files-list" in text
+    assert "group-files-more" in text
+
+
+async def test_v36_multi_select_batch_forward(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "selectMode" in text
+    assert 'data-action="select-message"' in text
+    assert "select-bar" in text
+    assert "forwardMessageIds" in text
+    assert "toggleSelectMode" in text
+
+
+async def test_v37_group_poll_ui(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function pollCardHtml(" in text
+    assert "function openPollModal(" in text
+    assert "poll-vote" in text
+    assert "poll-close" in text
+    assert "poll_event" in text
+    css = await _style_css(api_client)
+    assert ".poll-card" in css
+
+
+async def test_v38_group_read_receipts_ui(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "show-reads" in text
+    assert "function openReadsModal(" in text
+    assert "function applyGroupReadReceipt(" in text
+
+
+async def test_v39_notification_center_ui(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "notify-bell" in text
+    assert "function openNotificationsModal(" in text
+    assert "function notificationText(" in text
+    assert "notifications/read" in text
+
+
+async def test_v40_friend_request_reason(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function openRequestModal(" in text
+    assert "request-reason" in text
+    assert "item.reason" in text
+
+
+async def test_v41_conversation_drafts(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "lichat-draft" in text
+    assert "function saveDraft(" in text
+    assert "function loadDraft(" in text
+    assert "saveDraftDebounced" in text
+
+
+async def test_v42_send_status_and_retry(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "message-sending" in text
+    assert "message-failed" in text
+    assert "retry-send" in text
+    assert "function localMessage(" in text
+    css = await _style_css(api_client)
+    assert ".message-failed" in css
+
+
+async def test_v43_conversation_archive_ui(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "toggle-archive" in text
+    assert "archived-list" in text
+    assert '"unarchive"' in text
+    assert "archivedConversations" in text
+
+
+async def test_v44_hide_message_for_self_ui(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "hide-message" in text
+    assert "/me" in text
+
+
+async def test_v45_high_risk_confirms(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "friend-delete" in text
+    assert "撤回后对方将无法看到此消息" in text
+    assert "确定要退出当前账号吗" in text
+
+
+async def test_v46_announcement_time_and_empty_state(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "announcement_updated_at" in text
+    assert "announcement-time" in text
+    assert "暂无公告，等待群主发布" in text
+
+
+async def test_v47_upload_failure_retry(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "upload-retry" in text
+    assert "uploadRetry" in text
+    css = await _style_css(api_client)
+    assert "upload-progress-failed" in css
+
+
+async def test_v48_emoji_picker(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "EMOJI_SETS" in text
+    assert "emoji-panel" in text
+    assert "function insertEmoji(" in text
+    assert "emoji-option" in text
+
+
+async def test_v49_data_export_entry(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "export-data" in text
+    assert "/api/me/export" in text
+
+
+async def test_v50_help_and_about(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function openAboutModal(" in text
+    assert "app_version" in text
+    assert "open-about" in text
+
+
+async def test_v51_reconnect_reconcile(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function reconcileMessages(" in text
+    assert "reconcileMessages()" in text
+
+
+async def test_v52_muted_unread_badge(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "badge-muted-unread" in text
+    css = await _style_css(api_client)
+    assert ".badge-muted-unread" in css
+
+
+async def test_v54_empty_and_error_states(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "sidebar-retry" in text
+    assert "加载失败，点击重试" in text
+    assert "messages-empty" in text
+    assert "没有找到相关内容" in text
+
+
+async def test_v55_relative_time(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function relativeTime(" in text
+    assert "分钟前" in text
+    assert "小时前" in text
+
+
+async def test_v56_input_validation_feedback(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "char-count" in text
+    assert "还可输入" in text
+    assert "2000 字上限截断" in text
+
+
+async def test_v57_multi_tab_coordination(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert '"storage"' in text
+    assert "lichat-logout" in text
+    assert "lichat-session-active" in text
+    assert "LiChatTheme.initTheme" in text
+
+
+async def test_v58_request_race_guard(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "conversationEpoch" in text
+
+
+async def test_v59_group_event_convergence(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "你已不在该群聊中" in text
+    assert "你的角色已变更为" in text
+
+
+async def test_v61_accessibility_focus_management(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function trapTab(" in text
+    assert "MutationObserver" in text
+    assert "lastFocusElement" in text
+    assert 'aria-modal="true"' in text
+
+
+async def test_v63_batched_rendering(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "RENDER_CHUNK_SIZE" in text
+    assert "requestAnimationFrame" in text
+
+
+async def test_v69_mobile_compatibility(api_client: httpx.AsyncClient) -> None:
+    css = await _style_css(api_client)
+    assert "tap-highlight-color" in css
+    assert "font-size: 16px" in css
+    assert "env(safe-area-inset-bottom)" in css
