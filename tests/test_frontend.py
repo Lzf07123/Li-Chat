@@ -17,8 +17,12 @@ async def test_static_asset_served(api_client: httpx.AsyncClient) -> None:
 async def test_style_has_brand_tokens(api_client: httpx.AsyncClient) -> None:
     response = await api_client.get("/style.css")
     assert response.status_code == 200
-    assert "--chat-primary: #2563eb" in response.text
-    assert "--chat-primary: #60a5fa" in response.text
+    assert "--chat-primary: #25786d" in response.text
+    assert "--chat-primary: #7fd4c6" in response.text
+    assert "--chat-accent-ice: #2f678f" in response.text
+    assert "--chat-primary-soft-solid: #d9f4ee" in response.text
+    assert "--chat-bg: #3a3f45" in response.text
+    assert "var(--chat-success-soft-solid, var(--chat-success-soft))" in response.text
     assert "prefers-reduced-motion" in response.text
 
 

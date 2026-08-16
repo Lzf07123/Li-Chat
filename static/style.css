@@ -1,35 +1,50 @@
-/* Li&Chat 品牌令牌与组件（实例化自 Li-Design 模板；2026-08-17 同步 V1.2 按钮/辉光规范） */
+/* Li&Chat 品牌令牌与组件（实例化自 Li-Design 模板；2026-08-17 全量采纳 V1.2 海玻璃配色） */
 
 :root {
   color-scheme: light;
-  --chat-bg: #f8fafc;
+  --chat-bg: #f6fbf9;
   --chat-surface: #ffffff;
-  --chat-surface-2: #f1f5f9;
-  --chat-fg: #0f172a;
-  --chat-muted: #64748b;
-  --chat-border: #e2e8f0;
-  --chat-primary: #2563eb;
-  --chat-primary-hover: #1d4ed8;
-  --chat-primary-soft: #dbeafe;
+  --chat-surface-2: #eef6f3;
+  --chat-fg: #35423f;
+  --chat-muted: #64736c;
+  --chat-border: #e1ece8;
+  --chat-primary: #25786d;
+  --chat-primary-hover: #1f6359;
+  --chat-primary-soft: #d9f4ee;
   --chat-primary-fg: #ffffff;
-  --chat-brand-fg: #1e40af;
-  --chat-btn-primary-bg: rgba(37, 99, 235, 0.1);
-  --chat-btn-primary-bg-hover: rgba(37, 99, 235, 0.17);
-  --chat-btn-primary-border: rgba(37, 99, 235, 0.26);
+  --chat-brand-fg: #24433e;
+  --chat-btn-primary-bg: rgba(47, 127, 116, 0.1);
+  --chat-btn-primary-bg-hover: rgba(47, 127, 116, 0.17);
+  --chat-btn-primary-border: rgba(47, 127, 116, 0.26);
   --chat-btn-sweep: rgba(255, 255, 255, 0.42);
-  --chat-success: #15803d;
-  --chat-success-soft: #f0fdf4;
-  --chat-warning: #b45309;
-  --chat-warning-soft: #fffbeb;
-  --chat-destructive: #dc2626;
-  --chat-destructive-soft: #fef2f2;
+  --chat-secondary: #2f678f;
+  --chat-secondary-soft: #dff1fa;
+  --chat-success: #2a7c52;
+  --chat-success-soft: #e3f6e9;
+  --chat-warning: #9a5c05;
+  --chat-warning-soft: #fdf3d8;
+  --chat-destructive: #c43737;
+  --chat-destructive-soft: #fdeeee;
   --chat-destructive-fg: #ffffff;
-  --chat-ring: #2563eb;
-  --shadow-sm: 0 0.6px 1.8px rgba(15, 23, 42, 0.02), 0 2.4px 7.2px rgba(15, 23, 42, 0.04);
-  --shadow-md: 0 0.6px 1.8px rgba(15, 23, 42, 0.02), 0 2.4px 7.2px rgba(15, 23, 42, 0.04),
-    0 8px 24px rgba(15, 23, 42, 0.06);
-  --shadow-lg: 0 0.6px 1.8px rgba(15, 23, 42, 0.02), 0 2.4px 7.2px rgba(15, 23, 42, 0.04),
-    0 8px 32px rgba(15, 23, 42, 0.08);
+  --chat-accent-ice: #2f678f;
+  --chat-accent-ice-soft: #dff1fa;
+  --chat-accent-aqua: #25786d;
+  --chat-accent-aqua-soft: #d9f4ee;
+  --chat-accent-lilac: #51488f;
+  --chat-accent-lilac-soft: #edeafb;
+  --chat-accent-sage: #557546;
+  --chat-accent-sage-soft: #eaf2e3;
+  --chat-accent-mint: #2f7c52;
+  --chat-accent-mint-soft: #e3f6e9;
+  --chat-accent-sand: #876741;
+  --chat-accent-sand-soft: #f7efe0;
+  --chat-ring: #25786d;
+  --chat-flow-gradient: linear-gradient(90deg, #7fd4c6, #8fc7f0, #a9a2e8, #a9cc8f, #7fd4c6);
+  --shadow-sm: 0 0.6px 1.8px rgba(24, 58, 51, 0.04), 0 2.4px 7.2px rgba(24, 58, 51, 0.05);
+  --shadow-md: 0 0.6px 1.8px rgba(24, 58, 51, 0.04), 0 2.4px 7.2px rgba(24, 58, 51, 0.05),
+    0 8px 24px rgba(24, 58, 51, 0.08);
+  --shadow-lg: 0 0.6px 1.8px rgba(24, 58, 51, 0.04), 0 2.4px 7.2px rgba(24, 58, 51, 0.05),
+    0 8px 32px rgba(24, 58, 51, 0.1);
   --ease-out: cubic-bezier(0.25, 0.1, 0.25, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --motion-fast: 150ms;
@@ -39,29 +54,59 @@
 
 .dark {
   color-scheme: dark;
-  --chat-bg: #0b1220;
-  --chat-surface: #111a2c;
-  --chat-surface-2: #1b2740;
-  --chat-fg: #e2e8f0;
-  --chat-muted: #94a3b8;
-  --chat-border: #263449;
-  --chat-primary: #60a5fa;
-  --chat-primary-hover: #93c5fd;
-  --chat-primary-soft: rgba(96, 165, 250, 0.14);
-  --chat-primary-fg: #172554;
-  --chat-brand-fg: #dbeafe;
-  --chat-btn-primary-bg: rgba(96, 165, 250, 0.13);
-  --chat-btn-primary-bg-hover: rgba(96, 165, 250, 0.21);
-  --chat-btn-primary-border: rgba(96, 165, 250, 0.3);
+  --chat-bg: #3a3f45;
+  --chat-surface: #434950;
+  --chat-surface-2: #4b5259;
+  --chat-fg: #f0f2f4;
+  --chat-muted: #b8c0c7;
+  --chat-border: #545c64;
+  --chat-primary: #7fd4c6;
+  --chat-primary-hover: #a5e4d9;
+  --chat-primary-soft: rgba(127, 212, 198, 0.16);
+  --chat-primary-fg: #17332e;
+  --chat-brand-fg: #d7efea;
+  --chat-btn-primary-bg: rgba(127, 212, 198, 0.13);
+  --chat-btn-primary-bg-hover: rgba(127, 212, 198, 0.21);
+  --chat-btn-primary-border: rgba(127, 212, 198, 0.3);
   --chat-btn-sweep: rgba(255, 255, 255, 0.18);
-  --chat-success: #4ade80;
-  --chat-success-soft: rgba(74, 222, 128, 0.12);
-  --chat-warning: #fbbf24;
-  --chat-warning-soft: rgba(251, 191, 36, 0.12);
-  --chat-destructive: #f87171;
-  --chat-destructive-soft: rgba(248, 113, 113, 0.12);
-  --chat-destructive-fg: #450a0a;
-  --chat-ring: #60a5fa;
+  --chat-secondary: #a8d4f0;
+  --chat-secondary-soft: rgba(168, 212, 240, 0.16);
+  --chat-success: #86d6ac;
+  --chat-success-soft: rgba(134, 214, 172, 0.14);
+  --chat-warning: #ead48e;
+  --chat-warning-soft: rgba(234, 212, 142, 0.14);
+  --chat-destructive: #e8a49a;
+  --chat-destructive-soft: rgba(232, 164, 154, 0.14);
+  --chat-destructive-fg: #43211d;
+  --chat-accent-ice: #a8cbe8;
+  --chat-accent-ice-soft: rgba(168, 203, 232, 0.16);
+  --chat-accent-aqua: #7fd4c6;
+  --chat-accent-aqua-soft: rgba(127, 212, 198, 0.16);
+  --chat-accent-lilac: #b0a8de;
+  --chat-accent-lilac-soft: rgba(176, 168, 222, 0.18);
+  --chat-accent-sage: #b0c79e;
+  --chat-accent-sage-soft: rgba(176, 199, 158, 0.18);
+  --chat-accent-mint: #9adfad;
+  --chat-accent-mint-soft: rgba(154, 223, 173, 0.16);
+  --chat-accent-sand: #d9c49e;
+  --chat-accent-sand-soft: rgba(217, 196, 158, 0.16);
+  --chat-ring: #7fd4c6;
+  --chat-flow-gradient: linear-gradient(
+    90deg,
+    rgba(127, 212, 198, 0.65),
+    rgba(168, 212, 240, 0.65),
+    rgba(176, 168, 222, 0.65),
+    rgba(176, 199, 158, 0.6),
+    rgba(127, 212, 198, 0.65)
+  );
+  --chat-primary-soft-solid: #d9f4ee;
+  --chat-primary-soft-fg: #17332e;
+  --chat-success-soft-solid: #e3f6e9;
+  --chat-success-soft-fg: #14532d;
+  --chat-warning-soft-solid: #fdf3d8;
+  --chat-warning-soft-fg: #78350f;
+  --chat-destructive-soft-solid: #fdeeee;
+  --chat-destructive-soft-fg: #7f1d1d;
 }
 
 * {
@@ -533,18 +578,18 @@ a {
 }
 
 .badge-success {
-  background: var(--chat-success-soft);
-  color: var(--chat-success);
+  background: var(--chat-success-soft-solid, var(--chat-success-soft));
+  color: var(--chat-success-soft-fg, var(--chat-success));
 }
 
 .badge-warning {
-  background: var(--chat-warning-soft);
-  color: var(--chat-warning);
+  background: var(--chat-warning-soft-solid, var(--chat-warning-soft));
+  color: var(--chat-warning-soft-fg, var(--chat-warning));
 }
 
 .badge-danger {
-  background: var(--chat-destructive-soft);
-  color: var(--chat-destructive);
+  background: var(--chat-destructive-soft-solid, var(--chat-destructive-soft));
+  color: var(--chat-destructive-soft-fg, var(--chat-destructive));
 }
 
 .badge-muted {
@@ -553,8 +598,8 @@ a {
 }
 
 .badge-primary {
-  background: var(--chat-primary-soft);
-  color: var(--chat-primary);
+  background: var(--chat-primary-soft-solid, var(--chat-primary-soft));
+  color: var(--chat-primary-soft-fg, var(--chat-primary));
 }
 
 .badge-unread {
@@ -1285,8 +1330,8 @@ a {
 
 .reaction-chip-active {
   border-color: var(--chat-primary);
-  background: var(--chat-primary-soft);
-  color: var(--chat-primary);
+  background: var(--chat-primary-soft-solid, var(--chat-primary-soft));
+  color: var(--chat-primary-soft-fg, var(--chat-primary));
 }
 
 .reaction-add {
@@ -1323,8 +1368,8 @@ a {
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  background: var(--chat-primary-soft);
-  color: var(--chat-primary);
+  background: var(--chat-primary-soft-solid, var(--chat-primary-soft));
+  color: var(--chat-primary-soft-fg, var(--chat-primary));
 }
 
 .group-avatar-img {
@@ -2371,7 +2416,7 @@ a {
 @keyframes message-flash {
   0%,
   55% {
-    background: var(--chat-primary-soft);
+    background: var(--chat-primary-hover);
   }
   100% {
     background: transparent;
@@ -2381,7 +2426,7 @@ a {
 @media (prefers-reduced-motion: reduce) {
   .message-flash {
     animation: none;
-    background: var(--chat-primary-soft);
+    background: var(--chat-primary-hover);
   }
 }
 
@@ -2511,8 +2556,8 @@ a {
 }
 
 .voice-recording {
-  color: var(--chat-destructive);
-  background: var(--chat-destructive-soft);
+  color: var(--chat-destructive-soft-fg, var(--chat-destructive));
+  background: var(--chat-destructive-soft-solid, var(--chat-destructive-soft));
   animation: voice-pulse 1.2s ease infinite;
 }
 
@@ -2738,11 +2783,11 @@ a {
 
 .message-failed {
   border: 1px solid var(--chat-destructive);
-  background: var(--chat-destructive-soft);
+  background: var(--chat-destructive-soft-solid, var(--chat-destructive-soft));
 }
 
 .message-failed-text {
-  color: var(--chat-destructive);
+  color: var(--chat-destructive-soft-fg, var(--chat-destructive));
 }
 
 @keyframes spinner-rotate {

@@ -1,8 +1,8 @@
 "use strict";
 
 const THEME_KEY = "chat-theme";
-const DARK_BG = "#0b1220";
-const LIGHT_BG = "#f8fafc";
+const DARK_BG = "#3a3f45";
+const LIGHT_BG = "#f6fbf9";
 
 function systemPrefersDark() {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;

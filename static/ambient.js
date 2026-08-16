@@ -18,7 +18,7 @@
   let rafId = 0;
   let frameCount = 0;
   let shapes = [];
-  let colors = { primary: "#2563eb", border: "#e2e8f0", muted: "#64748b" };
+  let colors = { primary: "#25786d", border: "#e1ece8", muted: "#64736c" };
   let density = (document.getElementById("app") || {}).className.includes("auth-shell") ? 10 : 8;
 
   function readColors() {
