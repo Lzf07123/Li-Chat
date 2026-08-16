@@ -289,3 +289,10 @@ async def test_v51_reconnect_reconcile(api_client: httpx.AsyncClient) -> None:
     text = await _app_js(api_client)
     assert "function reconcileMessages(" in text
     assert "reconcileMessages()" in text
+
+
+async def test_v52_muted_unread_badge(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "badge-muted-unread" in text
+    css = await _style_css(api_client)
+    assert ".badge-muted-unread" in css

@@ -2598,6 +2598,12 @@ a {
   font-weight: 600;
 }
 
+.badge-muted-unread {
+  background: var(--chat-surface-2);
+  color: var(--chat-muted);
+  border: 1px solid var(--chat-border);
+}
+
 /* 发送状态与重试 */
 .message-sending {
   opacity: 0.65;

@@ -1468,8 +1468,9 @@ function friendHtml(friend, summary) {
         </span>
         ${preview ? `<span class="contact-preview">${escapeHtml(preview)}</span>` : ""}
       </span>
-      ${unread > 0 && !muted
-        ? `<span class="badge badge-unread" data-role="unread" data-sub="${escapeHtml(friend.sub)}">${unread}</span>`
+      ${unread > 0
+        ? `<span class="badge badge-unread${muted ? " badge-muted-unread" : ""}"
+            data-role="unread" data-sub="${escapeHtml(friend.sub)}">${unread}</span>`
         : ""}
     </button>
     <span class="contact-actions conv-actions">
@@ -1510,8 +1511,9 @@ function groupHtml(group, summary) {
         <span class="contact-name">${escapeHtml(group.name)}</span>
         <span class="contact-preview">${preview || `${count} 位成员`}</span>
       </span>
-      ${unread > 0 && !muted
-        ? `<span class="badge badge-unread" data-role="unread" data-id="${group.id}">${unread}</span>`
+      ${unread > 0
+        ? `<span class="badge badge-unread${muted ? " badge-muted-unread" : ""}"
+            data-role="unread" data-id="${group.id}">${unread}</span>`
         : ""}
     </button>
     <span class="contact-actions conv-actions">
