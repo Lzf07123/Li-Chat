@@ -16,6 +16,7 @@ const state = {
   lastTypingAt: 0,
   activeSub: null,
   activePeer: null,
+  editingId: null,
   messages: [],
   nextBefore: null,
   loadingHistory: false,
@@ -243,6 +244,7 @@ function renderLoggedIn() {
   document.getElementById("message-input").addEventListener("keydown", onComposerKeydown);
   document.getElementById("message-input").addEventListener("input", onComposerInput);
   document.getElementById("message-input").addEventListener("blur", onComposerBlur);
+  document.getElementById("messages").addEventListener("click", onMessagesClick);
   document.getElementById("load-older").addEventListener("click", loadOlder);
   document.getElementById("chat-back").addEventListener("click", closeChat);
   refreshSidebar();
@@ -366,7 +368,9 @@ function recommendHtml(user) {
 function friendHtml(friend, summary) {
   const unread = summary ? summary.unread_count : 0;
   const preview = summary && summary.last_message
-    ? summary.last_message.content
+    ? summary.last_message.deleted
+      ? "消息已撤回"
+      : summary.last_message.content
     : "";
   const online = friend.online === true;
   return `<li class="contact-item">
@@ -491,6 +495,7 @@ async function openChat(sub) {
   if (!peer) return;
   state.activeSub = sub;
   state.activePeer = peer;
+  state.editingId = null;
   state.messages = [];
   state.nextBefore = null;
   document.getElementById("chat-empty").hidden = true;
@@ -564,6 +569,7 @@ function loadOlder() {
 
 function closeChat() {
   sendTyping("stop");
+  state.editingId = null;
   state.activeSub = null;
   state.activePeer = null;
   state.messages = [];
@@ -581,11 +587,25 @@ function messageHtml(message) {
     hour: "2-digit",
     minute: "2-digit",
   });
+  const body = message.deleted
+    ? '<div class="message-bubble message-bubble-deleted">消息已撤回</div>'
+    : `<div class="message-bubble">${escapeHtml(message.content)}</div>`;
+  const actions = own && !message.deleted
+    ? `<span class="message-actions">
+        <button class="message-action" type="button"
+          data-action="edit" data-id="${message.id}">编辑</button>
+        <button class="message-action" type="button"
+          data-action="withdraw" data-id="${message.id}">撤回</button>
+      </span>`
+    : "";
+  const editedMark = !message.deleted && message.edited_at
+    ? '<span class="message-read">已编辑</span>'
+    : "";
   return `<div class="message ${own ? "message-own" : "message-other"}">
-    <div class="message-bubble">${escapeHtml(message.content)}</div>
+    ${body}
     <div class="message-meta">${escapeHtml(time)}${read
       ? '<span class="message-read">已读</span>'
-      : ""}</div>
+      : ""}${editedMark}${actions}</div>
   </div>`;
 }
 
@@ -654,21 +674,63 @@ async function onComposerSubmit(event) {
   const input = document.getElementById("message-input");
   const content = input.value.trim();
   if (!content || !state.activeSub) return;
-  const response = await api(
-    `/api/conversations/${encodeURIComponent(state.activeSub)}/messages`,
-    { method: "POST", body: JSON.stringify({ content }) }
-  );
+  const editingId = state.editingId;
+  const url = editingId
+    ? `/api/conversations/${encodeURIComponent(state.activeSub)}/messages/${editingId}`
+    : `/api/conversations/${encodeURIComponent(state.activeSub)}/messages`;
+  const response = await api(url, {
+    method: editingId ? "PATCH" : "POST",
+    body: JSON.stringify({ content }),
+  });
   if (response.ok) {
+    state.editingId = null;
     input.value = "";
+    input.placeholder = "输入消息，Enter 发送，Shift+Enter 换行";
     input.focus();
   }
 }
 
+async function onMessagesClick(event) {
+  const button = event.target.closest(".message-action[data-action]");
+  if (!button) return;
+  const messageId = button.dataset.id;
+  const sub = state.activeSub;
+  if (!sub) return;
+  if (button.dataset.action === "edit") {
+    const message = state.messages.find((item) => String(item.id) === messageId);
+    if (!message || message.deleted) return;
+    state.editingId = message.id;
+    const input = document.getElementById("message-input");
+    input.value = message.content;
+    input.placeholder = "正在编辑消息，Enter 保存，Esc 取消";
+    input.focus();
+    return;
+  }
+  const response = await api(
+    `/api/conversations/${encodeURIComponent(sub)}/messages/${messageId}`,
+    { method: "DELETE" }
+  );
+  if (!response.ok && response.status === 409) {
+    await loadHistory();
+  }
+}
+
 function onComposerKeydown(event) {
+  if (event.key === "Escape" && state.editingId) {
+    cancelEditing();
+    return;
+  }
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     document.getElementById("composer").requestSubmit();
   }
+}
+
+function cancelEditing() {
+  state.editingId = null;
+  const input = document.getElementById("message-input");
+  input.value = "";
+  input.placeholder = "输入消息，Enter 发送，Shift+Enter 换行";
 }
 
 function onComposerInput() {
@@ -708,8 +770,29 @@ function handleServerMessage(data) {
     renderSidebar();
   } else if (data.type === "typing" && data.from === state.activeSub) {
     showTypingHint();
+  } else if (data.type === "message_edited" && data.message) {
+    replaceMessage(data.message);
+  } else if (data.type === "message_deleted" && data.message) {
+    replaceMessage(data.message);
   } else if (data.type === "friend_event") {
     refreshSidebar();
+  }
+}
+
+function replaceMessage(message) {
+  const index = state.messages.findIndex((item) => item.id === message.id);
+  if (index >= 0) {
+    state.messages[index] = message;
+  } else {
+    state.messages.push(message);
+  }
+  renderMessages();
+  const item = state.conversations.find(
+    (conversation) => conversation.peer.sub === state.activeSub
+  );
+  if (item && item.last_message && item.last_message.id === message.id) {
+    item.last_message = message;
+    renderSidebar();
   }
 }
 
@@ -790,6 +873,7 @@ window.addEventListener("pageshow", (event) => {
   state.messages = [];
   state.activeSub = null;
   state.activePeer = null;
+  state.editingId = null;
   state.nextBefore = null;
   loadMe();
 });

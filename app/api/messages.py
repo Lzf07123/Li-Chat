@@ -36,7 +36,9 @@ class MessageOut(BaseModel):
     id: int
     sender_sub: str
     recipient_sub: str
-    content: str
+    content: str | None = None
+    deleted: bool = False
+    edited_at: str | None = None
     created_at: str
 
 
@@ -140,3 +142,40 @@ async def message_history(
         messages=[MessageOut(**service.message_payload(item)) for item in rows],
         next_before=next_before,
     )
+
+
+@router.patch("/{other_sub}/messages/{message_id}", response_model=MessageOut)
+async def edit_message(
+    request: Request,
+    other_sub: str,
+    message_id: int,
+    body: MessageIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> MessageOut:
+    message = await service.edit_message(db, user.sub, other_sub, message_id, body.content)
+    payload = service.message_payload(message)
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    event = {"type": "message_edited", "message": payload}
+    await manager.send_to(message.sender_sub, event)
+    await manager.send_to(message.recipient_sub, event)
+    return MessageOut(**payload)
+
+
+@router.delete("/{other_sub}/messages/{message_id}", response_model=MessageOut)
+async def delete_message(
+    request: Request,
+    other_sub: str,
+    message_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> MessageOut:
+    message = await service.delete_message(db, user.sub, other_sub, message_id)
+    payload = service.message_payload(message)
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    event = {"type": "message_deleted", "message": payload}
+    await manager.send_to(message.sender_sub, event)
+    await manager.send_to(message.recipient_sub, event)
+    return MessageOut(**payload)

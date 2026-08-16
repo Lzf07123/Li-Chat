@@ -40,7 +40,7 @@ flowchart LR
 | `auth_states` | `state`(PK)、verifier、nonce、redirect_after、expires_at | 授权状态，单次使用 |
 | `sessions` | `id`(PK)、user_sub、sid、acr、csrf_token、expires_at、absolute_expires_at | 绑定门户会话 `(sub, sid)`，支撑回程登出 |
 | `friendships` | `requester_sub+addressee_sub`(复合 PK)、status、created_at、updated_at | 申请方向由 requester 表达；`pending`/`accepted`，无自环约束 |
-| `messages` | `id`(自增，SQLite INTEGER/PostgreSQL BIGINT)、sender_sub、recipient_sub、participant_lo/hi、content、created_at | `(participant_lo, participant_hi, id)` 索引支撑会话历史 |
+| `messages` | `id`(自增，SQLite INTEGER/PostgreSQL BIGINT)、sender_sub、recipient_sub、participant_lo/hi、content、edited_at、deleted_at、created_at | `(participant_lo, participant_hi, id)` 索引支撑会话历史；撤回清空 content 并以 deleted_at 留墓碑 |
 | `dm_reads` | `user_sub+participant_lo+participant_hi`(复合 PK)、last_read_message_id、updated_at | 单聊已读游标，只前进；未读 = 对方消息 id 大于游标 |
 
 ## 关键链路
@@ -53,4 +53,4 @@ flowchart LR
 
 **回程登出**：门户 POST `logout_token` → 验 iss/aud/120 秒窗/jti/events → 清 `(sub, sid)` 会话并主动断开该用户 WS。
 
-**实时通道**：`/ws` 握手校验同源 Cookie，无效以 4401 关闭；心跳 ping/pong；回程登出触发服务端断开。除心跳外，服务端按需推送 `message`（新消息，双方）、`read_receipt`（已读回执，会话另一方）、`presence`（好友上线/下线）与 `friend_event`（申请/接受/拒绝/解除，相关方）；客户端可发 `typing` 信令，服务端校验好友关系并限频后中继。
+**实时通道**：`/ws` 握手校验同源 Cookie，无效以 4401 关闭；心跳 ping/pong；回程登出触发服务端断开。除心跳外，服务端按需推送 `message`（新消息，双方）、`message_edited`/`message_deleted`（编辑/撤回，双方）、`read_receipt`（已读回执，会话另一方）、`presence`（好友上线/下线）与 `friend_event`（申请/接受/拒绝/解除，相关方）；客户端可发 `typing` 信令，服务端校验好友关系并限频后中继。

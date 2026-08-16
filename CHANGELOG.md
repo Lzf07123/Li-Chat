@@ -4,6 +4,9 @@
 
 ### 功能
 
+- 消息编辑与撤回：发送者 5 分钟内可 `PATCH` 编辑（回显 `edited_at`）或 `DELETE` 撤回
+  （content 清空落库，历史与 WS 只回墓碑不泄露原文）；WS `message_edited`/
+  `message_deleted` 定向双方；前端编辑态与撤回按钮、墓碑与「已编辑」标记
 - 在线状态与正在输入：好友上线/下线 presence 广播（仅好友可见）、`users.last_seen_at`
   （连接与心跳写入）、`GET /api/friends` 附 `online`/`last_seen_at`；typing `start/stop`
   定向中继（仅好友、2 秒限频、非法/非好友静默丢弃）；前端好友在线圆点、会话头部在线

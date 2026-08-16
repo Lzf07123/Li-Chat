@@ -94,6 +94,8 @@ class Message(Base):
     participant_lo: Mapped[str] = mapped_column(String(64))
     participant_hi: Mapped[str] = mapped_column(String(64))
     content: Mapped[str] = mapped_column(Text)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     __table_args__ = (
