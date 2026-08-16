@@ -1578,6 +1578,8 @@ function groupPanelHtml(group) {
         <div id="group-mention-list" class="mention-list" hidden></div>
         <button id="group-mention-btn" class="icon-btn" type="button"
           aria-label="提及成员" ${myMuted ? "disabled" : ""}>@</button>
+        <button id="group-poll-btn" class="icon-btn" type="button"
+          aria-label="发起投票" data-action="open-poll" ${myMuted ? "disabled" : ""}>📊</button>
         <button id="group-attach-btn" class="icon-btn" type="button" aria-label="发送附件"
           ${myMuted ? "disabled" : ""}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -1689,6 +1691,7 @@ function renderGroupPanel() {
     composer.addEventListener("click", onComposerBarClick);
     bindFileDrop(composer, true);
     document.getElementById("group-mention-btn").addEventListener("click", toggleMentionList);
+    document.getElementById("group-poll-btn").addEventListener("click", openPollModal);
     const mentionList = document.getElementById("group-mention-list");
     if (mentionList) {
       mentionList.addEventListener("click", onMentionPick);
@@ -2093,6 +2096,78 @@ function openGroupCreateModal() {
   document.getElementById("group-name-input").focus();
 }
 
+function pollOptionRowHtml(index) {
+  return `<label class="sr-only" for="poll-option-${index}">选项 ${index + 1}</label>
+    <input id="poll-option-${index}" class="input poll-option-input" maxlength="60"
+      placeholder="选项 ${index + 1}" />`;
+}
+
+function openPollModal() {
+  if (!state.activeGroupId) return;
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="poll-modal" role="dialog" aria-modal="true">
+      <form id="poll-form" class="modal-card">
+        <h3 class="modal-title">发起投票</h3>
+        <label class="sr-only" for="poll-question">投票问题</label>
+        <input id="poll-question" class="input" maxlength="120" placeholder="投票问题" />
+        <div id="poll-options">${pollOptionRowHtml(0)}${pollOptionRowHtml(1)}</div>
+        <div class="poll-modal-row">
+          <button class="btn btn-ghost btn-sm" type="button" id="poll-add-option">＋ 添加选项</button>
+          <label class="notify-row">
+            <input type="checkbox" id="poll-multiple" />
+            <span>允许多选</span>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" data-action="close-poll">取消</button>
+          <button class="btn btn-primary" type="submit">发起</button>
+        </div>
+      </form>
+    </div>`
+  );
+  let optionCount = 2;
+  const modal = document.getElementById("poll-modal");
+  document.getElementById("poll-add-option").addEventListener("click", () => {
+    if (optionCount >= 10) {
+      toast("最多 10 个选项", "error");
+      return;
+    }
+    document
+      .getElementById("poll-options")
+      .insertAdjacentHTML("beforeend", pollOptionRowHtml(optionCount));
+    optionCount += 1;
+  });
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal || event.target.closest("[data-action='close-poll']")) {
+      modal.remove();
+    }
+  });
+  document.getElementById("poll-form").addEventListener("submit", onPollSubmit);
+  document.getElementById("poll-question").focus();
+}
+
+async function onPollSubmit(event) {
+  event.preventDefault();
+  const question = document.getElementById("poll-question").value.trim();
+  const options = Array.from(document.querySelectorAll(".poll-option-input"))
+    .map((input) => input.value.trim())
+    .filter(Boolean);
+  const multiple = document.getElementById("poll-multiple").checked;
+  const response = await api(`/api/groups/${state.activeGroupId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({
+      content: "",
+      content_type: "poll",
+      poll: { question, options, multiple },
+    }),
+  });
+  if (response.ok) {
+    document.getElementById("poll-modal").remove();
+    toast("投票已发起", "success");
+  }
+}
+
 async function onCreateGroupSubmit(event) {
   event.preventDefault();
   const name = document.getElementById("group-name-input").value.trim();
@@ -2403,6 +2478,8 @@ function messageHtml(message, previous) {
         ? `<div class="attachment-caption">${escapeHtml(message.content)}</div>`
         : ""}
     </div>`;
+  } else if (message.content_type === "poll" && message.poll) {
+    body = `<div class="message-bubble message-poll">${replyPreview}${pollCardHtml(message.poll)}</div>`;
   } else if (message.attachment) {
     body = `<div class="message-bubble message-bubble-attachment">
       ${replyPreview}
@@ -2481,6 +2558,47 @@ function reactionsHtml(message) {
   return `<div class="reactions-row">${chips}
     <button class="reaction-add" type="button" data-action="react-picker"
       data-id="${message.id}" aria-label="添加回应">+</button>${picker}</div>`;
+}
+
+function isGroupManager() {
+  const group = state.activeGroup;
+  if (!group || !state.me) return false;
+  const member = group.members.find((item) => item.user.sub === state.me.sub);
+  return Boolean(member && (member.role === "owner" || member.role === "admin"));
+}
+
+function pollCardHtml(poll) {
+  const total = poll.total_votes || 0;
+  const closed = poll.closed;
+  const options = (poll.options || [])
+    .map((option) => {
+      const percent = total > 0 ? Math.round((option.count / total) * 100) : 0;
+      const selected = (poll.my_votes || []).includes(option.index);
+      return `<button class="poll-option${selected ? " poll-option-selected" : ""}"
+        type="button" data-action="poll-vote" data-poll="${poll.id}"
+        data-index="${option.index}" data-multiple="${poll.multiple}"
+        ${closed ? "disabled" : ""}>
+        <span class="poll-option-bar" style="width:${percent}%"></span>
+        <span class="poll-option-text">${escapeHtml(option.text)}</span>
+        <span class="poll-option-count">${option.count} 票 · ${percent}%</span>
+      </button>`;
+    })
+    .join("");
+  const closeButton =
+    !closed && (poll.creator_sub === state.me.sub || isGroupManager())
+      ? `<button class="btn btn-ghost btn-sm" type="button"
+          data-action="poll-close" data-poll="${poll.id}">结束投票</button>`
+      : "";
+  return `<div class="poll-card">
+    <div class="poll-question">📊 ${escapeHtml(poll.question)}</div>
+    <div class="poll-options">${options}</div>
+    <div class="poll-footer">
+      <span class="poll-meta">${total} 人参与${closed ? " · 已结束" : ""}${
+        poll.multiple ? " · 可多选" : ""
+      }</span>
+      ${closeButton}
+    </div>
+  </div>`;
 }
 
 function closeImageKeydown(event) {
@@ -2908,6 +3026,50 @@ async function onMessagesClick(event) {
     state.pickerMessageId = null;
     return;
   }
+  if (button.dataset.action === "poll-vote") {
+    const pollId = Number(button.dataset.poll);
+    const index = Number(button.dataset.index);
+    const message = state.messages.find(
+      (item) => item.poll && item.poll.id === pollId
+    );
+    const poll = message && message.poll;
+    if (!poll || poll.closed || !state.activeGroupId) return;
+    let indexes;
+    if (poll.multiple) {
+      const current = poll.my_votes || [];
+      indexes = current.includes(index)
+        ? current.filter((item) => item !== index)
+        : [...current, index];
+    } else {
+      indexes = [index];
+    }
+    const response = await api(
+      `/api/groups/${state.activeGroupId}/polls/${pollId}/vote`,
+      { method: "PUT", body: JSON.stringify({ option_indexes: indexes }) }
+    );
+    if (response.ok) {
+      if (message) message.poll = await response.json();
+      renderMessages();
+    }
+    return;
+  }
+  if (button.dataset.action === "poll-close") {
+    const pollId = Number(button.dataset.poll);
+    if (!state.activeGroupId) return;
+    const response = await api(
+      `/api/groups/${state.activeGroupId}/polls/${pollId}/close`,
+      { method: "POST" }
+    );
+    if (response.ok) {
+      const message = state.messages.find(
+        (item) => item.poll && item.poll.id === pollId
+      );
+      if (message) message.poll = await response.json();
+      renderMessages();
+      toast("投票已结束", "success");
+    }
+    return;
+  }
   if (button.dataset.action !== "edit" && button.dataset.action !== "withdraw") return;
   if (!sub && !groupId) return;
   if (button.dataset.action === "edit") {
@@ -3085,6 +3247,14 @@ function handleServerMessage(data) {
     replaceMessage(data.message);
   } else if (data.type === "message_reaction") {
     applyReaction(data);
+  } else if (data.type === "poll_event" && data.poll) {
+    const target = state.messages.find(
+      (item) => item.poll && item.poll.id === data.poll.id
+    );
+    if (target) {
+      target.poll = data.poll;
+      renderMessages();
+    }
   } else if (data.type === "call") {
     handleCallSignal(data);
   } else if (data.type === "group_event") {

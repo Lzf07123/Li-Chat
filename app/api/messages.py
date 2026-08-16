@@ -7,22 +7,30 @@ from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.polls import PollOut
 from app.auth.deps import get_current_user, require_csrf
 from app.db import get_db
 from app.messages import service
 from app.messages.service import MAX_MESSAGE_LENGTH
 from app.models import Message, User
+from app.polls.service import (
+    POLL_OPTION_MAX,
+    POLL_OPTIONS_MAX,
+    POLL_OPTIONS_MIN,
+    POLL_QUESTION_MAX,
+)
 from app.ws.manager import ConnectionManager
 
 router = APIRouter(prefix="/api/conversations", tags=["messages"])
 
 
 class MessageIn(BaseModel):
-    content_type: Literal["text", "image", "file", "audio"] = "text"
+    content_type: Literal["text", "image", "file", "audio", "poll"] = "text"
     content: str = ""
     attachment: AttachmentIn | None = None
     reply_to_id: int | None = Field(default=None, ge=1)
     mentions: list[str] = []
+    poll: PollIn | None = None
 
     @field_validator("content")
     @classmethod
@@ -46,6 +54,36 @@ class MessageIn(BaseModel):
 
 class AttachmentIn(BaseModel):
     url: str
+
+
+class PollIn(BaseModel):
+    question: str
+    options: list[str]
+    multiple: bool = False
+
+    @field_validator("question")
+    @classmethod
+    def _validate_question(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped or len(stripped) > POLL_QUESTION_MAX:
+            raise ValueError(
+                f"question must be 1-{POLL_QUESTION_MAX} characters"
+            )
+        return stripped
+
+    @field_validator("options")
+    @classmethod
+    def _validate_options(cls, value: list[str]) -> list[str]:
+        cleaned = list(dict.fromkeys(option.strip() for option in value))
+        if any(not option or len(option) > POLL_OPTION_MAX for option in cleaned):
+            raise ValueError(
+                f"each option must be 1-{POLL_OPTION_MAX} characters"
+            )
+        if len(cleaned) < POLL_OPTIONS_MIN or len(cleaned) > POLL_OPTIONS_MAX:
+            raise ValueError(
+                f"need {POLL_OPTIONS_MIN}-{POLL_OPTIONS_MAX} distinct options"
+            )
+        return cleaned
 
 
 class AttachmentOut(BaseModel):
@@ -90,6 +128,7 @@ class MessageOut(BaseModel):
     created_at: str
     reactions: list[ReactionCountOut] = []
     my_reactions: list[str] = []
+    poll: PollOut | None = None
 
 
 class ReactionIn(BaseModel):

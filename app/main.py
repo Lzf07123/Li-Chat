@@ -18,6 +18,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from app.api.friends import router as friends_router
 from app.api.groups import router as groups_router
 from app.api.messages import router as messages_router
+from app.api.polls import router as polls_router
 from app.api.search import router as search_router
 from app.api.uploads import router as uploads_router
 from app.api.users import router as users_router
@@ -130,6 +131,8 @@ def _ensure_message_columns(conn: Connection) -> None:
         conn.exec_driver_sql(
             "ALTER TABLE messages ADD COLUMN forwarded BOOLEAN NOT NULL DEFAULT 0"
         )
+    if "poll_id" not in names:
+        conn.exec_driver_sql("ALTER TABLE messages ADD COLUMN poll_id INTEGER")
 
 
 def _ensure_group_columns(conn: Connection) -> None:
@@ -267,6 +270,7 @@ def create_app(
     app.include_router(users_router)
     app.include_router(friends_router)
     app.include_router(groups_router)
+    app.include_router(polls_router)
     app.include_router(messages_router)
     app.include_router(uploads_router)
     app.include_router(search_router)

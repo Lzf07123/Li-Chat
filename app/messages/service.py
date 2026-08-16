@@ -22,6 +22,7 @@ from app.models import (
     UserConversationSetting,
     UserStar,
 )
+from app.polls import service as polls_service
 from app.timeutil import iso_utc, utcnow
 from app.uploads.service import get_upload
 
@@ -197,6 +198,8 @@ async def send_message(
 ) -> Message:
     if sender_sub == recipient_sub:
         raise HTTPException(status_code=400, detail="cannot message yourself")
+    if content_type == "poll":
+        raise HTTPException(status_code=422, detail="polls are only available in groups")
     if await db.get(User, recipient_sub) is None:
         raise HTTPException(status_code=404, detail="user not found")
     if not await are_friends(db, sender_sub, recipient_sub):
@@ -204,9 +207,12 @@ async def send_message(
     if reply_to_id is not None:
         await validate_reply(db, sender_sub, reply_to_id, other_sub=recipient_sub)
     mention_subs = await validate_mentions(db, mentions or [], other_sub=recipient_sub)
-    attachment_fields = await resolve_attachment(
-        db, sender_sub, content_type, attachment
-    )
+    if content_type == "poll":
+        attachment_fields: dict[str, Any] = {}
+    else:
+        attachment_fields = await resolve_attachment(
+            db, sender_sub, content_type, attachment
+        )
     lo, hi = pair_key(sender_sub, recipient_sub)
     message = Message(
         sender_sub=sender_sub,
@@ -491,6 +497,7 @@ async def send_group_message(
     attachment: dict[str, Any] | None = None,
     reply_to_id: int | None = None,
     mentions: list[str] | None = None,
+    poll: dict[str, Any] | None = None,
 ) -> Message:
     member_row = await group_membership(db, group_id, sender_sub)
     if member_row is None:
@@ -500,12 +507,24 @@ async def send_group_message(
     group = await db.get(Group, group_id)
     if group is None:
         raise HTTPException(status_code=404, detail="group not found")
+    if content_type == "poll":
+        if poll is None:
+            raise HTTPException(status_code=422, detail="poll required")
+        if attachment is not None:
+            raise HTTPException(status_code=422, detail="poll cannot have attachments")
+        if reply_to_id is not None:
+            raise HTTPException(status_code=422, detail="poll cannot reply to a message")
+    elif poll is not None:
+        raise HTTPException(status_code=422, detail="poll only valid for poll messages")
     if reply_to_id is not None:
         await validate_reply(db, sender_sub, reply_to_id, group_id=group_id)
     mention_subs = await validate_mentions(db, mentions or [], group_id=group_id)
-    attachment_fields = await resolve_attachment(
-        db, sender_sub, content_type, attachment
-    )
+    if content_type == "poll":
+        attachment_fields = {}
+    else:
+        attachment_fields = await resolve_attachment(
+            db, sender_sub, content_type, attachment
+        )
     marker = f"{GROUP_RECIPIENT_PREFIX}{group_id}"
     message = Message(
         sender_sub=sender_sub,
@@ -517,8 +536,19 @@ async def send_group_message(
         group_id=group_id,
         content_type=content_type,
         reply_to_id=reply_to_id,
+        poll_id=None,
         **attachment_fields,
     )
+    if poll is not None:
+        poll_row = await polls_service.create_poll(
+            db,
+            sender_sub,
+            group_id,
+            str(poll["question"]),
+            list(poll["options"]),
+            multiple=bool(poll.get("multiple", False)),
+        )
+        message.poll_id = poll_row.id
     db.add(message)
     await db.flush()
     for sub in mention_subs:
@@ -649,6 +679,8 @@ async def forward_message(
         raise HTTPException(status_code=404, detail="message not found")
     if source.deleted_at is not None:
         raise HTTPException(status_code=409, detail="cannot forward deleted message")
+    if source.content_type == "poll":
+        raise HTTPException(status_code=422, detail="cannot forward polls")
     attachment_fields: dict[str, Any] = {}
     if source.attachment_url is not None:
         attachment_fields = {

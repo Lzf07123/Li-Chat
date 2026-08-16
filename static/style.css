@@ -2469,3 +2469,94 @@ a {
   padding-left: 44px;
   padding-right: 44px;
 }
+
+/* 群投票 */
+.message-poll {
+  padding: 10px;
+  min-width: min(260px, 70vw);
+}
+
+.poll-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.poll-question {
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.poll-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.poll-option {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 7px 10px;
+  border: 1px solid var(--chat-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--chat-fg);
+  cursor: pointer;
+  text-align: left;
+}
+
+.poll-option:hover:not(:disabled),
+.poll-option-selected {
+  border-color: var(--chat-primary);
+  background: var(--chat-primary-soft);
+}
+
+.poll-option:disabled {
+  cursor: default;
+}
+
+.poll-option-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: color-mix(in srgb, var(--chat-primary) 12%, transparent);
+  pointer-events: none;
+}
+
+.poll-option-text,
+.poll-option-count {
+  position: relative;
+  z-index: 1;
+}
+
+.poll-option-count {
+  font-size: 0.72rem;
+  color: var(--chat-muted);
+}
+
+.poll-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.poll-meta {
+  font-size: 0.75rem;
+  color: var(--chat-muted);
+}
+
+.poll-modal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 4px 0;
+}
+
+.poll-option-input {
+  margin-bottom: 8px;
+}

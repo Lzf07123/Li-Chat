@@ -175,3 +175,14 @@ async def test_v36_multi_select_batch_forward(api_client: httpx.AsyncClient) -> 
     assert "select-bar" in text
     assert "forwardMessageIds" in text
     assert "toggleSelectMode" in text
+
+
+async def test_v37_group_poll_ui(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function pollCardHtml(" in text
+    assert "function openPollModal(" in text
+    assert "poll-vote" in text
+    assert "poll-close" in text
+    assert "poll_event" in text
+    css = await _style_css(api_client)
+    assert ".poll-card" in css

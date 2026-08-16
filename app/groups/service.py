@@ -13,6 +13,8 @@ from app.models import (
     GroupRead,
     Message,
     MessageMention,
+    Poll,
+    PollVote,
     Reaction,
     User,
     UserConversationSetting,
@@ -295,6 +297,9 @@ async def dissolve_group(
         "member_count": len(subs),
     }
     message_ids = select(Message.id).where(Message.group_id == group_id)
+    poll_ids = select(Poll.id).where(Poll.group_id == group_id)
+    await db.execute(delete(PollVote).where(PollVote.poll_id.in_(poll_ids)))
+    await db.execute(delete(Poll).where(Poll.group_id == group_id))
     await db.execute(delete(MessageMention).where(MessageMention.message_id.in_(message_ids)))
     await db.execute(delete(Reaction).where(Reaction.message_id.in_(message_ids)))
     await db.execute(delete(UserStar).where(UserStar.message_id.in_(message_ids)))

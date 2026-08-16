@@ -21,7 +21,8 @@ from app.auth.deps import get_current_user, require_csrf
 from app.db import get_db
 from app.groups import service
 from app.messages import service as messages_service
-from app.models import Message, User
+from app.models import Message, Poll, User
+from app.polls import service as polls_service
 from app.timeutil import iso_utc, utcnow
 from app.ws.manager import ConnectionManager
 
@@ -390,6 +391,7 @@ async def send_group_message(
         attachment=body.attachment.model_dump() if body.attachment else None,
         reply_to_id=body.reply_to_id,
         mentions=body.mentions,
+        poll=body.poll.model_dump() if body.poll else None,
     )
     mention_subs = list(dict.fromkeys(body.mentions))
     reply = (
@@ -398,6 +400,10 @@ async def send_group_message(
         else None
     )
     payload = messages_service.message_payload(message, reply, mention_subs)
+    if message.poll_id is not None:
+        poll_row = await db.get(Poll, message.poll_id)
+        if poll_row is not None:
+            payload["poll"] = await polls_service.poll_payload(db, poll_row, user.sub)
     manager = cast(ConnectionManager, request.app.state.ws_manager)
     event = {"type": "message", "message": payload}
     for sub in await service.member_subs(db, group_id):
@@ -425,6 +431,12 @@ async def group_history(
     starred_ids = await messages_service.starred_for(
         db, user.sub, [item.id for item in rows]
     )
+    poll_ids = [item.poll_id for item in rows if item.poll_id is not None]
+    polls_map: dict[int, dict[str, Any]] = {}
+    for poll_id in set(poll_ids):
+        poll_row = await db.get(Poll, poll_id)
+        if poll_row is not None:
+            polls_map[poll_id] = await polls_service.poll_payload(db, poll_row, user.sub)
     reply_ids = [item.reply_to_id for item in rows if item.reply_to_id is not None]
     replies: dict[int, Message] = {}
     if reply_ids:
@@ -442,6 +454,8 @@ async def group_history(
             else None
         )
         data = messages_service.message_payload(item, reply)
+        if item.poll_id is not None and item.poll_id in polls_map:
+            data["poll"] = polls_map[item.poll_id]
         if "mentions" in data:
             data["mentions"] = mentions.get(item.id, [])
         aggregate = reaction_map.get(item.id, {})

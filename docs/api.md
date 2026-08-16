@@ -46,9 +46,11 @@
 | POST | `/api/groups/{id}/transfer` | 会话 + CSRF | 转让 `{"new_owner_sub"}`（仅 owner，目标须为成员） |
 | PATCH | `/api/groups/{id}/announcement` | 会话 + CSRF | 公告 `{"text"}`（≤2000，可清空；owner/admin） |
 | POST | `/api/groups/{id}/avatar` | 会话 + CSRF | 群头像 `{"url"}`（本人上传的图片；owner/admin） |
-| POST | `/api/groups/{id}/messages` | 会话 + CSRF | 群发消息（文本/附件/引用/提及，语义同单聊；仅成员；mentions 须为群成员）；201 返回消息（附 `group_id`）；WS 推全成员 |
+| POST | `/api/groups/{id}/messages` | 会话 + CSRF | 群发消息（文本/附件/语音/投票/引用/提及，语义同单聊；仅成员；mentions 须为群成员）；投票消息 `content_type:"poll"` + `poll:{question,options,multiple}`（问题 ≤120、2–10 个选项各 ≤60，不可带附件/引用）；201 返回消息（附 `group_id`/`poll`）；WS 推全成员 |
 | GET | `/api/groups/{id}/messages?limit=&before=` | 会话 | 群历史倒序分页（仅成员；参数语义同单聊） |
 | GET | `/api/groups/{id}/files?limit=&before=` | 会话 | 群内文件/语音附件聚合（仅成员，倒序游标 ≤50）；`{"files":[{message_id,sender_sub,name,size,mime,url,created_at}],"next_before"}` |
+| PUT | `/api/groups/{id}/polls/{pid}/vote` | 会话 + CSRF | 投票/改票 `{"option_indexes":[...]}`（仅成员；单选投票最多 1 项；已关闭 409；非法下标 422）；WS `poll_event(voted)` 群内广播 |
+| POST | `/api/groups/{id}/polls/{pid}/close` | 会话 + CSRF | 结束投票（创建者或 owner/admin）；WS `poll_event(closed)` 群内广播 |
 | PATCH | `/api/groups/{id}/messages/{mid}` | 会话 + CSRF | 群消息编辑（发送者、未撤回、5 分钟内；非成员 404 / 非发送者 403） |
 | DELETE | `/api/groups/{id}/messages/{mid}` | 会话 + CSRF | 群消息撤回（同上鉴权；墓碑不含原文） |
 | PUT | `/api/groups/{id}/messages/{mid}/reactions` | 会话 + CSRF | 群消息回应（仅成员，幂等） |
