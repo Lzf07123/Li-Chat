@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 ARG BASE_IMAGE_REGISTRY=
 ARG PYPI_INDEX_URL=https://mirrors.ustc.edu.cn/pypi/simple
 ARG APT_MIRROR=http://mirrors.ustc.edu.cn/debian
@@ -9,10 +11,13 @@ ARG APT_MIRROR=http://mirrors.ustc.edu.cn/debian
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     TZ=Asia/Shanghai \
-    UV_DEFAULT_INDEX=${PYPI_INDEX_URL}
+    UV_DEFAULT_INDEX=${PYPI_INDEX_URL} \
+    UV_NO_PROGRESS=1
 
 # 统一容器时区为 Asia/Shanghai（日志与本地时间一致）
-RUN sed -i "s|http://deb.debian.org/debian|${APT_MIRROR}|g" \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    sed -i "s|http://deb.debian.org/debian|${APT_MIRROR}|g" \
         /etc/apt/sources.list.d/debian.sources \
     && apt-get update \
     && apt-get install -y --no-install-recommends tzdata \
@@ -20,15 +25,19 @@ RUN sed -i "s|http://deb.debian.org/debian|${APT_MIRROR}|g" \
     && echo $TZ > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
 
-# 用镜像源装 uv，再按 uv.lock 装运行时依赖（不含 dev 组）
-RUN pip install --no-cache-dir --no-compile -i "${PYPI_INDEX_URL}" uv
+# 用镜像源装 uv；pip 缓存挂载到 BuildKit cache，重构建不重复下载
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-compile -i "${PYPI_INDEX_URL}" uv
 
 RUN useradd --create-home --uid 10001 appuser
 
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-cache
+# uv 缓存挂载到 BuildKit cache：pyproject/uv.lock 未变时该层秒级复用，
+# 变更后也只下载新增/变化的 wheel，不再整包重下
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
 
 COPY app ./app
 COPY static ./static
