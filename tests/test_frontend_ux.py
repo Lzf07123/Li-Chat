@@ -193,3 +193,11 @@ async def test_v38_group_read_receipts_ui(api_client: httpx.AsyncClient) -> None
     assert "show-reads" in text
     assert "function openReadsModal(" in text
     assert "function applyGroupReadReceipt(" in text
+
+
+async def test_v39_notification_center_ui(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "notify-bell" in text
+    assert "function openNotificationsModal(" in text
+    assert "function notificationText(" in text
+    assert "notifications/read" in text

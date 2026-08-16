@@ -4,6 +4,10 @@
 
 ### 功能
 
+- 通知中心（v39）：`notifications` 表与 `/api/me/notifications`（倒序游标 + 未读计数）、
+  `POST /api/me/notifications/read`；事件源覆盖好友申请、@提及（单聊/群聊）、禁言/解除、
+  角色变更、群解散，产生时 WS `notification` 定向推送；前端头部铃铛 + 未读角标 + 通知列表
+  （点击跳转会话/群并定位消息，「全部已读」）
 - 群已读明细（v38）：`GET /api/groups/{id}/messages/{mid}/reads`（仅成员、消息属该群且未
   撤回），自己的群消息载荷附 `read_count`；前端气泡「N 人已读」点击弹名单（头像 + 昵称 +
   已读/总数），WS 群已读回执实时推进计数（按人幂等去重，重载后以服务端为准）

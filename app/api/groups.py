@@ -17,11 +17,13 @@ from app.api.messages import (
     ReadIn,
     ReadOut,
 )
+from app.api.notifications import push_notification
 from app.auth.deps import get_current_user, require_csrf
 from app.db import get_db
 from app.groups import service
 from app.messages import service as messages_service
-from app.models import GroupRead, Message, Poll, User
+from app.models import Group, GroupRead, Message, Poll, User
+from app.notifications.service import create as create_notification
 from app.polls import service as polls_service
 from app.timeutil import iso_utc, utcnow
 from app.ws.manager import ConnectionManager
@@ -306,6 +308,15 @@ async def set_member_role(
     await service.set_member_role(db, user.sub, group_id, target_sub, body.role)
     group = await service.get_group(db, user.sub, group_id)
     await _broadcast(request, db, group_id, "role_changed", group, user.sub)
+    notification = await create_notification(
+        db,
+        target_sub,
+        "role_changed",
+        actor_sub=user.sub,
+        group_id=group_id,
+        payload={"group_name": group["name"], "role": body.role},
+    )
+    await push_notification(request, db, notification)
     return StatusOut(status=body.role)
 
 
@@ -322,6 +333,15 @@ async def set_member_mute(
     await service.set_member_mute(db, user.sub, group_id, target_sub, body.muted)
     group = await service.get_group(db, user.sub, group_id)
     await _broadcast(request, db, group_id, "member_muted", group, user.sub)
+    notification = await create_notification(
+        db,
+        target_sub,
+        "muted" if body.muted else "unmuted",
+        actor_sub=user.sub,
+        group_id=group_id,
+        payload={"group_name": group["name"]},
+    )
+    await push_notification(request, db, notification)
     return StatusOut(status="muted" if body.muted else "unmuted")
 
 
@@ -359,6 +379,15 @@ async def dissolve_group(
     }
     for sub in member_subs:
         await manager.send_to(sub, event)
+        notification = await create_notification(
+            db,
+            sub,
+            "group_dissolved",
+            actor_sub=user.sub,
+            group_id=group_id,
+            payload={"group_name": payload["name"]},
+        )
+        await push_notification(request, db, notification)
     return StatusOut(status="dissolved")
 
 
@@ -450,6 +479,20 @@ async def send_group_message(
     event = {"type": "message", "message": payload}
     for sub in await service.member_subs(db, group_id):
         await manager.send_to(sub, event)
+    group_row = await db.get(Group, group_id)
+    for mention_sub in set(mention_subs) - {user.sub}:
+        notification = await create_notification(
+            db,
+            mention_sub,
+            "mention",
+            actor_sub=user.sub,
+            group_id=group_id,
+            payload={
+                "group_name": group_row.name if group_row else None,
+                "message_id": message.id,
+            },
+        )
+        await push_notification(request, db, notification)
     return MessageOut(**payload)
 
 

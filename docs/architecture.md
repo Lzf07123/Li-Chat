@@ -55,6 +55,7 @@ flowchart LR
 | `group_reads` | `user_sub+group_id`(复合 PK)、last_read_message_id、updated_at | 群已读游标，只前进；未读 = 群消息 id 大于游标且非本人发送 |
 | `polls` | `id`、group_id、creator_sub、question(≤120)、options(JSON ≤10 项各 ≤60)、multiple、closed、created_at | 群投票；选项以 JSON 落库；关闭后禁投；解散群级联清理 |
 | `poll_votes` | `poll_id+user_sub`(复合 PK)、option_indexes(JSON)、updated_at | 每人一票（可含多选下标），投票即更新；聚合计数不回传他人选择明细 |
+| `notifications` | `id`、user_sub、type、actor_sub、group_id、payload(JSON)、read_at、created_at | 站内通知：好友申请/@提及/禁言/角色变更/群解散；按用户倒序游标；payload 存展示所需快照（群名/消息 id/角色） |
 | `uploads` | `id`、owner_sub、filename(唯一)、original_name、mime、size、created_at | 随机文件名防遍历；仅上传者可回源 |
 
 ## 关键链路

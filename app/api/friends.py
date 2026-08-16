@@ -6,10 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.notifications import push_notification
 from app.auth.deps import get_current_user, require_csrf
 from app.db import get_db
 from app.friends import service
 from app.models import User
+from app.notifications.service import create as create_notification
 from app.timeutil import iso_utc, utcnow
 from app.ws.manager import ConnectionManager
 
@@ -117,6 +119,10 @@ async def create_request(
             "at": iso_utc(friendship.created_at),
         },
     )
+    notification = await create_notification(
+        db, friendship.addressee_sub, "friend_request", actor_sub=user.sub
+    )
+    await push_notification(request, db, notification)
     return FriendRequestOut(
         requester_sub=friendship.requester_sub,
         addressee_sub=friendship.addressee_sub,

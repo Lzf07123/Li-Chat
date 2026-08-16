@@ -46,6 +46,9 @@ const state = {
   groupFilesNext: null,
   groupReadBy: {},
   messages: [],
+  notifications: [],
+  notificationsUnread: 0,
+  notificationsNext: null,
   call: null,
   nextBefore: null,
   loadingHistory: false,
@@ -296,6 +299,15 @@ function headerHtml() {
   return `<header class="app-header">
     <div class="app-brand">${BRAND.logo}<span>${escapeHtml(BRAND.name)}</span></div>
     <div class="app-actions">
+      <button id="notify-bell" class="icon-btn notify-bell" type="button"
+        aria-label="通知中心" aria-haspopup="dialog">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        <span id="notify-badge" class="badge badge-primary notify-badge" hidden>0</span>
+      </button>
       <div class="app-profile">
         <button id="profile-toggle" class="profile-toggle" type="button"
           aria-haspopup="menu" aria-expanded="false" aria-label="个人菜单">
@@ -469,6 +481,7 @@ function renderLoggedIn() {
     .getElementById("open-notify-settings")
     .addEventListener("click", openNotifySettingsModal);
   document.getElementById("open-shortcuts").addEventListener("click", openShortcutsModal);
+  document.getElementById("notify-bell").addEventListener("click", openNotificationsModal);
   document.addEventListener("keydown", onGlobalKeydown);
   document.getElementById("search-form").addEventListener("submit", onSearch);
   document.getElementById("search-form").addEventListener("click", onSearchModeClick);
@@ -503,6 +516,7 @@ function renderLoggedIn() {
   document.getElementById("group-panel").addEventListener("click", onGroupPanelClick);
   document.getElementById("chat-active").addEventListener("click", onChatHeaderClick);
   refreshSidebar();
+  loadNotifications();
 }
 
 function openProfileModal() {
@@ -756,6 +770,157 @@ function openNotifySettingsModal() {
       modal.remove();
     }
   });
+}
+
+function updateNotifyBadge() {
+  const badge = document.getElementById("notify-badge");
+  if (!badge) return;
+  badge.hidden = state.notificationsUnread === 0;
+  badge.textContent = state.notificationsUnread > 99 ? "99+" : String(state.notificationsUnread);
+}
+
+async function loadNotifications(append = false) {
+  let url = "/api/me/notifications?limit=30";
+  if (append && state.notificationsNext) url += `&cursor=${state.notificationsNext}`;
+  const response = await api(url);
+  if (!response.ok) return;
+  const body = await response.json();
+  if (append) {
+    state.notifications = state.notifications.concat(body.notifications);
+  } else {
+    state.notifications = body.notifications;
+  }
+  state.notificationsUnread = body.unread_count;
+  state.notificationsNext = body.next_cursor;
+  updateNotifyBadge();
+  renderNotificationsModal();
+}
+
+function notificationText(item) {
+  const actor = item.actor ? displayName(item.actor) : "";
+  const groupName = item.group ? item.group.name || "群聊" : "";
+  switch (item.type) {
+    case "friend_request":
+      return `${actor || "有人"} 请求添加你为好友`;
+    case "mention":
+      return groupName
+        ? `${actor} 在「${groupName}」中提到了你`
+        : `${actor} 提到了你`;
+    case "muted":
+      return `你在「${groupName}」中被禁言`;
+    case "unmuted":
+      return `你在「${groupName}」中被解除禁言`;
+    case "role_changed":
+      return `你在「${groupName}」中的角色已变更为 ${
+        item.payload && item.payload.role === "admin" ? "管理员" : "成员"
+      }`;
+    case "group_dissolved":
+      return `群「${groupName}」已解散`;
+    default:
+      return "新通知";
+  }
+}
+
+function notificationTime(item) {
+  const time = new Date(item.created_at);
+  return time.toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+}
+
+function renderNotificationsModal() {
+  const modal = document.getElementById("notifications-modal");
+  if (!modal) return;
+  const list = document.getElementById("notifications-list");
+  const empty = document.getElementById("notifications-empty");
+  if (!list || !empty) return;
+  const rows = state.notifications
+    .map(
+      (item) => `<li class="contact-item notification-item${item.read ? "" : " notification-unread"}">
+        <button class="contact-button" type="button" data-action="open-notification"
+          data-id="${item.id}" data-type="${item.type}"
+          data-group="${item.group ? item.group.id : ""}"
+          data-message="${item.payload && item.payload.message_id ? item.payload.message_id : ""}"
+          data-peer="${item.actor ? escapeHtml(item.actor.sub) : ""}">
+          <span class="contact-main">
+            <span class="contact-name">${escapeHtml(notificationText(item))}</span>
+            <span class="contact-preview">${escapeHtml(notificationTime(item))}</span>
+          </span>
+        </button>
+      </li>`
+    )
+    .join("");
+  list.innerHTML = rows;
+  empty.hidden = state.notifications.length > 0;
+  const more = document.getElementById("notifications-more");
+  if (more) more.hidden = !state.notificationsNext;
+}
+
+async function openNotificationsModal() {
+  await loadNotifications();
+  let modal = document.getElementById("notifications-modal");
+  if (!modal) {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<div class="modal-overlay" id="notifications-modal" role="dialog" aria-modal="true">
+        <div class="modal-card">
+          <h3 class="modal-title">通知</h3>
+          <p id="notifications-empty" class="sidebar-empty" hidden>暂无通知</p>
+          <ul id="notifications-list" class="contact-list forward-list"></ul>
+          <div class="modal-actions">
+            <button class="btn btn-ghost btn-sm" type="button" id="notifications-more" hidden>加载更多</button>
+            <button class="btn btn-ghost" type="button" id="notifications-read-all">全部已读</button>
+            <button class="btn btn-primary" type="button" data-action="close-notifications">关闭</button>
+          </div>
+        </div>
+      </div>`
+    );
+    modal = document.getElementById("notifications-modal");
+    document.getElementById("notifications-more").addEventListener("click", () => {
+      loadNotifications(true);
+    });
+    document.getElementById("notifications-read-all").addEventListener("click", async () => {
+      const response = await api("/api/me/notifications/read", { method: "POST" });
+      if (response.ok) {
+        state.notificationsUnread = 0;
+        state.notifications = state.notifications.map((item) => ({
+          ...item,
+          read: true,
+        }));
+        updateNotifyBadge();
+        renderNotificationsModal();
+      }
+    });
+    modal.addEventListener("click", (event) => {
+      const target = event.target.closest("[data-action='open-notification']");
+      if (target) {
+        modal.remove();
+        openNotificationTarget(target);
+        return;
+      }
+      if (
+        event.target === modal ||
+        event.target.closest("[data-action='close-notifications']")
+      ) {
+        modal.remove();
+      }
+    });
+  }
+  renderNotificationsModal();
+}
+
+function openNotificationTarget(target) {
+  const type = target.dataset.type;
+  const groupId = Number(target.dataset.group || 0);
+  const messageId = Number(target.dataset.message || 0);
+  if (type === "mention") {
+    if (groupId) openGroup(groupId, messageId || null);
+    else if (target.dataset.peer) openChat(target.dataset.peer, messageId || null);
+    return;
+  }
+  if (groupId) {
+    openGroup(groupId);
+    return;
+  }
+  refreshSidebar();
 }
 
 const SHORTCUTS = [
@@ -3333,6 +3498,12 @@ function handleServerMessage(data) {
     }
   } else if (data.type === "friend_event") {
     refreshSidebar();
+  } else if (data.type === "notification" && data.notification) {
+    state.notifications.unshift(data.notification);
+    state.notificationsUnread += 1;
+    updateNotifyBadge();
+    renderNotificationsModal();
+    toast(notificationText(data.notification), "info");
   }
 }
 

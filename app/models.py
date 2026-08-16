@@ -316,6 +316,27 @@ class PollVote(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    user_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), index=True
+    )
+    type: Mapped[str] = mapped_column(String(32))
+    actor_sub: Mapped[str | None] = mapped_column(String(64))
+    group_id: Mapped[int | None] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite")
+    )
+    payload: Mapped[str] = mapped_column(Text, default="{}")
+    read_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Upload(Base):
     __tablename__ = "uploads"
 

@@ -7,12 +7,14 @@ from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.notifications import push_notification
 from app.api.polls import PollOut
 from app.auth.deps import get_current_user, require_csrf
 from app.db import get_db
 from app.messages import service
 from app.messages.service import MAX_MESSAGE_LENGTH
 from app.models import Message, User
+from app.notifications.service import create as create_notification
 from app.polls.service import (
     POLL_OPTION_MAX,
     POLL_OPTIONS_MAX,
@@ -284,6 +286,15 @@ async def send_message(
     event = {"type": "message", "message": payload}
     await manager.send_to(message.sender_sub, event)
     await manager.send_to(message.recipient_sub, event)
+    if other_sub in mention_subs:
+        notification = await create_notification(
+            db,
+            other_sub,
+            "mention",
+            actor_sub=user.sub,
+            payload={"message_id": message.id},
+        )
+        await push_notification(request, db, notification)
     return MessageOut(**payload)
 
 
