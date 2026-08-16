@@ -4,6 +4,10 @@
 
 ### 功能
 
+- 全局 Toast 与错误反馈（v21）：`toast()` 轻提示系统（info/success/error、aria-live、
+  自动消退）；`api()` 统一解析错误 detail 并映射为友好中文提示（常见后端错误码对照表），
+  网络失败/5xx 给出可操作提示；移除 `window.alert`；资料保存、头像更新、加好友、置顶/
+  免打扰、群管理、收藏、转发等关键操作增加成功反馈
 - 呼叫记录与未接来电：`call_logs` 落账（离线/忙线记 missed、拒接 rejected、接通 accepted、
   响铃中被挂断记 missed），`GET /api/me/calls` 倒序列表（附对端资料、kind/status/时间）；
   WS `call` 协议增加 `kind`（audio/video）；前端「通话记录」

@@ -49,6 +49,84 @@ function escapeHtml(value) {
   }[ch]));
 }
 
+function toast(message, kind = "info", duration = null) {
+  let region = document.getElementById("toast-region");
+  if (!region) {
+    region = document.createElement("div");
+    region.id = "toast-region";
+    region.className = "toast-region";
+    region.setAttribute("aria-live", "polite");
+    document.body.appendChild(region);
+  }
+  const item = document.createElement("div");
+  item.className = `toast toast-${kind}`;
+  item.setAttribute("role", "status");
+  const text = document.createElement("span");
+  text.className = "toast-text";
+  text.textContent = message;
+  const close = document.createElement("button");
+  close.className = "toast-close";
+  close.type = "button";
+  close.setAttribute("aria-label", "关闭提示");
+  close.setAttribute("data-action", "toast-close");
+  close.textContent = "×";
+  item.appendChild(text);
+  item.appendChild(close);
+  const remove = () => {
+    if (item.dataset.leaving) return;
+    item.dataset.leaving = "1";
+    item.classList.add("toast-leave");
+    window.setTimeout(() => item.remove(), 180);
+  };
+  close.addEventListener("click", remove);
+  item.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-action='toast-close']")) remove();
+  });
+  region.appendChild(item);
+  const ttl = duration !== null ? duration : kind === "error" ? 5000 : 3000;
+  window.setTimeout(remove, ttl);
+  while (region.children.length > 5) {
+    const oldest = region.firstElementChild;
+    if (oldest) oldest.remove();
+  }
+  return item;
+}
+
+const ERROR_MESSAGES = {
+  "request already pending": "已发送过申请，等待对方处理",
+  "request already exists": "已发送过申请，等待对方处理",
+  "already friends": "你们已经是好友",
+  "cannot message yourself": "不能给自己发消息",
+  "not friends": "对方还不是你的好友",
+  "user not found": "用户不存在",
+  "message must belong to the conversation": "消息不属于该会话",
+  "edit window expired": "已超过可编辑时间",
+  "cannot edit deleted message": "消息已撤回，无法编辑",
+  "not a group member": "你已不在该群聊中",
+  "group not found": "群聊不存在或已解散",
+  "you are muted": "你已被禁言",
+  "attachment must belong to you": "只能使用自己上传的附件",
+  "file exceeds": "文件过大，超出大小限制",
+  "unsupported file type": "不支持的文件类型",
+};
+
+function friendlyError(status, detail) {
+  if (status >= 500) return "服务繁忙，请稍后重试";
+  if (typeof detail === "string" && detail) {
+    for (const [key, value] of Object.entries(ERROR_MESSAGES)) {
+      if (detail.includes(key)) return value;
+    }
+    if (detail.startsWith("at most")) return "内容超过长度限制";
+    if (detail.startsWith("file exceeds")) return "文件过大，超出大小限制";
+  }
+  if (status === 422) return "输入内容不符合要求";
+  if (status === 403) return "没有权限执行该操作";
+  if (status === 404) return "内容不存在或已被删除";
+  if (status === 409) return "操作冲突，请刷新后重试";
+  if (status === 429) return "操作太频繁，请稍后再试";
+  return "操作失败，请稍后重试";
+}
+
 function footerHtml() {
   return `<footer class="site-footer">${escapeHtml(BRAND.footer())}</footer>`;
 }
@@ -99,11 +177,23 @@ async function api(path, options = {}) {
       headers,
     }));
   } catch {
+    toast("网络错误，请检查连接后重试", "error");
     throw new Error("网络错误，请稍后重试");
   }
   if (response.status === 401) {
+    toast("登录已失效，正在返回登录页…", "error");
     window.location.href = "/";
     throw new Error("登录已失效");
+  }
+  if (!response.ok) {
+    let detail = "";
+    try {
+      const body = await response.json();
+      detail = body && typeof body.detail === "string" ? body.detail : "";
+    } catch {
+      /* 非 JSON 错误体 */
+    }
+    toast(friendlyError(response.status, detail), "error");
   }
   return response;
 }
@@ -570,6 +660,7 @@ async function onProfileSubmit(event) {
   if (response.ok) {
     applyMeUpdate(await response.json());
     document.getElementById("profile-modal").remove();
+    toast("资料已保存", "success");
   }
 }
 
@@ -586,7 +677,10 @@ async function onAvatarSelected(event) {
     method: "POST",
     body: JSON.stringify({ url: upload.url }),
   });
-  if (avatarResponse.ok) applyMeUpdate(await avatarResponse.json());
+  if (avatarResponse.ok) {
+    applyMeUpdate(await avatarResponse.json());
+    toast("头像已更新", "success");
+  }
 }
 
 function applyMeUpdate(me) {
@@ -944,7 +1038,10 @@ async function onRequestListClick(event) {
   if (!button) return;
   const sub = button.dataset.sub;
   if (button.dataset.action === "accept") {
-    await api(`/api/friends/requests/${encodeURIComponent(sub)}/accept`, { method: "POST" });
+    const response = await api(`/api/friends/requests/${encodeURIComponent(sub)}/accept`, {
+      method: "POST",
+    });
+    if (response.ok) toast("已添加好友", "success");
   } else if (button.dataset.action === "reject") {
     await api(`/api/friends/requests/${encodeURIComponent(sub)}/reject`, { method: "POST" });
   } else if (button.dataset.action === "cancel") {
@@ -999,7 +1096,7 @@ function onGroupListClick(event) {
 async function toggleConversationSetting(button) {
   const field = button.dataset.action === "toggle-pin" ? "pinned" : "muted";
   const value = button.dataset.value === "true";
-  await api("/api/conversations/settings", {
+  const response = await api("/api/conversations/settings", {
     method: "PATCH",
     body: JSON.stringify({
       kind: button.dataset.kind,
@@ -1007,6 +1104,17 @@ async function toggleConversationSetting(button) {
       [field]: !value,
     }),
   });
+  if (response.ok) {
+    const label =
+      field === "pinned"
+        ? value
+          ? "已取消置顶"
+          : "已置顶"
+        : value
+          ? "已开启提醒"
+          : "已开启免打扰";
+    toast(label, "success");
+  }
   await refreshSidebar();
 }
 
@@ -1347,6 +1455,7 @@ async function onCreateGroupSubmit(event) {
     document.getElementById("group-create-modal").remove();
     await refreshGroups();
     openGroup(group.id);
+    toast("群聊已创建", "success");
   }
 }
 
@@ -1359,42 +1468,49 @@ async function onGroupPanelClick(event) {
   if (action === "group-rename") {
     const name = document.getElementById("group-rename-input").value.trim();
     if (!name) return;
-    await api(`/api/groups/${groupId}`, {
+    const response = await api(`/api/groups/${groupId}`, {
       method: "PATCH",
       body: JSON.stringify({ name }),
     });
+    if (response.ok) toast("群名称已更新", "success");
   } else if (action === "group-invite") {
     const sub = document.getElementById("group-invite-select").value;
     if (!sub) return;
-    await api(`/api/groups/${groupId}/members`, {
+    const response = await api(`/api/groups/${groupId}/members`, {
       method: "POST",
       body: JSON.stringify({ member_subs: [sub] }),
     });
+    if (response.ok) toast("已邀请新成员", "success");
   } else if (action === "group-announcement") {
     const text = document.getElementById("group-announcement-input").value.trim();
-    await api(`/api/groups/${groupId}/announcement`, {
+    const response = await api(`/api/groups/${groupId}/announcement`, {
       method: "PATCH",
       body: JSON.stringify({ text }),
     });
+    if (response.ok) toast("公告已发布", "success");
   } else if (action === "group-remove") {
-    await api(`/api/groups/${groupId}/members/${encodeURIComponent(button.dataset.sub)}`, {
+    const response = await api(`/api/groups/${groupId}/members/${encodeURIComponent(button.dataset.sub)}`, {
       method: "DELETE",
     });
+    if (response.ok) toast("已移除成员", "success");
   } else if (action === "group-toggle-admin") {
-    await api(`/api/groups/${groupId}/members/${encodeURIComponent(button.dataset.sub)}`, {
+    const response = await api(`/api/groups/${groupId}/members/${encodeURIComponent(button.dataset.sub)}`, {
       method: "PATCH",
       body: JSON.stringify({ role: button.dataset.role === "admin" ? "member" : "admin" }),
     });
+    if (response.ok) toast("角色已更新", "success");
   } else if (action === "group-transfer") {
-    await api(`/api/groups/${groupId}/transfer`, {
+    const response = await api(`/api/groups/${groupId}/transfer`, {
       method: "POST",
       body: JSON.stringify({ new_owner_sub: button.dataset.sub }),
     });
+    if (response.ok) toast("群主已转让", "success");
   } else if (action === "group-leave") {
     const response = await api(`/api/groups/${groupId}/leave`, { method: "POST" });
     if (response.ok) {
       closeGroupPanel();
       await refreshGroups();
+      toast("已退出群聊", "success");
       return;
     }
   }
@@ -1891,6 +2007,7 @@ async function onMessagesClick(event) {
     if (response.ok) {
       message.starred = !message.starred;
       renderMessages();
+      toast(message.starred ? "已收藏" : "已取消收藏", "success");
     }
     return;
   }
@@ -1989,7 +2106,10 @@ function openForwardModal(message) {
         method: "POST",
         body: JSON.stringify({ message_id: state.forwardMessageId }),
       });
-      if (response.ok) modal.remove();
+      if (response.ok) {
+        modal.remove();
+        toast("已转发", "success");
+      }
       return;
     }
     if (event.target === modal || event.target.closest("[data-action='close-forward']")) {
@@ -2143,7 +2263,7 @@ async function startCall(kind) {
       video: kind === "video",
     });
   } catch {
-    window.alert("无法访问麦克风/摄像头，请检查浏览器权限");
+    toast("无法访问麦克风/摄像头，请检查浏览器权限", "error");
     return;
   }
   const pc = new RTCPeerConnection();
@@ -2313,7 +2433,7 @@ async function acceptIncomingCall() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
   } catch {
-    window.alert("无法访问麦克风/摄像头，请检查浏览器权限");
+    toast("无法访问麦克风/摄像头，请检查浏览器权限", "error");
     sendCallSignal("reject");
     endCallLocal();
     return;

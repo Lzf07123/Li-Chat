@@ -2002,3 +2002,97 @@ a {
 .profile-dropdown {
   overscroll-behavior: contain;
 }
+
+/* 全局 Toast 反馈 */
+.toast-region {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(92vw, 420px);
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px 10px 14px;
+  border-radius: 10px;
+  background: var(--chat-surface);
+  color: var(--chat-fg);
+  border: 1px solid var(--chat-border);
+  box-shadow: var(--shadow-lg);
+  font-size: 0.875rem;
+  animation: toast-in var(--motion-base) var(--ease-out);
+}
+
+.toast-success {
+  border-color: color-mix(in srgb, var(--chat-success) 40%, transparent);
+  background: var(--chat-success-soft);
+}
+
+.toast-error {
+  border-color: color-mix(in srgb, var(--chat-destructive) 40%, transparent);
+  background: var(--chat-destructive-soft);
+}
+
+.toast-text {
+  flex: 1;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.toast-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--chat-muted);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.toast-close:hover {
+  background: var(--chat-surface-2);
+  color: var(--chat-fg);
+}
+
+.toast-leave {
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+
+  .toast-leave {
+    transition: none;
+  }
+}
