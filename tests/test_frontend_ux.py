@@ -31,3 +31,14 @@ async def test_v21_toast_styles_present(api_client: httpx.AsyncClient) -> None:
     assert ".toast-region" in text
     assert ".toast-error" in text
     assert ".toast-success" in text
+
+
+async def test_v22_websocket_auto_reconnect(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function scheduleReconnect(" in text
+    assert "state.wsReconnectTimer" in text
+    assert "state.wsRetry" in text
+    assert "Math.min(30000" in text
+    assert '"visibilitychange"' in text
+    assert "已重新连接" in text
+    assert "state.loggingOut" in text

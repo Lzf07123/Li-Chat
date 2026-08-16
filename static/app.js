@@ -30,6 +30,9 @@ const state = {
   forwardMessageId: null,
   mentionSubs: [],
   mentionOpen: false,
+  wsRetry: 0,
+  wsReconnectTimer: null,
+  wsReconnecting: false,
   groups: [],
   activeGroupId: null,
   activeGroup: null,
@@ -2475,6 +2478,10 @@ function replaceMessage(message) {
 
 function logout() {
   state.loggingOut = true;
+  if (state.wsReconnectTimer) {
+    window.clearTimeout(state.wsReconnectTimer);
+    state.wsReconnectTimer = null;
+  }
   const form = document.createElement("form");
   form.method = "POST";
   form.action = "/oidc/logout";
@@ -2485,6 +2492,20 @@ function logout() {
   form.appendChild(input);
   document.body.appendChild(form);
   form.submit();
+}
+
+function scheduleReconnect() {
+  if (state.loggingOut || state.wsReconnectTimer) return;
+  const delay = Math.min(30000, 1000 * 2 ** state.wsRetry);
+  state.wsRetry += 1;
+  const dot = document.getElementById("ws-dot");
+  const label = document.getElementById("ws-text");
+  if (dot) dot.className = "status-dot status-connecting";
+  if (label) label.textContent = `已断开，${Math.round(delay / 1000)} 秒后重连…`;
+  state.wsReconnectTimer = window.setTimeout(() => {
+    state.wsReconnectTimer = null;
+    if (document.visibilityState === "visible") connectWebSocket();
+  }, delay);
 }
 
 function connectWebSocket() {
@@ -2503,7 +2524,17 @@ function connectWebSocket() {
     if (label) label.textContent = text;
   }
 
-  socket.addEventListener("open", () => setStatus("connected", "已连接"));
+  socket.addEventListener("open", () => {
+    state.wsRetry = 0;
+    if (state.wsReconnecting) {
+      state.wsReconnecting = false;
+      toast("已重新连接", "success");
+      refreshSidebar();
+      if (state.activeSub) loadHistory();
+      else if (state.activeGroupId !== null) loadGroupHistory();
+    }
+    setStatus("connected", "已连接");
+  });
   socket.addEventListener("error", () => setStatus("disconnected", "连接已断开"));
   socket.addEventListener("message", (event) => {
     try {
@@ -2515,6 +2546,7 @@ function connectWebSocket() {
   socket.addEventListener("close", (event) => {
     if (state.call) endCallLocal();
     if (event.code === 4401) {
+      state.wsReconnecting = false;
       if (state.loggingOut) {
         setStatus("disconnected", "已退出登录");
         return;
@@ -2523,7 +2555,10 @@ function connectWebSocket() {
       window.location.href = "/";
       return;
     }
+    if (state.loggingOut) return;
     setStatus("disconnected", "连接已断开");
+    state.wsReconnecting = true;
+    scheduleReconnect();
   });
 
   state.pingTimer = window.setInterval(() => {
@@ -2532,6 +2567,18 @@ function connectWebSocket() {
     }
   }, 25000);
 }
+
+window.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  const socket = state.ws;
+  if (!state.loggingOut && (!socket || socket.readyState === WebSocket.CLOSED)) {
+    if (state.wsReconnectTimer) {
+      window.clearTimeout(state.wsReconnectTimer);
+      state.wsReconnectTimer = null;
+    }
+    connectWebSocket();
+  }
+});
 
 window.addEventListener("pageshow", (event) => {
   if (!event.persisted) return;
