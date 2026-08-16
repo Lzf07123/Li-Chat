@@ -119,3 +119,13 @@ async def test_v29_title_badge_and_desktop_notifications(api_client: httpx.Async
     assert "Notification" in text
     assert "lichat-desktop-notify" in text
     assert "open-notify-settings" in text
+
+
+async def test_v30_keyboard_shortcuts_and_help(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function onGlobalKeydown(" in text
+    assert "function openShortcutsModal(" in text
+    assert "event.metaKey" in text
+    assert "event.ctrlKey" in text
+    assert '"?"' in text
+    assert "open-shortcuts" in text

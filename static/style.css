@@ -2337,3 +2337,35 @@ a {
   margin: 8px 0;
   cursor: pointer;
 }
+
+/* 快捷键帮助 */
+.shortcut-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shortcut-keys {
+  padding: 3px 8px;
+  border: 1px solid var(--chat-border);
+  border-radius: 6px;
+  background: var(--chat-surface-2);
+  font-size: 0.8rem;
+  color: var(--chat-fg);
+  white-space: nowrap;
+}
+
+.shortcut-desc {
+  font-size: 0.85rem;
+  color: var(--chat-muted);
+}

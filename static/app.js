@@ -324,6 +324,9 @@ function headerHtml() {
           <button id="open-notify-settings" class="profile-menu-item" role="menuitem" type="button">
             通知设置
           </button>
+          <button id="open-shortcuts" class="profile-menu-item" role="menuitem" type="button">
+            快捷键
+          </button>
           <button id="logout" class="profile-menu-item" role="menuitem" type="button">
             退出登录
           </button>
@@ -448,6 +451,8 @@ function renderLoggedIn() {
   document
     .getElementById("open-notify-settings")
     .addEventListener("click", openNotifySettingsModal);
+  document.getElementById("open-shortcuts").addEventListener("click", openShortcutsModal);
+  document.addEventListener("keydown", onGlobalKeydown);
   document.getElementById("search-form").addEventListener("submit", onSearch);
   document.getElementById("search-form").addEventListener("click", onSearchModeClick);
   document.getElementById("search-results").addEventListener("click", onSearchResultClick);
@@ -733,6 +738,93 @@ function openNotifySettingsModal() {
       modal.remove();
     }
   });
+}
+
+const SHORTCUTS = [
+  ["Ctrl/Cmd + K", "聚焦搜索框"],
+  ["Ctrl/Cmd + Enter", "发送当前消息"],
+  ["Esc", "关闭弹层 / 退出编辑"],
+  ["?", "打开快捷键帮助"],
+];
+
+function openShortcutsModal() {
+  setProfileMenu(false);
+  const rows = SHORTCUTS.map(
+    ([keys, description]) =>
+      `<li class="shortcut-row">
+        <kbd class="shortcut-keys">${escapeHtml(keys)}</kbd>
+        <span class="shortcut-desc">${escapeHtml(description)}</span>
+      </li>`
+  ).join("");
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="shortcuts-modal" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <h3 class="modal-title">键盘快捷键</h3>
+        <ul class="shortcut-list">${rows}</ul>
+        <div class="modal-actions">
+          <button class="btn btn-primary" type="button" data-action="close-shortcuts">关闭</button>
+        </div>
+      </div>
+    </div>`
+  );
+  const modal = document.getElementById("shortcuts-modal");
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal || event.target.closest("[data-action='close-shortcuts']")) {
+      modal.remove();
+    }
+  });
+}
+
+function onGlobalKeydown(event) {
+  const mod = event.ctrlKey || event.metaKey;
+  if (mod && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    const input = document.getElementById("search-input");
+    if (input) input.focus();
+    return;
+  }
+  if (mod && event.key === "Enter") {
+    const composer =
+      state.activeGroupId !== null
+        ? document.getElementById("group-composer")
+        : state.activeSub
+          ? document.getElementById("composer")
+          : null;
+    if (composer && !composer.hidden) {
+      event.preventDefault();
+      composer.requestSubmit();
+    }
+    return;
+  }
+  if (event.key === "Escape") {
+    const modal = document.querySelector(".modal-overlay");
+    if (modal) {
+      modal.remove();
+      return;
+    }
+    const viewer = document.getElementById("image-viewer");
+    if (viewer) {
+      viewer.remove();
+      document.removeEventListener("keydown", closeImageKeydown);
+      return;
+    }
+    const dropdown = document.getElementById("profile-dropdown");
+    if (dropdown && !dropdown.hidden) {
+      setProfileMenu(false);
+      return;
+    }
+    if (state.editingId) {
+      cancelEditing();
+    }
+    return;
+  }
+  if (event.key === "?" && !mod && !event.altKey) {
+    const target = event.target;
+    if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+    event.preventDefault();
+    openShortcutsModal();
+  }
 }
 
 function updateTitleBadge() {
