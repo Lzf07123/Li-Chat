@@ -28,6 +28,7 @@
 | typing 信令防护 | 仅好友间中继、`start|stop` 白名单、按 (发送方,目标) 2 秒限频，非法请求静默丢弃 | `app/ws/relay.py`、`app/ws/manager.py` |
 | 消息编辑/撤回鉴权 | 仅发送者、5 分钟窗口、撤回后不可再编辑；撤回清空 content 落库，历史与 WS 只回墓碑不泄露原文 | `app/messages/service.py` |
 | 表情回应防护 | 仅会话参与者可回应；emoji 1–8 字符、禁空白与控制符；已撤回消息 409；聚合只回 `{emoji,count}` 不泄露用户清单 | `app/messages/service.py` |
+| 群聊权限矩阵 | 详情仅成员可见；改名/邀请需 owner/admin；移除规则（admin 不可移除 owner/admin）；角色调整/转让仅 owner；退出 owner 需先转让；邀请好友闸 + 容量上限 | `app/groups/service.py` |
 | 消息长度与 XSS | 内容 1–2000 strip 校验；前端 `textContent`/escapeHtml 渲染不拼 HTML | `app/api/messages.py`、`static/app.js` |
 | 敏感接口禁缓存 | `/api/*` 响应统一 `Cache-Control: no-store`，防浏览器/代理缓存会话数据 | `app/main.py` |
 

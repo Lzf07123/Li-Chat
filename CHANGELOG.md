@@ -4,6 +4,10 @@
 
 ### 功能
 
+- 群聊管理（里程碑三）：建群（初始成员必须为创建者好友、单请求 ≤20、容量 200）、群列表/
+  详情、改名（owner/admin）、邀请（owner/admin，好友闸）、移除（admin 不得移除 owner 或
+  admin，owner 可移除 admin）、角色调整（owner 专属）、退出（owner 需先转让）、转让群主；
+  WS `group_event` 全成员广播；前端群列表、建群弹层、群详情与成员/角色管理
 - 表情回应：`reactions` 表复合主键幂等 toggle（`PUT`/`DELETE
   /api/conversations/{sub}/messages/{id}/reactions`，emoji 1–8 字符、禁空白与控制符、
   已撤回 409、非参与者 404）；历史消息附 `reactions` 聚合与 `my_reactions`；WS

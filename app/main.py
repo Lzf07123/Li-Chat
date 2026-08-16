@@ -16,6 +16,7 @@ from starlette.responses import Response
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from app.api.friends import router as friends_router
+from app.api.groups import router as groups_router
 from app.api.messages import router as messages_router
 from app.api.users import router as users_router
 from app.auth.session import get_session
@@ -180,6 +181,7 @@ def create_app(
     app.include_router(sso_router)
     app.include_router(users_router)
     app.include_router(friends_router)
+    app.include_router(groups_router)
     app.include_router(messages_router)
 
     @app.websocket("/ws")

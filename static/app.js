@@ -20,6 +20,9 @@ const state = {
   activePeer: null,
   editingId: null,
   pickerMessageId: null,
+  groups: [],
+  activeGroupId: null,
+  activeGroup: null,
   messages: [],
   nextBefore: null,
   loadingHistory: false,
@@ -196,6 +199,14 @@ function mainHtml() {
         <p id="friends-empty" class="sidebar-empty">还没有好友，先搜索添加</p>
         <ul id="friends-list" class="contact-list"></ul>
       </section>
+      <section class="sidebar-section">
+        <h2 class="sidebar-title">群聊
+          <button id="group-create" class="icon-btn refresh-btn" type="button"
+            aria-label="新建群聊">＋</button>
+        </h2>
+        <p id="groups-empty" class="sidebar-empty">还没有群聊</p>
+        <ul id="groups-list" class="contact-list"></ul>
+      </section>
     </aside>
     <section id="chat-panel" class="chat-panel" aria-label="聊天">
       <div id="chat-empty" class="chat-empty">
@@ -225,6 +236,7 @@ function mainHtml() {
           <button class="btn btn-primary" type="submit">发送</button>
         </form>
       </div>
+      <div id="group-panel" class="group-panel" hidden></div>
     </section>
   </main>
   ${footerHtml()}`;
@@ -243,6 +255,8 @@ function renderLoggedIn() {
   document.getElementById("recommend-list").addEventListener("click", onRecommendListClick);
   document.getElementById("recommend-refresh").addEventListener("click", loadRecommendations);
   document.getElementById("friends-list").addEventListener("click", onFriendListClick);
+  document.getElementById("groups-list").addEventListener("click", onGroupListClick);
+  document.getElementById("group-create").addEventListener("click", openGroupCreateModal);
   document.getElementById("composer").addEventListener("submit", onComposerSubmit);
   document.getElementById("message-input").addEventListener("keydown", onComposerKeydown);
   document.getElementById("message-input").addEventListener("input", onComposerInput);
@@ -250,6 +264,7 @@ function renderLoggedIn() {
   document.getElementById("messages").addEventListener("click", onMessagesClick);
   document.getElementById("load-older").addEventListener("click", loadOlder);
   document.getElementById("chat-back").addEventListener("click", closeChat);
+  document.getElementById("group-panel").addEventListener("click", onGroupPanelClick);
   refreshSidebar();
 }
 
@@ -282,11 +297,12 @@ function onProfileKeydown(event) {
 
 async function refreshSidebar() {
   try {
-    const [friendsRes, requestsRes, recommendRes, conversationsRes] = await Promise.all([
+    const [friendsRes, requestsRes, recommendRes, conversationsRes, groupsRes] = await Promise.all([
       api("/api/friends"),
       api("/api/friends/requests"),
       api("/api/friends/recommendations"),
       api("/api/conversations"),
+      api("/api/groups"),
     ]);
     if (friendsRes.ok) state.friends = (await friendsRes.json()).friends;
     if (requestsRes.ok) state.requests = await requestsRes.json();
@@ -296,6 +312,7 @@ async function refreshSidebar() {
     if (conversationsRes.ok) {
       state.conversations = (await conversationsRes.json()).conversations;
     }
+    if (groupsRes.ok) state.groups = (await groupsRes.json()).groups;
     renderSidebar();
   } catch {
     /* 登录失效已由 api() 统一跳转 */
@@ -328,6 +345,10 @@ function renderSidebar() {
   document.getElementById("friends-empty").hidden = friends.length > 0;
   document.getElementById("friends-list").innerHTML = friends
     .map((friend) => friendHtml(friend, summaries.get(friend.sub)))
+    .join("");
+  document.getElementById("groups-empty").hidden = state.groups.length > 0;
+  document.getElementById("groups-list").innerHTML = state.groups
+    .map(groupHtml)
     .join("");
 }
 
@@ -390,6 +411,20 @@ function friendHtml(friend, summary) {
       ${unread > 0
         ? `<span class="badge badge-unread" data-role="unread" data-sub="${escapeHtml(friend.sub)}">${unread}</span>`
         : ""}
+    </button>
+  </li>`;
+}
+
+function groupHtml(group) {
+  const count = group.members ? group.members.length : 0;
+  return `<li class="contact-item">
+    <button class="contact-button" type="button"
+      data-action="open-group" data-id="${group.id}">
+      <div class="avatar avatar-placeholder group-avatar" aria-hidden="true">#</div>
+      <span class="contact-main">
+        <span class="contact-name">${escapeHtml(group.name)}</span>
+        <span class="contact-preview">${count} 位成员</span>
+      </span>
     </button>
   </li>`;
 }
@@ -490,12 +525,261 @@ function onFriendListClick(event) {
   openChat(button.dataset.sub);
 }
 
+function onGroupListClick(event) {
+  const button = event.target.closest("[data-action='open-group']");
+  if (!button) return;
+  openGroup(Number(button.dataset.id));
+}
+
+async function openGroup(groupId) {
+  const response = await api(`/api/groups/${groupId}`);
+  if (!response.ok) return;
+  state.activeGroupId = groupId;
+  state.activeGroup = await response.json();
+  state.activeSub = null;
+  state.activePeer = null;
+  document.getElementById("chat-empty").hidden = true;
+  document.getElementById("chat-active").hidden = true;
+  document.getElementById("group-panel").hidden = false;
+  renderGroupPanel();
+  document.getElementById("app").classList.add("chat-open");
+}
+
+function closeGroupPanel() {
+  state.activeGroupId = null;
+  state.activeGroup = null;
+  document.getElementById("chat-empty").hidden = false;
+  document.getElementById("group-panel").hidden = true;
+  document.getElementById("app").classList.remove("chat-open");
+}
+
+function roleLabel(role) {
+  if (role === "owner") return "群主";
+  if (role === "admin") return "管理员";
+  return "成员";
+}
+
+function groupPanelHtml(group) {
+  const me = state.me.sub;
+  const myRole = (group.members.find((member) => member.user.sub === me) || {}).role;
+  const members = group.members
+    .map((member) => {
+      const isMe = member.user.sub === me;
+      const canRemove =
+        (myRole === "owner" || myRole === "admin") &&
+        member.role !== "owner" &&
+        !isMe &&
+        !(myRole === "admin" && member.role === "admin");
+      const ownerActions =
+        myRole === "owner" && !isMe
+          ? `<button class="btn btn-ghost btn-sm" type="button"
+              data-action="group-toggle-admin" data-sub="${escapeHtml(member.user.sub)}"
+              data-role="${member.role}">${member.role === "admin" ? "取消管理员" : "设为管理员"}</button>
+             <button class="btn btn-ghost btn-sm" type="button"
+              data-action="group-transfer" data-sub="${escapeHtml(member.user.sub)}">转让</button>`
+          : "";
+      const remove = canRemove
+        ? `<button class="btn btn-ghost btn-sm" type="button"
+            data-action="group-remove" data-sub="${escapeHtml(member.user.sub)}">移除</button>`
+        : "";
+      return `<li class="contact-item group-member">
+        ${avatarHtml(member.user)}
+        <span class="contact-main">
+          <span class="contact-name">${escapeHtml(displayName(member.user))}</span>
+          <span class="contact-preview">${roleLabel(member.role)}${isMe ? "（我）" : ""}</span>
+        </span>
+        <span class="contact-actions">${ownerActions}${remove}</span>
+      </li>`;
+    })
+    .join("");
+  const candidates = state.friends.filter(
+    (friend) => !group.members.some((member) => member.user.sub === friend.sub)
+  );
+  const inviteOptions = candidates
+    .map(
+      (friend) =>
+        `<option value="${escapeHtml(friend.sub)}">${escapeHtml(displayName(friend))}</option>`
+    )
+    .join("");
+  const manager = myRole === "owner" || myRole === "admin";
+  return `<header class="chat-header">
+      <button id="group-back" class="icon-btn chat-back" type="button" aria-label="返回列表">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M15 18l-6-6 6-6"/>
+        </svg>
+      </button>
+      <div class="chat-peer">
+        <div class="avatar avatar-placeholder group-avatar" aria-hidden="true">#</div>
+        <span class="chat-peer-main">
+          <span class="chat-peer-name">${escapeHtml(group.name)}</span>
+          <span class="chat-peer-status">${group.members.length} 位成员</span>
+        </span>
+      </div>
+    </header>
+    <div class="group-panel-body">
+      <section class="group-section">
+        <h3 class="group-section-title">成员</h3>
+        <ul class="contact-list">${members}</ul>
+      </section>
+      ${manager
+        ? `<section class="group-section">
+            <h3 class="group-section-title">管理</h3>
+            <div class="group-actions">
+              <div class="group-rename-row">
+                <input id="group-rename-input" class="input" maxlength="64"
+                  placeholder="新群名称" value="${escapeHtml(group.name)}" />
+                <button class="btn btn-secondary btn-sm" type="button"
+                  data-action="group-rename">改名</button>
+              </div>
+              <div class="group-rename-row">
+                <select id="group-invite-select" class="input">
+                  ${inviteOptions || `<option value="">没有可邀请的好友</option>`}
+                </select>
+                <button class="btn btn-secondary btn-sm" type="button"
+                  data-action="group-invite" ${candidates.length ? "" : "disabled"}>邀请</button>
+              </div>
+            </div>
+          </section>`
+        : ""}
+      <section class="group-section">
+        <button class="btn btn-ghost" type="button" data-action="group-leave">退出群聊</button>
+      </section>
+    </div>`;
+}
+
+function renderGroupPanel() {
+  const panel = document.getElementById("group-panel");
+  panel.innerHTML = groupPanelHtml(state.activeGroup);
+  const back = document.getElementById("group-back");
+  if (back) back.addEventListener("click", closeGroupPanel);
+}
+
+async function refreshGroups() {
+  const response = await api("/api/groups");
+  if (!response.ok) return;
+  state.groups = (await response.json()).groups;
+  renderSidebar();
+  if (state.activeGroupId !== null) {
+    const detail = await api(`/api/groups/${state.activeGroupId}`);
+    if (detail.ok) {
+      state.activeGroup = await detail.json();
+      renderGroupPanel();
+    } else {
+      closeGroupPanel();
+    }
+  }
+}
+
+function openGroupCreateModal() {
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="group-create-modal" role="dialog" aria-modal="true">
+      <form id="group-create-form" class="modal-card">
+        <h3 class="modal-title">新建群聊</h3>
+        <label class="sr-only" for="group-name-input">群名称</label>
+        <input id="group-name-input" class="input" maxlength="64"
+          placeholder="群名称（1–64 字）" required />
+        <div class="group-pick-list" id="group-pick-list">${
+          state.friends.length
+            ? state.friends
+                .map(
+                  (friend) => `<label class="group-pick">
+                    <input type="checkbox" value="${escapeHtml(friend.sub)}" />
+                    <span>${escapeHtml(displayName(friend))}</span>
+                  </label>`
+                )
+                .join("")
+            : `<p class="muted">还没有好友，先添加好友再建群</p>`
+        }</div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" data-action="close-group-create">取消</button>
+          <button class="btn btn-primary" type="submit">创建</button>
+        </div>
+      </form>
+    </div>`
+  );
+  const modal = document.getElementById("group-create-modal");
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal || event.target.closest("[data-action='close-group-create']")) {
+      modal.remove();
+    }
+  });
+  document.getElementById("group-create-form").addEventListener("submit", onCreateGroupSubmit);
+  document.getElementById("group-name-input").focus();
+}
+
+async function onCreateGroupSubmit(event) {
+  event.preventDefault();
+  const name = document.getElementById("group-name-input").value.trim();
+  const memberSubs = [...document.querySelectorAll("#group-pick-list input:checked")].map(
+    (input) => input.value
+  );
+  const response = await api("/api/groups", {
+    method: "POST",
+    body: JSON.stringify({ name, member_subs: memberSubs }),
+  });
+  if (response.ok) {
+    const group = await response.json();
+    document.getElementById("group-create-modal").remove();
+    await refreshGroups();
+    openGroup(group.id);
+  }
+}
+
+async function onGroupPanelClick(event) {
+  const button = event.target.closest("[data-action]");
+  if (!button) return;
+  const groupId = state.activeGroupId;
+  if (groupId === null) return;
+  const action = button.dataset.action;
+  if (action === "group-rename") {
+    const name = document.getElementById("group-rename-input").value.trim();
+    if (!name) return;
+    await api(`/api/groups/${groupId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    });
+  } else if (action === "group-invite") {
+    const sub = document.getElementById("group-invite-select").value;
+    if (!sub) return;
+    await api(`/api/groups/${groupId}/members`, {
+      method: "POST",
+      body: JSON.stringify({ member_subs: [sub] }),
+    });
+  } else if (action === "group-remove") {
+    await api(`/api/groups/${groupId}/members/${encodeURIComponent(button.dataset.sub)}`, {
+      method: "DELETE",
+    });
+  } else if (action === "group-toggle-admin") {
+    await api(`/api/groups/${groupId}/members/${encodeURIComponent(button.dataset.sub)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ role: button.dataset.role === "admin" ? "member" : "admin" }),
+    });
+  } else if (action === "group-transfer") {
+    await api(`/api/groups/${groupId}/transfer`, {
+      method: "POST",
+      body: JSON.stringify({ new_owner_sub: button.dataset.sub }),
+    });
+  } else if (action === "group-leave") {
+    const response = await api(`/api/groups/${groupId}/leave`, { method: "POST" });
+    if (response.ok) {
+      closeGroupPanel();
+      await refreshGroups();
+      return;
+    }
+  }
+  await refreshGroups();
+}
+
 async function openChat(sub) {
   const peer =
     state.friends.find((friend) => friend.sub === sub) ||
     state.searchResults.find((result) => result.sub === sub) ||
     null;
   if (!peer) return;
+  state.activeGroupId = null;
+  state.activeGroup = null;
   state.activeSub = sub;
   state.activePeer = peer;
   state.editingId = null;
@@ -504,6 +788,7 @@ async function openChat(sub) {
   state.nextBefore = null;
   document.getElementById("chat-empty").hidden = true;
   document.getElementById("chat-active").hidden = false;
+  document.getElementById("group-panel").hidden = true;
   document.getElementById("chat-peer").innerHTML = `
     ${avatarHtml(peer)}
     <span class="chat-peer-main">
@@ -824,6 +1109,8 @@ function handleServerMessage(data) {
     replaceMessage(data.message);
   } else if (data.type === "message_reaction") {
     applyReaction(data);
+  } else if (data.type === "group_event") {
+    refreshGroups();
   } else if (data.type === "friend_event") {
     refreshSidebar();
   }
@@ -960,6 +1247,9 @@ window.addEventListener("pageshow", (event) => {
   state.activePeer = null;
   state.editingId = null;
   state.pickerMessageId = null;
+  state.groups = [];
+  state.activeGroupId = null;
+  state.activeGroup = null;
   state.nextBefore = null;
   loadMe();
 });

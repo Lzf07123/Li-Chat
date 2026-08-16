@@ -169,6 +169,8 @@ presence 只对好友广播（防关系图谱外泄）；typing 校验好友关�
   小圈子，群成员准入以「邀请人与目标为好友」为闸）。
 - `DELETE /api/groups/{id}/members/{sub}`：移除，owner/admin（admin 不得移除 owner 或其他
   admin，owner 可移除 admin）。
+- `PATCH /api/groups/{id}/members/{sub}`：`{"role":"admin|member"}`，仅 owner 可调整角色；
+  owner 不可改自身角色。
 - `POST /api/groups/{id}/leave`：非 owner 退出；owner 需先转让或解散。
 - `POST /api/groups/{id}/transfer`：owner 转让给群内成员。
 - 全量推 `group_event` 给受影响成员（created/renamed/member_joined/member_removed/

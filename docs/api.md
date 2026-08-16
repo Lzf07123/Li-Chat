@@ -20,6 +20,15 @@
 | POST | `/api/friends/requests/{from_sub}/accept` | 会话 + CSRF | 仅被申请人可接受；`{"status":"accepted"}` |
 | POST | `/api/friends/requests/{from_sub}/reject` | 会话 + CSRF | 仅被申请人可拒绝；`{"status":"rejected"}` |
 | DELETE | `/api/friends/{sub}` | 会话 + CSRF | 解除与对方的任何关系（好友或撤回申请）；`{"status":"removed"}` |
+| POST | `/api/groups` | 会话 + CSRF | 建群 `{"name"(1–64),"member_subs":[...]}`（≤20、须为创建者好友）；201 返回群详情 |
+| GET | `/api/groups` | 会话 | 我加入的群列表 `{"groups":[Group]}`（按 id 倒序） |
+| GET | `/api/groups/{id}` | 会话 | 群详情（仅成员可见）；Group = `{id,name,owner_sub,created_at,members:[{user,role,joined_at}]}` |
+| PATCH | `/api/groups/{id}` | 会话 + CSRF | 改名（owner/admin）`{"name"}` |
+| POST | `/api/groups/{id}/members` | 会话 + CSRF | 邀请（owner/admin；被邀者须为邀请人好友，≤20） |
+| DELETE | `/api/groups/{id}/members/{sub}` | 会话 + CSRF | 移除（owner/admin；admin 不可移除 owner/admin，owner 可移除 admin） |
+| PATCH | `/api/groups/{id}/members/{sub}` | 会话 + CSRF | 调整角色 `{"role":"admin|member"}`（仅 owner，不可改 owner 自身） |
+| POST | `/api/groups/{id}/leave` | 会话 + CSRF | 退出（owner 须先转让，409） |
+| POST | `/api/groups/{id}/transfer` | 会话 + CSRF | 转让 `{"new_owner_sub"}`（仅 owner，目标须为成员） |
 | POST | `/api/conversations/{sub}/messages` | 会话 + CSRF | 发纯文本 `{"content":"..."}`（1–2000，strip 校验）；201 返回完整消息；400 自聊 / 403 非好友 / 404 未知 |
 | GET | `/api/conversations/{sub}/messages?limit=&before=` | 会话 | 历史倒序分页（limit 默认 50、1–100；before 为上一页最小 id 不含）；`{"messages":[...],"next_before":int|null}` |
 | PATCH | `/api/conversations/{sub}/messages/{id}` | 会话 + CSRF | 编辑 `{"content"}`；仅发送者、未撤回、5 分钟内；403 非发送者 / 404 不存在 / 409 已撤回或超窗 |
@@ -38,7 +47,7 @@
 - 客户端可发 `{"type":"typing","to":"<sub>","action":"start|stop"}`：仅双方为好友且满足
   2 秒限频时，服务端原样中继为 `{"type":"typing","from":"<sub>","action":...}`；否则静默丢弃。
 - 回程登出会主动以 4401 断开该用户连接，前端据此跳转登录。
-- 服务端推送（只增不改，客户端写操作一律走 REST）：`{"type":"message","message":{id,sender_sub,recipient_sub,content,created_at,edited_at?}}` → 发送方与接收方；`{"type":"message_edited","message":...}` / `{"type":"message_deleted","message":{...,deleted:true}}` → 双方（撤回墓碑不含原文）；`{"type":"message_reaction","message_id","emoji","action":"added|removed","count","by_sub"}` → 双方；`{"type":"read_receipt","by_sub","peer_sub","last_read_id"}` → 会话另一方；`{"type":"presence","sub","online":true}` / `{"type":"presence","sub","online":false,"last_seen_at"}` → 该用户全部好友（上线/全部连接释放时）；`{"type":"friend_event","event":"request_received|request_accepted|request_rejected|friend_removed","by_sub":...,"at":...}` → 相关方（申请→被申请人；接受/拒绝→申请人；解除→关系另一方）。
+- 服务端推送（只增不改，客户端写操作一律走 REST）：`{"type":"message","message":{id,sender_sub,recipient_sub,content,created_at,edited_at?}}` → 发送方与接收方；`{"type":"message_edited","message":...}` / `{"type":"message_deleted","message":{...,deleted:true}}` → 双方（撤回墓碑不含原文）；`{"type":"message_reaction","message_id","emoji","action":"added|removed","count","by_sub"}` → 双方；`{"type":"read_receipt","by_sub","peer_sub","last_read_id"}` → 会话另一方；`{"type":"presence","sub","online":true}` / `{"type":"presence","sub","online":false,"last_seen_at"}` → 该用户全部好友（上线/全部连接释放时）；`{"type":"group_event","event":"created|renamed|member_joined|member_removed|member_left|role_changed|owner_changed","group":Group,"by_sub":...,"at":...}` → 群全体成员；`{"type":"friend_event","event":"request_received|request_accepted|request_rejected|friend_removed","by_sub":...,"at":...}` → 相关方（申请→被申请人；接受/拒绝→申请人；解除→关系另一方）。
 
 ## CSRF 约定
 
