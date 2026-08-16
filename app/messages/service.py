@@ -388,9 +388,13 @@ async def _dm_conversation_summaries(
     last_by_peer: dict[str, Message] = {}
     unread_by_peer: dict[str, int] = {}
     if subs:
-        rows = (
+        grouped = (
             await db.execute(
-                select(Message)
+                select(
+                    Message.participant_lo,
+                    Message.participant_hi,
+                    func.max(Message.id).label("max_id"),
+                )
                 .where(
                     or_(
                         and_(
@@ -404,21 +408,42 @@ async def _dm_conversation_summaries(
                     )
                 )
                 .where(Message.id.not_in(_hidden_message_ids(db, me_sub)))
-                .order_by(Message.id.desc())
+                .group_by(Message.participant_lo, Message.participant_hi)
             )
-        ).scalars().all()
-        for message in rows:
-            peer = (
-                message.recipient_sub
-                if message.sender_sub == me_sub
-                else message.sender_sub
+        ).all()
+        last_ids = [row.max_id for row in grouped]
+        if last_ids:
+            last_rows = (
+                await db.execute(select(Message).where(Message.id.in_(last_ids)))
+            ).scalars().all()
+            for message in last_rows:
+                peer = (
+                    message.recipient_sub
+                    if message.sender_sub == me_sub
+                    else message.sender_sub
+                )
+                last_by_peer[peer] = message
+        for peer_sub in subs:
+            cursor = reads.get(peer_sub)
+            last_read_id = cursor.last_read_message_id if cursor else 0
+            lo, hi = pair_key(me_sub, peer_sub)
+            unread = int(
+                (
+                    await db.execute(
+                        select(func.count())
+                        .select_from(Message)
+                        .where(
+                            Message.participant_lo == lo,
+                            Message.participant_hi == hi,
+                            Message.sender_sub == peer_sub,
+                            Message.id > last_read_id,
+                            Message.id.not_in(_hidden_message_ids(db, me_sub)),
+                        )
+                    )
+                ).scalar_one()
             )
-            last_by_peer.setdefault(peer, message)
-            if message.sender_sub != me_sub:
-                cursor = reads.get(peer)
-                last_read_id = cursor.last_read_message_id if cursor else 0
-                if message.id > last_read_id:
-                    unread_by_peer[peer] = unread_by_peer.get(peer, 0) + 1
+            if unread > 0:
+                unread_by_peer[peer_sub] = unread
     summaries: list[dict[str, Any]] = []
     for friend in friends:
         friend_sub = friend["sub"]
@@ -459,27 +484,62 @@ async def _group_conversation_summaries(
         )
     ).scalars().all()
     cursors = {row.group_id: row.last_read_message_id for row in read_rows}
-    messages = (
+    grouped = (
         await db.execute(
-            select(Message)
+            select(
+                Message.group_id,
+                func.max(Message.id).label("max_id"),
+            )
             .where(
                 Message.conversation_type == "group",
                 Message.group_id.in_(list(group_ids)),
             )
             .where(Message.id.not_in(_hidden_message_ids(db, me_sub)))
-            .order_by(Message.id.desc())
+            .group_by(Message.group_id)
         )
-    ).scalars().all()
+    ).all()
     last_by_group: dict[int, Message] = {}
+    last_ids = [row.max_id for row in grouped]
+    if last_ids:
+        last_rows = (
+            await db.execute(select(Message).where(Message.id.in_(last_ids)))
+        ).scalars().all()
+        for message in last_rows:
+            if message.group_id is not None:
+                last_by_group[message.group_id] = message
     unread_by_group: dict[int, int] = {}
-    for message in messages:
-        group_id = message.group_id
-        if group_id is None:
-            continue
-        last_by_group.setdefault(group_id, message)
-        if message.sender_sub != me_sub and message.id > cursors.get(group_id, 0):
-            unread_by_group[group_id] = unread_by_group.get(group_id, 0) + 1
+    for group_id in group_ids:
+        unread = int(
+            (
+                await db.execute(
+                    select(func.count())
+                    .select_from(Message)
+                    .where(
+                        Message.conversation_type == "group",
+                        Message.group_id == group_id,
+                        Message.sender_sub != me_sub,
+                        Message.id > cursors.get(group_id, 0),
+                        Message.id.not_in(_hidden_message_ids(db, me_sub)),
+                    )
+                )
+            ).scalar_one()
+        )
+        if unread > 0:
+            unread_by_group[group_id] = unread
     summaries: list[dict[str, Any]] = []
+    member_rows = (
+        await db.execute(
+            select(
+                GroupMember.group_id,
+                func.count().label("member_count"),
+            )
+            .where(GroupMember.group_id.in_(list(group_ids)))
+            .group_by(GroupMember.group_id)
+        )
+    ).all()
+    member_counts: dict[int, int] = {
+        group_id: count for group_id, count in member_rows
+    }
     for group in groups:
         last = last_by_group.get(group.id)
         summaries.append(
@@ -489,7 +549,7 @@ async def _group_conversation_summaries(
                     "id": group.id,
                     "name": group.name,
                     "owner_sub": group.owner_sub,
-                    "member_count": await _group_member_count(db, group.id),
+                    "member_count": member_counts.get(group.id, 0),
                     "avatar_url": group.avatar_url,
                 },
                 "last_message": message_payload(last) if last is not None else None,
