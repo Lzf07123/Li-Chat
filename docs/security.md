@@ -36,6 +36,7 @@
 | 收藏边界 | 只能收藏自己可见范围（单聊双方/群成员）的消息；越权 404 | `app/messages/service.py` |
 | 会话设置归属 | 置顶/免打扰键必须归属本人（单聊包含自己、群为成员），越权 404 | `app/messages/service.py` |
 | 群公告/头像权限 | 仅 owner/admin 可维护；头像必须为本人上传的图片；公告长度上限 | `app/groups/service.py` |
+| 群消息操作边界 | 编辑/撤回仅发送者且 5 分钟内；表情仅群成员；非成员 404 | `app/messages/service.py` |
 | 搜索信息泄露防护 | 消息搜索限定自己可见范围（单聊双方 / 群成员）；排除已撤回；命中片段截断；q ≤64、limit ≤50 | `app/search/service.py` |
 | 资料与头像防护 | 昵称/简介长度校验；简介仅好友可见（搜索不回传）；头像必须为本人上传的图片；CSRF 保护 | `app/api/users.py`、`app/friends/service.py` |
 | 呼叫信令防护 | 仅好友间、载荷 ≤16KB、ICE 限频、状态机校验非法迁移；信令不落库、SDP 不记日志；媒体 P2P 不经服务端 | `app/ws/calls.py` |

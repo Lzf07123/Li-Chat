@@ -1404,7 +1404,7 @@ function messageHtml(message) {
     body = `<div class="message-bubble">${replyPreview}${escapeHtml(message.content)}</div>`;
   }
   const editActions =
-    own && !state.activeGroupId
+    own
       ? `<button class="message-action" type="button"
           data-action="edit" data-id="${message.id}">编辑</button>
          <button class="message-action" type="button"
@@ -1427,7 +1427,7 @@ function messageHtml(message) {
     ? '<span class="message-read">已转发</span>'
     : "";
   const mentionMark = mentioned ? '<span class="message-read">@我</span>' : "";
-  const reactions = message.deleted || state.activeGroupId ? "" : reactionsHtml(message);
+  const reactions = message.deleted ? "" : reactionsHtml(message);
   return `<div class="message ${own ? "message-own" : "message-other"}${
     mentioned ? " message-mentioned" : ""
   }">
@@ -1538,16 +1538,21 @@ async function onGroupComposerSubmit(event) {
   const input = document.getElementById("group-message-input");
   const content = input.value.trim();
   if (!content || !state.activeGroupId) return;
-  const response = await api(`/api/groups/${state.activeGroupId}/messages`, {
-    method: "POST",
-    body: JSON.stringify({
-      content,
-      reply_to_id: state.replyTo ? state.replyTo.id : undefined,
-      mentions: state.mentionSubs,
-    }),
+  const editingId = state.editingId;
+  const url = editingId
+    ? `/api/groups/${state.activeGroupId}/messages/${editingId}`
+    : `/api/groups/${state.activeGroupId}/messages`;
+  const body = { content };
+  if (!editingId && state.replyTo) body.reply_to_id = state.replyTo.id;
+  if (!editingId) body.mentions = state.mentionSubs;
+  const response = await api(url, {
+    method: editingId ? "PATCH" : "POST",
+    body: JSON.stringify(body),
   });
   if (response.ok) {
     clearReply();
+    state.editingId = null;
+    input.placeholder = "输入消息，Enter 发送，Shift+Enter 换行";
     state.mentionSubs = [];
     state.mentionOpen = false;
     const mentionList = document.getElementById("group-mention-list");
@@ -1594,6 +1599,10 @@ function onMentionPick(event) {
 }
 
 function onGroupComposerKeydown(event) {
+  if (event.key === "Escape" && state.editingId) {
+    cancelEditing();
+    return;
+  }
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     document.getElementById("group-composer").requestSubmit();
@@ -1730,7 +1739,7 @@ async function onMessagesClick(event) {
     return;
   }
   const sub = state.activeSub;
-  if (!sub) return;
+  const groupId = state.activeGroupId;
   if (button.dataset.action === "react-picker") {
     const numericId = Number(messageId);
     state.pickerMessageId = state.pickerMessageId === numericId ? null : numericId;
@@ -1742,7 +1751,9 @@ async function onMessagesClick(event) {
     if (!message) return;
     const emoji = button.dataset.emoji;
     const mine = (message.my_reactions || []).includes(emoji);
-    const url = `/api/conversations/${encodeURIComponent(sub)}/messages/${messageId}/reactions`;
+    const url = groupId
+      ? `/api/groups/${groupId}/messages/${messageId}/reactions`
+      : `/api/conversations/${encodeURIComponent(sub)}/messages/${messageId}/reactions`;
     await api(url, {
       method: mine ? "DELETE" : "PUT",
       body: mine ? undefined : JSON.stringify({ emoji }),
@@ -1751,22 +1762,26 @@ async function onMessagesClick(event) {
     return;
   }
   if (button.dataset.action !== "edit" && button.dataset.action !== "withdraw") return;
+  if (!sub && !groupId) return;
   if (button.dataset.action === "edit") {
     const message = state.messages.find((item) => String(item.id) === messageId);
     if (!message || message.deleted) return;
     state.editingId = message.id;
-    const input = document.getElementById("message-input");
+    const input = groupId
+      ? document.getElementById("group-message-input")
+      : document.getElementById("message-input");
     input.value = message.content;
     input.placeholder = "正在编辑消息，Enter 保存，Esc 取消";
     input.focus();
     return;
   }
-  const response = await api(
-    `/api/conversations/${encodeURIComponent(sub)}/messages/${messageId}`,
-    { method: "DELETE" }
-  );
+  const url = groupId
+    ? `/api/groups/${groupId}/messages/${messageId}`
+    : `/api/conversations/${encodeURIComponent(sub)}/messages/${messageId}`;
+  const response = await api(url, { method: "DELETE" });
   if (!response.ok && response.status === 409) {
-    await loadHistory();
+    if (groupId) await loadGroupHistory();
+    else await loadHistory();
   }
 }
 
@@ -1840,7 +1855,9 @@ function onComposerKeydown(event) {
 
 function cancelEditing() {
   state.editingId = null;
-  const input = document.getElementById("message-input");
+  const input = state.activeGroupId
+    ? document.getElementById("group-message-input")
+    : document.getElementById("message-input");
   input.value = "";
   input.placeholder = "输入消息，Enter 发送，Shift+Enter 换行";
 }

@@ -849,6 +849,49 @@ async def delete_message(
     return message
 
 
+async def _own_editable_group_message(
+    db: AsyncSession, me_sub: str, group_id: int, message_id: int
+) -> Message:
+    if await group_membership(db, group_id, me_sub) is None:
+        raise HTTPException(status_code=404, detail="group not found")
+    message = await db.get(Message, message_id)
+    if (
+        message is None
+        or message.conversation_type != "group"
+        or message.group_id != group_id
+    ):
+        raise HTTPException(status_code=404, detail="message not found in group")
+    if message.sender_sub != me_sub:
+        raise HTTPException(status_code=403, detail="only the sender can modify this message")
+    if message.deleted_at is not None:
+        raise HTTPException(status_code=409, detail="message already deleted")
+    if utcnow() - message.created_at > timedelta(seconds=EDIT_WINDOW_SECONDS):
+        raise HTTPException(status_code=409, detail="edit window expired")
+    return message
+
+
+async def edit_group_message(
+    db: AsyncSession, me_sub: str, group_id: int, message_id: int, content: str
+) -> Message:
+    message = await _own_editable_group_message(db, me_sub, group_id, message_id)
+    message.content = content
+    message.edited_at = utcnow()
+    await db.commit()
+    await db.refresh(message)
+    return message
+
+
+async def delete_group_message(
+    db: AsyncSession, me_sub: str, group_id: int, message_id: int
+) -> Message:
+    message = await _own_editable_group_message(db, me_sub, group_id, message_id)
+    message.content = ""
+    message.deleted_at = utcnow()
+    await db.commit()
+    await db.refresh(message)
+    return message
+
+
 def clean_emoji(value: str) -> str:
     stripped = value.strip()
     if not stripped or len(stripped) > EMOJI_MAX_LENGTH:
@@ -877,14 +920,49 @@ async def set_reaction(
         raise HTTPException(status_code=404, detail="message not found in conversation")
     if message.deleted_at is not None:
         raise HTTPException(status_code=409, detail="message deleted")
-    existing = await db.get(Reaction, (message_id, me_sub, emoji))
+    count = await _apply_reaction(db, message_id, me_sub, emoji, add)
+    return {
+        "message_id": message_id,
+        "emoji": emoji,
+        "action": "added" if add else "removed",
+        "count": count,
+    }
+
+
+async def _apply_reaction(
+    db: AsyncSession, message_id: int, user_sub: str, emoji: str, add: bool
+) -> int:
+    existing = await db.get(Reaction, (message_id, user_sub, emoji))
     if add and existing is None:
-        db.add(Reaction(message_id=message_id, user_sub=me_sub, emoji=emoji))
+        db.add(Reaction(message_id=message_id, user_sub=user_sub, emoji=emoji))
         await db.commit()
     elif not add and existing is not None:
         await db.delete(existing)
         await db.commit()
-    count = await _reaction_count(db, message_id, emoji)
+    return await _reaction_count(db, message_id, emoji)
+
+
+async def set_group_reaction(
+    db: AsyncSession,
+    me_sub: str,
+    group_id: int,
+    message_id: int,
+    emoji: str,
+    *,
+    add: bool,
+) -> dict[str, Any]:
+    if await group_membership(db, group_id, me_sub) is None:
+        raise HTTPException(status_code=404, detail="group not found")
+    message = await db.get(Message, message_id)
+    if (
+        message is None
+        or message.conversation_type != "group"
+        or message.group_id != group_id
+    ):
+        raise HTTPException(status_code=404, detail="message not found in group")
+    if message.deleted_at is not None:
+        raise HTTPException(status_code=409, detail="message deleted")
+    count = await _apply_reaction(db, message_id, me_sub, emoji, add)
     return {
         "message_id": message_id,
         "emoji": emoji,

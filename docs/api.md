@@ -40,6 +40,10 @@
 | POST | `/api/groups/{id}/avatar` | 会话 + CSRF | 群头像 `{"url"}`（本人上传的图片；owner/admin） |
 | POST | `/api/groups/{id}/messages` | 会话 + CSRF | 群发消息（文本/附件/引用/提及，语义同单聊；仅成员；mentions 须为群成员）；201 返回消息（附 `group_id`）；WS 推全成员 |
 | GET | `/api/groups/{id}/messages?limit=&before=` | 会话 | 群历史倒序分页（仅成员；参数语义同单聊） |
+| PATCH | `/api/groups/{id}/messages/{mid}` | 会话 + CSRF | 群消息编辑（发送者、未撤回、5 分钟内；非成员 404 / 非发送者 403） |
+| DELETE | `/api/groups/{id}/messages/{mid}` | 会话 + CSRF | 群消息撤回（同上鉴权；墓碑不含原文） |
+| PUT | `/api/groups/{id}/messages/{mid}/reactions` | 会话 + CSRF | 群消息回应（仅成员，幂等） |
+| DELETE | `/api/groups/{id}/messages/{mid}/reactions?emoji=` | 会话 + CSRF | 群消息移除回应（仅成员，幂等） |
 | POST | `/api/groups/{id}/read` | 会话 + CSRF | 群已读 `{"last_read_id"}`（仅成员、消息须属该群、游标只前进）；WS 推全成员 |
 | POST | `/api/groups/{id}/forward` | 会话 + CSRF | 转发到群 `{"message_id"}`（仅成员、源消息自己可见、未撤回）；`forwarded:true` |
 | POST | `/api/uploads` | 会话 + CSRF | multipart `file`；大小 ≤ `LICHAT_UPLOAD_MAX_MB`、内容嗅探白名单（jpeg/png/gif/webp/pdf/txt）；413 超限 / 415 非法类型；201 `{id,url,name,size,mime}` |

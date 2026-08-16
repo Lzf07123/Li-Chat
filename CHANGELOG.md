@@ -4,6 +4,9 @@
 
 ### 功能
 
+- 群消息操作补齐：群内编辑/撤回（`PATCH/DELETE /api/groups/{id}/messages/{mid}`，发送者、
+  5 分钟窗、墓碑；非成员 404）与表情回应（成员校验、幂等 toggle）；WS
+  `message_edited/message_deleted/message_reaction` 群内广播；前端群消息启用编辑/撤回/表情
 - 群公告与群头像：`groups.announcement`（≤2000，owner/admin 维护、可清空）、
   `groups.avatar_url`（owner/admin 引用本人上传的图片，非图片 422 / 他人附件 403）；WS
   `announcement_updated/avatar_updated` 全成员广播；前端群公告横幅/编辑与头像上传

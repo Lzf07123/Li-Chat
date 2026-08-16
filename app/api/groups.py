@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal, cast
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,8 @@ from app.api.messages import (
     MessageIn,
     MessageOut,
     MessagePageOut,
+    ReactionIn,
+    ReactionOut,
     ReadIn,
     ReadOut,
 )
@@ -421,3 +423,111 @@ async def forward_group_message(
     for sub in await service.member_subs(db, group_id):
         await manager.send_to(sub, event)
     return MessageOut(**payload)
+
+
+@router.patch("/{group_id}/messages/{message_id}", response_model=MessageOut)
+async def edit_group_message(
+    request: Request,
+    group_id: int,
+    message_id: int,
+    body: MessageIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> MessageOut:
+    message = await messages_service.edit_group_message(
+        db, user.sub, group_id, message_id, body.content
+    )
+    reply = (
+        await db.get(Message, message.reply_to_id)
+        if message.reply_to_id is not None
+        else None
+    )
+    payload = messages_service.message_payload(message, reply)
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    event = {"type": "message_edited", "message": payload}
+    for sub in await service.member_subs(db, group_id):
+        await manager.send_to(sub, event)
+    return MessageOut(**payload)
+
+
+@router.delete("/{group_id}/messages/{message_id}", response_model=MessageOut)
+async def delete_group_message(
+    request: Request,
+    group_id: int,
+    message_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> MessageOut:
+    message = await messages_service.delete_group_message(
+        db, user.sub, group_id, message_id
+    )
+    payload = messages_service.message_payload(message)
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    event = {"type": "message_deleted", "message": payload}
+    for sub in await service.member_subs(db, group_id):
+        await manager.send_to(sub, event)
+    return MessageOut(**payload)
+
+
+@router.put(
+    "/{group_id}/messages/{message_id}/reactions", response_model=ReactionOut
+)
+async def add_group_reaction(
+    request: Request,
+    group_id: int,
+    message_id: int,
+    body: ReactionIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> ReactionOut:
+    result = await messages_service.set_group_reaction(
+        db, user.sub, group_id, message_id, body.emoji, add=True
+    )
+    await _broadcast_group_reaction(request, db, group_id, result, user.sub)
+    return ReactionOut(**result)
+
+
+@router.delete(
+    "/{group_id}/messages/{message_id}/reactions", response_model=ReactionOut
+)
+async def remove_group_reaction(
+    request: Request,
+    group_id: int,
+    message_id: int,
+    emoji: Annotated[str, Query(min_length=1, max_length=16)],
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> ReactionOut:
+    try:
+        cleaned = messages_service.clean_emoji(emoji)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    result = await messages_service.set_group_reaction(
+        db, user.sub, group_id, message_id, cleaned, add=False
+    )
+    await _broadcast_group_reaction(request, db, group_id, result, user.sub)
+    return ReactionOut(**result)
+
+
+async def _broadcast_group_reaction(
+    request: Request,
+    db: AsyncSession,
+    group_id: int,
+    result: dict[str, Any],
+    by_sub: str,
+) -> None:
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    event = {
+        "type": "message_reaction",
+        "message_id": result["message_id"],
+        "emoji": result["emoji"],
+        "action": result["action"],
+        "count": result["count"],
+        "by_sub": by_sub,
+    }
+    for sub in await service.member_subs(db, group_id):
+        await manager.send_to(sub, event)
