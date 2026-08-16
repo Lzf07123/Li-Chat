@@ -9,6 +9,8 @@ const state = {
   requests: { incoming: [], outgoing: [] },
   recommendations: [],
   searchResults: [],
+  conversations: [],
+  readUpTo: {},
   activeSub: null,
   activePeer: null,
   messages: [],
@@ -270,15 +272,19 @@ function onProfileKeydown(event) {
 
 async function refreshSidebar() {
   try {
-    const [friendsRes, requestsRes, recommendRes] = await Promise.all([
+    const [friendsRes, requestsRes, recommendRes, conversationsRes] = await Promise.all([
       api("/api/friends"),
       api("/api/friends/requests"),
       api("/api/friends/recommendations"),
+      api("/api/conversations"),
     ]);
     if (friendsRes.ok) state.friends = (await friendsRes.json()).friends;
     if (requestsRes.ok) state.requests = await requestsRes.json();
     if (recommendRes.ok) {
       state.recommendations = (await recommendRes.json()).friends;
+    }
+    if (conversationsRes.ok) {
+      state.conversations = (await conversationsRes.json()).conversations;
     }
     renderSidebar();
   } catch {
@@ -300,8 +306,17 @@ function renderSidebar() {
   document.getElementById("recommend-list").innerHTML = state.recommendations
     .map(recommendHtml)
     .join("");
-  document.getElementById("friends-empty").hidden = state.friends.length > 0;
-  document.getElementById("friends-list").innerHTML = state.friends.map(friendHtml).join("");
+  const summaries = new Map(
+    state.conversations.map((item) => [item.peer.sub, item])
+  );
+  const friends = state.conversations.map((item) => item.peer);
+  for (const friend of state.friends) {
+    if (!friends.some((item) => item.sub === friend.sub)) friends.push(friend);
+  }
+  document.getElementById("friends-empty").hidden = friends.length > 0;
+  document.getElementById("friends-list").innerHTML = friends
+    .map((friend) => friendHtml(friend, summaries.get(friend.sub)))
+    .join("");
 }
 
 function requestIncomingHtml(item) {
@@ -341,12 +356,22 @@ function recommendHtml(user) {
   </li>`;
 }
 
-function friendHtml(friend) {
+function friendHtml(friend, summary) {
+  const unread = summary ? summary.unread_count : 0;
+  const preview = summary && summary.last_message
+    ? summary.last_message.content
+    : "";
   return `<li class="contact-item">
     <button class="contact-button" type="button"
       data-action="open" data-sub="${escapeHtml(friend.sub)}">
       ${avatarHtml(friend)}
-      <span class="contact-name">${escapeHtml(displayName(friend))}</span>
+      <span class="contact-main">
+        <span class="contact-name">${escapeHtml(displayName(friend))}</span>
+        ${preview ? `<span class="contact-preview">${escapeHtml(preview)}</span>` : ""}
+      </span>
+      ${unread > 0
+        ? `<span class="badge badge-unread" data-role="unread" data-sub="${escapeHtml(friend.sub)}">${unread}</span>`
+        : ""}
     </button>
   </li>`;
 }
@@ -467,7 +492,27 @@ async function openChat(sub) {
   renderMessages();
   document.getElementById("app").classList.add("chat-open");
   await loadHistory();
+  await markReadActive();
   if (window.innerWidth >= 768) document.getElementById("message-input").focus();
+}
+
+async function markReadActive() {
+  if (!state.activeSub || state.messages.length === 0) return;
+  const last = state.messages[state.messages.length - 1];
+  const response = await api(
+    `/api/conversations/${encodeURIComponent(state.activeSub)}/read`,
+    { method: "POST", body: JSON.stringify({ last_read_id: last.id }) }
+  );
+  if (response.ok) clearUnread(state.activeSub, last.id);
+}
+
+function clearUnread(sub, lastReadId) {
+  const item = state.conversations.find((conversation) => conversation.peer.sub === sub);
+  if (item) {
+    item.unread_count = 0;
+    item.last_read_id = lastReadId;
+  }
+  renderSidebar();
 }
 
 async function loadHistory(before) {
@@ -511,13 +556,17 @@ function closeChat() {
 
 function messageHtml(message) {
   const own = message.sender_sub === state.me.sub;
+  const readByPeer = state.readUpTo[state.activeSub];
+  const read = own && typeof readByPeer === "number" && message.id <= readByPeer;
   const time = new Date(message.created_at).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
   return `<div class="message ${own ? "message-own" : "message-other"}">
     <div class="message-bubble">${escapeHtml(message.content)}</div>
-    <div class="message-meta">${escapeHtml(time)}</div>
+    <div class="message-meta">${escapeHtml(time)}${read
+      ? '<span class="message-read">已读</span>'
+      : ""}</div>
   </div>`;
 }
 
@@ -563,11 +612,26 @@ function onComposerKeydown(event) {
 function handleServerMessage(data) {
   if (data.type === "message" && data.message) {
     const message = data.message;
-    if (
+    const inActive =
       state.activeSub &&
-      (message.sender_sub === state.activeSub || message.recipient_sub === state.activeSub)
-    ) {
+      (message.sender_sub === state.activeSub || message.recipient_sub === state.activeSub);
+    if (inActive) {
       appendMessage(message);
+      if (message.sender_sub !== state.me.sub) markReadActive();
+    } else {
+      const peer =
+        message.sender_sub === state.me.sub ? message.recipient_sub : message.sender_sub;
+      const item = state.conversations.find((conversation) => conversation.peer.sub === peer);
+      if (item) {
+        item.last_message = message;
+        if (message.sender_sub !== state.me.sub) item.unread_count += 1;
+        renderSidebar();
+      }
+    }
+  } else if (data.type === "read_receipt") {
+    if (data.peer_sub === state.activeSub) {
+      state.readUpTo[data.by_sub] = data.last_read_id;
+      renderMessages();
     }
   } else if (data.type === "friend_event") {
     refreshSidebar();
@@ -643,6 +707,8 @@ window.addEventListener("pageshow", (event) => {
   state.requests = { incoming: [], outgoing: [] };
   state.recommendations = [];
   state.searchResults = [];
+  state.conversations = [];
+  state.readUpTo = {};
   state.messages = [];
   state.activeSub = null;
   state.activePeer = null;

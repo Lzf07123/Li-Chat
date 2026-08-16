@@ -100,3 +100,21 @@ class Message(Base):
         CheckConstraint("participant_lo < participant_hi", name="ck_messages_participant_order"),
         Index("ix_messages_conversation", "participant_lo", "participant_hi", "id"),
     )
+
+
+class DmRead(Base):
+    __tablename__ = "dm_reads"
+
+    user_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), primary_key=True
+    )
+    participant_lo: Mapped[str] = mapped_column(String(64), primary_key=True)
+    participant_hi: Mapped[str] = mapped_column(String(64), primary_key=True)
+    last_read_message_id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), default=0
+    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        CheckConstraint("participant_lo < participant_hi", name="ck_dm_reads_pair_order"),
+    )

@@ -427,6 +427,14 @@ a {
   color: var(--chat-primary);
 }
 
+.badge-unread {
+  min-width: 20px;
+  justify-content: center;
+  padding: 2px 7px;
+  background: var(--chat-primary);
+  color: var(--chat-primary-fg);
+}
+
 .notice {
   display: flex;
   align-items: flex-start;
@@ -683,6 +691,22 @@ a {
   white-space: nowrap;
 }
 
+.contact-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.contact-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: var(--chat-muted);
+}
+
 .contact-actions {
   display: flex;
   gap: 8px;
@@ -924,6 +948,11 @@ a {
   color: var(--chat-muted);
   margin-top: 2px;
   padding: 0 4px;
+}
+
+.message-read {
+  margin-left: 6px;
+  color: var(--chat-primary);
 }
 
 .composer {

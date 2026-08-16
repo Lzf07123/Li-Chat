@@ -4,6 +4,10 @@
 
 ### 功能
 
+- 未读计数与已读回执（里程碑三起点）：会话列表摘要（最后消息 + 未读数 + 已读游标）、
+  `GET /api/conversations` 与 `POST /api/conversations/{sub}/read`（游标只前进、消息必须
+  属于该会话、非好友 403）、WS `read_receipt` 定向回执、发送方发送后自动推进游标；前端
+  好友栏未读徽标与最后消息预览、打开会话即标记已读、消息气泡「已读」指示
 - UI 首次设计实例化：品牌令牌（信使蓝 `#2563EB`）、明暗双主题 + 首帧防闪烁、几何 Logo/favicon、Canvas 环境呼吸层、AuthShell/AppShell 外壳与无障碍（focus-visible / aria-live / 44px 热区 / reduced-motion）
 - Redis 接入（`LICHAT_REDIS_URL`）：jti 防重放改为 `SET NX EX` 原子判重，回程登出经 `lichat:logout` 频道跨副本广播断开 WS；未配置时保持进程内行为，配置后启动 PING 失败即拒绝启动
 - 好友与单聊（里程碑二）：昵称/邮箱关键词搜索（不回传邮箱）、申请-同意制好友关系（accept/reject/撤回/解除）、单向解除关系且历史保留、纯文本一对一实时聊天（REST 落库 + WS 双向推送）、历史消息倒序游标分页

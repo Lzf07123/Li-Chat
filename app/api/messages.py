@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, Query, Request
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user, require_csrf
@@ -43,6 +43,66 @@ class MessageOut(BaseModel):
 class MessagePageOut(BaseModel):
     messages: list[MessageOut]
     next_before: int | None
+
+
+class PeerOut(BaseModel):
+    sub: str
+    nickname: str | None = None
+    name: str | None = None
+    picture: str | None = None
+
+
+class ConversationSummaryOut(BaseModel):
+    peer: PeerOut
+    last_message: MessageOut | None
+    unread_count: int
+    last_read_id: int
+
+
+class ConversationsOut(BaseModel):
+    conversations: list[ConversationSummaryOut]
+
+
+class ReadIn(BaseModel):
+    last_read_id: int = Field(ge=1)
+
+
+class ReadOut(BaseModel):
+    status: str
+    last_read_id: int
+
+
+@router.get("", response_model=ConversationsOut)
+async def conversations_list(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ConversationsOut:
+    return ConversationsOut.model_validate(
+        {"conversations": await service.conversation_summaries(db, user.sub)}
+    )
+
+
+@router.post("/{other_sub}/read", response_model=ReadOut)
+async def mark_read(
+    request: Request,
+    other_sub: str,
+    body: ReadIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> ReadOut:
+    await service.mark_read(db, user.sub, other_sub, body.last_read_id)
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    await manager.send_to(
+        other_sub,
+        {
+            "type": "read_receipt",
+            "by_sub": user.sub,
+            "peer_sub": other_sub,
+            "last_read_id": body.last_read_id,
+        },
+    )
+    return ReadOut(status="ok", last_read_id=body.last_read_id)
 
 
 @router.post("/{other_sub}/messages", response_model=MessageOut, status_code=201)
