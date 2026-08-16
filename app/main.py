@@ -109,6 +109,8 @@ def _ensure_message_columns(conn: Connection) -> None:
         conn.exec_driver_sql("ALTER TABLE messages ADD COLUMN attachment_mime VARCHAR(64)")
     if "attachment_url" not in names:
         conn.exec_driver_sql("ALTER TABLE messages ADD COLUMN attachment_url VARCHAR(255)")
+    if "reply_to_id" not in names:
+        conn.exec_driver_sql("ALTER TABLE messages ADD COLUMN reply_to_id INTEGER")
 
 
 async def _friend_subs(db: AsyncSession, sub: str) -> list[str]:

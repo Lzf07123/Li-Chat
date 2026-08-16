@@ -100,6 +100,10 @@ class Message(Base):
         BigInteger().with_variant(Integer, "sqlite"),
         ForeignKey("groups.id", ondelete="CASCADE"),
     )
+    reply_to_id: Mapped[int | None] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("messages.id", ondelete="SET NULL"),
+    )
     content_type: Mapped[str] = mapped_column(String(16), default="text")
     attachment_name: Mapped[str | None] = mapped_column(String(255))
     attachment_size: Mapped[int | None] = mapped_column(Integer)

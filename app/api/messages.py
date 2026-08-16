@@ -4,13 +4,14 @@ from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user, require_csrf
 from app.db import get_db
 from app.messages import service
 from app.messages.service import MAX_MESSAGE_LENGTH
-from app.models import User
+from app.models import Message, User
 from app.ws.manager import ConnectionManager
 
 router = APIRouter(prefix="/api/conversations", tags=["messages"])
@@ -20,6 +21,7 @@ class MessageIn(BaseModel):
     content: str = ""
     content_type: Literal["text", "image", "file"] = "text"
     attachment: AttachmentIn | None = None
+    reply_to_id: int | None = Field(default=None, ge=1)
 
     @field_validator("content")
     @classmethod
@@ -45,6 +47,14 @@ class AttachmentOut(BaseModel):
     url: str | None = None
 
 
+class ReplyToOut(BaseModel):
+    id: int
+    sender_sub: str
+    content: str | None = None
+    deleted: bool = False
+    content_type: str = "text"
+
+
 class ReactionCountOut(BaseModel):
     emoji: str
     count: int
@@ -59,6 +69,7 @@ class MessageOut(BaseModel):
     content: str | None = None
     content_type: str = "text"
     attachment: AttachmentOut | None = None
+    reply_to: ReplyToOut | None = None
     deleted: bool = False
     edited_at: str | None = None
     created_at: str
@@ -174,8 +185,14 @@ async def send_message(
         body.content,
         content_type=body.content_type,
         attachment=body.attachment.model_dump() if body.attachment else None,
+        reply_to_id=body.reply_to_id,
     )
-    payload = service.message_payload(message)
+    reply = (
+        await db.get(Message, message.reply_to_id)
+        if message.reply_to_id is not None
+        else None
+    )
+    payload = service.message_payload(message, reply)
     manager = cast(ConnectionManager, request.app.state.ws_manager)
     event = {"type": "message", "message": payload}
     await manager.send_to(message.sender_sub, event)
@@ -196,12 +213,18 @@ async def message_history(
     rows, next_before = await service.history(
         db, user.sub, other_sub, before=before, limit=limit
     )
+    replies = await _replies_for(db, rows)
     reaction_map = await service.reactions_for(
         db, [item.id for item in rows], user.sub
     )
     messages: list[MessageOut] = []
     for item in rows:
-        data = service.message_payload(item)
+        reply = (
+            replies.get(item.reply_to_id)
+            if item.reply_to_id is not None
+            else None
+        )
+        data = service.message_payload(item, reply)
         aggregate = reaction_map.get(item.id, {})
         messages.append(
             MessageOut(
@@ -227,7 +250,12 @@ async def edit_message(
     _csrf: Annotated[None, Depends(require_csrf)],
 ) -> MessageOut:
     message = await service.edit_message(db, user.sub, other_sub, message_id, body.content)
-    payload = service.message_payload(message)
+    reply = (
+        await db.get(Message, message.reply_to_id)
+        if message.reply_to_id is not None
+        else None
+    )
+    payload = service.message_payload(message, reply)
     manager = cast(ConnectionManager, request.app.state.ws_manager)
     event = {"type": "message_edited", "message": payload}
     await manager.send_to(message.sender_sub, event)
@@ -305,3 +333,13 @@ async def _broadcast_reaction(
     }
     await manager.send_to(sender_sub, event)
     await manager.send_to(other_sub, event)
+
+
+async def _replies_for(db: AsyncSession, rows: list[Message]) -> dict[int, Message]:
+    reply_ids = [row.reply_to_id for row in rows if row.reply_to_id is not None]
+    if not reply_ids:
+        return {}
+    targets = (
+        await db.execute(select(Message).where(Message.id.in_(reply_ids)))
+    ).scalars().all()
+    return {target.id: target for target in targets}

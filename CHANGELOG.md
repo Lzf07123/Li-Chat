@@ -4,6 +4,9 @@
 
 ### 功能
 
+- 消息引用回复：`messages.reply_to_id`（自引用 FK）与同会话校验（单聊 pair / 群 group_id，
+  跨会话 404）、引用预览 `reply_to`（内容 ≤100 截断、已撤回显示墓碑、不递归嵌套）；单聊与
+  群发送接口加 `reply_to_id`；前端消息「回复」按钮与输入框引用条（可取消）
 - 音视频呼叫信令（里程碑四起点）：WS `call` 协议 `offer/answer/ice/reject/end` 与
   `busy/invalid/unavailable/error` 应答；仅好友间、载荷 ≤16KB、ICE 限频、进程内状态机
   （idle→ringing→connected→ended）、信令不落库不记日志；前端 WebRTC 1:1 呼叫（发起/来电

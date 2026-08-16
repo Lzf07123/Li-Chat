@@ -1299,6 +1299,52 @@ a {
   gap: 12px;
 }
 
+.reply-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--chat-primary);
+  border-radius: 6px;
+  background: var(--chat-surface-2);
+  font-size: 0.82rem;
+  color: var(--chat-muted);
+}
+
+.reply-bar[hidden] {
+  display: none;
+}
+
+.reply-bar-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reply-bar-cancel {
+  border: none;
+  background: none;
+  color: var(--chat-muted);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.message-reply-preview {
+  margin-bottom: 4px;
+  padding: 3px 8px;
+  border-left: 3px solid var(--chat-primary);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: var(--chat-muted);
+  background: rgb(0 0 0 / 0.06);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+
 .chat-peer-main {
   display: flex;
   flex-direction: column;

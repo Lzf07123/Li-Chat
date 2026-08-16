@@ -33,12 +33,12 @@
 | PATCH | `/api/groups/{id}/members/{sub}` | 会话 + CSRF | 调整角色 `{"role":"admin|member"}`（仅 owner，不可改 owner 自身） |
 | POST | `/api/groups/{id}/leave` | 会话 + CSRF | 退出（owner 须先转让，409） |
 | POST | `/api/groups/{id}/transfer` | 会话 + CSRF | 转让 `{"new_owner_sub"}`（仅 owner，目标须为成员） |
-| POST | `/api/groups/{id}/messages` | 会话 + CSRF | 群发消息 `{"content"}`（仅成员）；201 返回消息（附 `group_id`）；WS 推全成员 |
+| POST | `/api/groups/{id}/messages` | 会话 + CSRF | 群发消息（文本/附件/引用，语义同单聊；仅成员）；201 返回消息（附 `group_id`）；WS 推全成员 |
 | GET | `/api/groups/{id}/messages?limit=&before=` | 会话 | 群历史倒序分页（仅成员；参数语义同单聊） |
 | POST | `/api/groups/{id}/read` | 会话 + CSRF | 群已读 `{"last_read_id"}`（仅成员、消息须属该群、游标只前进）；WS 推全成员 |
 | POST | `/api/uploads` | 会话 + CSRF | multipart `file`；大小 ≤ `LICHAT_UPLOAD_MAX_MB`、内容嗅探白名单（jpeg/png/gif/webp/pdf/txt）；413 超限 / 415 非法类型；201 `{id,url,name,size,mime}` |
 | GET | `/api/uploads/{filename}` | 会话 | 回源（仅上传者；图片 inline，其他 attachment；nosniff）；401 未登录 / 403 非上传者 / 404 不存在 |
-| POST | `/api/conversations/{sub}/messages` | 会话 + CSRF | 发消息 `{"content","content_type":"text|image|file","attachment":{url}}`；文本 1–2000 strip 校验，附件消息可带 ≤2000 说明且附件必须属于发送者；201 返回完整消息；400 自聊 / 403 非好友 / 404 未知 |
+| POST | `/api/conversations/{sub}/messages` | 会话 + CSRF | 发消息 `{"content","content_type":"text|image|file","attachment":{url},"reply_to_id"}`；文本 1–2000 strip 校验，附件消息可带 ≤2000 说明且附件必须属于发送者；reply_to_id 必须同会话（否则 404）；201 返回完整消息；400 自聊 / 403 非好友 / 404 未知 |
 | GET | `/api/conversations/{sub}/messages?limit=&before=` | 会话 | 历史倒序分页（limit 默认 50、1–100；before 为上一页最小 id 不含）；`{"messages":[...],"next_before":int|null}` |
 | PATCH | `/api/conversations/{sub}/messages/{id}` | 会话 + CSRF | 编辑 `{"content"}`；仅发送者、未撤回、5 分钟内；403 非发送者 / 404 不存在 / 409 已撤回或超窗 |
 | DELETE | `/api/conversations/{sub}/messages/{id}` | 会话 + CSRF | 撤回；同上鉴权；返回墓碑 `{id,sender_sub,recipient_sub,deleted:true,created_at}`（不含原文） |

@@ -24,6 +24,7 @@ const state = {
   activePeer: null,
   editingId: null,
   pickerMessageId: null,
+  replyTo: null,
   groups: [],
   activeGroupId: null,
   activeGroup: null,
@@ -251,6 +252,11 @@ function mainHtml() {
           </button>
           <input id="attach-input" type="file" hidden
             accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain" />
+          <div id="message-reply-bar" class="reply-bar" hidden>
+            <span class="reply-bar-text"></span>
+            <button class="reply-bar-cancel" type="button"
+              data-action="cancel-reply" aria-label="取消引用">×</button>
+          </div>
           <label class="sr-only" for="message-input">消息内容</label>
           <textarea id="message-input" class="input" rows="1" maxlength="2000"
             placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
@@ -281,6 +287,7 @@ function renderLoggedIn() {
   document.getElementById("groups-list").addEventListener("click", onGroupListClick);
   document.getElementById("group-create").addEventListener("click", openGroupCreateModal);
   document.getElementById("composer").addEventListener("submit", onComposerSubmit);
+  document.getElementById("composer").addEventListener("click", onComposerBarClick);
   document.getElementById("message-input").addEventListener("keydown", onComposerKeydown);
   document.getElementById("message-input").addEventListener("input", onComposerInput);
   document.getElementById("message-input").addEventListener("blur", onComposerBlur);
@@ -753,6 +760,7 @@ async function openGroup(groupId) {
   state.activePeer = null;
   state.editingId = null;
   state.pickerMessageId = null;
+  state.replyTo = null;
   state.messages = [];
   state.nextBefore = null;
   document.getElementById("chat-empty").hidden = true;
@@ -767,6 +775,7 @@ async function openGroup(groupId) {
 function closeGroupPanel() {
   state.activeGroupId = null;
   state.activeGroup = null;
+  state.replyTo = null;
   state.messages = [];
   state.nextBefore = null;
   document.getElementById("chat-empty").hidden = false;
@@ -852,6 +861,11 @@ function groupPanelHtml(group) {
         </button>
         <input id="group-attach-input" type="file" hidden
           accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain" />
+        <div id="group-reply-bar" class="reply-bar" hidden>
+          <span class="reply-bar-text"></span>
+          <button class="reply-bar-cancel" type="button"
+            data-action="cancel-reply" aria-label="取消引用">×</button>
+        </div>
         <label class="sr-only" for="group-message-input">消息内容</label>
         <textarea id="group-message-input" class="input" rows="1" maxlength="2000"
           placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
@@ -898,9 +912,14 @@ function renderGroupPanel() {
   if (loadOlder) {
     loadOlder.addEventListener("click", () => loadGroupHistory(state.nextBefore));
   }
+  const groupMessages = document.getElementById("group-messages");
+  if (groupMessages) {
+    groupMessages.addEventListener("click", onMessagesClick);
+  }
   const composer = document.getElementById("group-composer");
   if (composer) {
     composer.addEventListener("submit", onGroupComposerSubmit);
+    composer.addEventListener("click", onComposerBarClick);
     document.getElementById("group-message-input").addEventListener(
       "keydown",
       onGroupComposerKeydown
@@ -1067,6 +1086,7 @@ async function openChat(sub) {
   state.activePeer = peer;
   state.editingId = null;
   state.pickerMessageId = null;
+  state.replyTo = null;
   state.messages = [];
   state.nextBefore = null;
   document.getElementById("chat-empty").hidden = true;
@@ -1159,6 +1179,7 @@ function loadOlder() {
 function closeChat() {
   sendTyping("stop");
   state.editingId = null;
+  state.replyTo = null;
   state.activeSub = null;
   state.activePeer = null;
   state.messages = [];
@@ -1176,11 +1197,19 @@ function messageHtml(message) {
     hour: "2-digit",
     minute: "2-digit",
   });
+  const replyPreview = message.reply_to
+    ? `<div class="message-reply-preview">${
+        message.reply_to.deleted
+          ? "消息已撤回"
+          : escapeHtml(message.reply_to.content || "")
+      }</div>`
+    : "";
   let body;
   if (message.deleted) {
     body = '<div class="message-bubble message-bubble-deleted">消息已撤回</div>';
   } else if (message.content_type === "image" && message.attachment) {
     body = `<div class="message-bubble message-bubble-attachment">
+      ${replyPreview}
       <img class="attachment-image" src="${escapeHtml(message.attachment.url)}"
         alt="图片消息" loading="lazy" />
       ${message.content
@@ -1189,6 +1218,7 @@ function messageHtml(message) {
     </div>`;
   } else if (message.attachment) {
     body = `<div class="message-bubble message-bubble-attachment">
+      ${replyPreview}
       <a class="attachment-link" href="${escapeHtml(message.attachment.url)}" download>
         📎 ${escapeHtml(message.attachment.name)}</a>
       ${message.content
@@ -1196,14 +1226,19 @@ function messageHtml(message) {
         : ""}
     </div>`;
   } else {
-    body = `<div class="message-bubble">${escapeHtml(message.content)}</div>`;
+    body = `<div class="message-bubble">${replyPreview}${escapeHtml(message.content)}</div>`;
   }
-  const actions = own && !message.deleted && !state.activeGroupId
-    ? `<span class="message-actions">
-        <button class="message-action" type="button"
+  const editActions =
+    own && !state.activeGroupId
+      ? `<button class="message-action" type="button"
           data-action="edit" data-id="${message.id}">编辑</button>
+         <button class="message-action" type="button"
+          data-action="withdraw" data-id="${message.id}">撤回</button>`
+      : "";
+  const actions = !message.deleted
+    ? `<span class="message-actions">${editActions}
         <button class="message-action" type="button"
-          data-action="withdraw" data-id="${message.id}">撤回</button>
+          data-action="reply" data-id="${message.id}">回复</button>
       </span>`
     : "";
   const editedMark = !message.deleted && message.edited_at
@@ -1320,9 +1355,13 @@ async function onGroupComposerSubmit(event) {
   if (!content || !state.activeGroupId) return;
   const response = await api(`/api/groups/${state.activeGroupId}/messages`, {
     method: "POST",
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({
+      content,
+      reply_to_id: state.replyTo ? state.replyTo.id : undefined,
+    }),
   });
   if (response.ok) {
+    clearReply();
     input.value = "";
     input.focus();
   }
@@ -1332,6 +1371,35 @@ function onGroupComposerKeydown(event) {
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     document.getElementById("group-composer").requestSubmit();
+  }
+}
+
+function onComposerBarClick(event) {
+  const button = event.target.closest("[data-action='cancel-reply']");
+  if (button) clearReply();
+}
+
+function setReply(message) {
+  state.replyTo = {
+    id: message.id,
+    text: message.deleted ? "消息已撤回" : message.content || "",
+  };
+  renderReplyBars();
+}
+
+function clearReply() {
+  state.replyTo = null;
+  renderReplyBars();
+}
+
+function renderReplyBars() {
+  for (const id of ["message-reply-bar", "group-reply-bar"]) {
+    const bar = document.getElementById(id);
+    if (!bar) continue;
+    bar.hidden = !state.replyTo;
+    if (state.replyTo) {
+      bar.querySelector(".reply-bar-text").textContent = state.replyTo.text;
+    }
   }
 }
 
@@ -1387,12 +1455,15 @@ async function onComposerSubmit(event) {
   const url = editingId
     ? `/api/conversations/${encodeURIComponent(state.activeSub)}/messages/${editingId}`
     : `/api/conversations/${encodeURIComponent(state.activeSub)}/messages`;
+  const body = { content };
+  if (!editingId && state.replyTo) body.reply_to_id = state.replyTo.id;
   const response = await api(url, {
     method: editingId ? "PATCH" : "POST",
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(body),
   });
   if (response.ok) {
     state.editingId = null;
+    clearReply();
     input.value = "";
     input.placeholder = "输入消息，Enter 发送，Shift+Enter 换行";
     input.focus();
@@ -1403,6 +1474,17 @@ async function onMessagesClick(event) {
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const messageId = button.dataset.id;
+  if (button.dataset.action === "reply") {
+    const message = state.messages.find((item) => String(item.id) === messageId);
+    if (message && !message.deleted) {
+      setReply(message);
+      const input = state.activeGroupId
+        ? document.getElementById("group-message-input")
+        : document.getElementById("message-input");
+      if (input) input.focus();
+    }
+    return;
+  }
   const sub = state.activeSub;
   if (!sub) return;
   if (button.dataset.action === "react-picker") {
@@ -1863,6 +1945,7 @@ window.addEventListener("pageshow", (event) => {
   state.activePeer = null;
   state.editingId = null;
   state.pickerMessageId = null;
+  state.replyTo = null;
   state.groups = [];
   state.activeGroupId = null;
   state.activeGroup = null;

@@ -4,6 +4,7 @@ from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, field_validator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.messages import MessageIn, MessageOut, MessagePageOut, ReadIn, ReadOut
@@ -11,7 +12,7 @@ from app.auth.deps import get_current_user, require_csrf
 from app.db import get_db
 from app.groups import service
 from app.messages import service as messages_service
-from app.models import User
+from app.models import Message, User
 from app.timeutil import iso_utc, utcnow
 from app.ws.manager import ConnectionManager
 
@@ -257,8 +258,14 @@ async def send_group_message(
         body.content,
         content_type=body.content_type,
         attachment=body.attachment.model_dump() if body.attachment else None,
+        reply_to_id=body.reply_to_id,
     )
-    payload = messages_service.message_payload(message)
+    reply = (
+        await db.get(Message, message.reply_to_id)
+        if message.reply_to_id is not None
+        else None
+    )
+    payload = messages_service.message_payload(message, reply)
     manager = cast(ConnectionManager, request.app.state.ws_manager)
     event = {"type": "message", "message": payload}
     for sub in await service.member_subs(db, group_id):
@@ -282,9 +289,23 @@ async def group_history(
     reaction_map = await messages_service.reactions_for(
         db, [item.id for item in rows], user.sub
     )
+    reply_ids = [item.reply_to_id for item in rows if item.reply_to_id is not None]
+    replies: dict[int, Message] = {}
+    if reply_ids:
+        targets = (
+            await db.execute(
+                select(Message).where(Message.id.in_(reply_ids))
+            )
+        ).scalars().all()
+        replies = {target.id: target for target in targets}
     messages: list[MessageOut] = []
     for item in rows:
-        data = messages_service.message_payload(item)
+        reply = (
+            replies.get(item.reply_to_id)
+            if item.reply_to_id is not None
+            else None
+        )
+        data = messages_service.message_payload(item, reply)
         aggregate = reaction_map.get(item.id, {})
         messages.append(
             MessageOut(

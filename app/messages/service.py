@@ -26,7 +26,7 @@ def pair_key(a: str, b: str) -> tuple[str, str]:
     return (a, b) if a < b else (b, a)
 
 
-def message_payload(message: Message) -> dict[str, Any]:
+def message_payload(message: Message, reply: Message | None = None) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "id": message.id,
         "sender_sub": message.sender_sub,
@@ -51,7 +51,46 @@ def message_payload(message: Message) -> dict[str, Any]:
             }
         if message.edited_at is not None:
             payload["edited_at"] = iso_utc(message.edited_at)
+        if message.reply_to_id is not None and reply is not None:
+            payload["reply_to"] = reply_payload(reply)
     return payload
+
+
+def reply_payload(target: Message) -> dict[str, Any]:
+    return {
+        "id": target.id,
+        "sender_sub": target.sender_sub,
+        "content": None if target.deleted_at is not None else target.content[:100],
+        "deleted": target.deleted_at is not None,
+        "content_type": target.content_type,
+    }
+
+
+async def validate_reply(
+    db: AsyncSession,
+    me_sub: str,
+    reply_to_id: int,
+    *,
+    other_sub: str | None = None,
+    group_id: int | None = None,
+) -> Message:
+    target = await db.get(Message, reply_to_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="replied message not found")
+    if group_id is not None:
+        if target.conversation_type != "group" or target.group_id != group_id:
+            raise HTTPException(status_code=404, detail="replied message not in group")
+    else:
+        assert other_sub is not None
+        lo, hi = pair_key(me_sub, other_sub)
+        if target.conversation_type != "dm" or (
+            target.participant_lo,
+            target.participant_hi,
+        ) != (lo, hi):
+            raise HTTPException(
+                status_code=404, detail="replied message not in conversation"
+            )
+    return target
 
 
 async def resolve_attachment(
@@ -108,6 +147,7 @@ async def send_message(
     *,
     content_type: str = "text",
     attachment: dict[str, Any] | None = None,
+    reply_to_id: int | None = None,
 ) -> Message:
     if sender_sub == recipient_sub:
         raise HTTPException(status_code=400, detail="cannot message yourself")
@@ -115,6 +155,8 @@ async def send_message(
         raise HTTPException(status_code=404, detail="user not found")
     if not await are_friends(db, sender_sub, recipient_sub):
         raise HTTPException(status_code=403, detail="not friends")
+    if reply_to_id is not None:
+        await validate_reply(db, sender_sub, reply_to_id, other_sub=recipient_sub)
     attachment_fields = await resolve_attachment(
         db, sender_sub, content_type, attachment
     )
@@ -126,6 +168,7 @@ async def send_message(
         participant_hi=hi,
         content=content,
         content_type=content_type,
+        reply_to_id=reply_to_id,
         **attachment_fields,
     )
     db.add(message)
@@ -328,6 +371,7 @@ async def send_group_message(
     *,
     content_type: str = "text",
     attachment: dict[str, Any] | None = None,
+    reply_to_id: int | None = None,
 ) -> Message:
     member_row = await group_membership(db, group_id, sender_sub)
     if member_row is None:
@@ -335,6 +379,8 @@ async def send_group_message(
     group = await db.get(Group, group_id)
     if group is None:
         raise HTTPException(status_code=404, detail="group not found")
+    if reply_to_id is not None:
+        await validate_reply(db, sender_sub, reply_to_id, group_id=group_id)
     attachment_fields = await resolve_attachment(
         db, sender_sub, content_type, attachment
     )
@@ -348,6 +394,7 @@ async def send_group_message(
         conversation_type="group",
         group_id=group_id,
         content_type=content_type,
+        reply_to_id=reply_to_id,
         **attachment_fields,
     )
     db.add(message)
