@@ -366,10 +366,8 @@ function renderLoggedOut() {
   mount(
     "auth-shell",
     `${themeToggleHtml()}
-    <div class="auth-head">
     <div class="auth-brand">${BRAND.logo}<span class="brand-name">${escapeHtml(BRAND.name)}</span></div>
     <p class="slogan">${escapeHtml(BRAND.slogan)}</p>
-    </div>
     <section class="card card-interactive auth-card card-signature page-enter">
       <div class="auth-halo" aria-hidden="true"></div>
       <h1>欢迎回来</h1>
