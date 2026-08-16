@@ -4,6 +4,9 @@
 
 ### 功能
 
+- 语音消息（v34）：上传白名单增 `audio/webm`（EBML 魔数）与 `audio/mp4`（ftyp 魔数），
+  消息 `content_type` 增 `audio`；前端麦克风按钮录音（MediaRecorder、时长计时、停止即上传
+  发送），语音气泡 `<audio controls>` 播放；伪造类型仍 415
 - 群解散（v33）：`POST /api/groups/{id}/dissolve`（仅 owner，admin/member 403）；显式清理
   群消息/回应/提及/收藏/成员/已读游标/会话设置（不依赖数据库级联，兼容哨兵占位设计）；
   WS `group_event(dissolved)` 广播全体；前端群主「解散群聊」入口 + 统一确认弹窗

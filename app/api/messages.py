@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/conversations", tags=["messages"])
 
 
 class MessageIn(BaseModel):
-    content_type: Literal["text", "image", "file"] = "text"
+    content_type: Literal["text", "image", "file", "audio"] = "text"
     content: str = ""
     attachment: AttachmentIn | None = None
     reply_to_id: int | None = Field(default=None, ge=1)

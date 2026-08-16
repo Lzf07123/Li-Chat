@@ -150,3 +150,12 @@ async def test_v33_group_dissolve_ui(api_client: httpx.AsyncClient) -> None:
     assert "group-dissolve" in text
     assert "function confirmModal(" in text
     assert '"dissolved"' in text
+
+
+async def test_v34_voice_message_ui(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "MediaRecorder" in text
+    assert "function toggleVoice(" in text
+    assert "voice-btn" in text
+    assert "voice-player" in text
+    assert "<audio" in text

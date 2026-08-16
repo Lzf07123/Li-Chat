@@ -32,6 +32,7 @@ const state = {
   forwardMessageId: null,
   mentionSubs: [],
   mentionOpen: false,
+  recording: { active: false, recorder: null, isGroup: false, seconds: 0, timer: null },
   wsRetry: 0,
   wsReconnectTimer: null,
   wsReconnecting: false,
@@ -418,6 +419,17 @@ function mainHtml() {
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
             </svg>
           </button>
+          <button id="voice-btn" class="icon-btn" type="button" aria-label="按住说话"
+            data-action="toggle-voice">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </button>
+          <span id="voice-timer" class="voice-timer" hidden></span>
           <input id="attach-input" type="file" multiple hidden
             accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain" />
           <div id="message-reply-bar" class="reply-bar" hidden>
@@ -476,6 +488,7 @@ function renderLoggedIn() {
   document.getElementById("attach-btn").addEventListener("click", () => {
     document.getElementById("attach-input").click();
   });
+  document.getElementById("voice-btn").addEventListener("click", () => toggleVoice(false));
   document.getElementById("attach-input").addEventListener("change", (event) => {
     onAttachSelected(event, false);
   });
@@ -1421,6 +1434,7 @@ async function toggleConversationSetting(button) {
 }
 
 async function openGroup(groupId, locateId = null) {
+  if (state.recording.active) stopVoice();
   const response = await api(`/api/groups/${groupId}`);
   if (!response.ok) return;
   state.activeGroupId = groupId;
@@ -1445,6 +1459,7 @@ async function openGroup(groupId, locateId = null) {
 }
 
 function closeGroupPanel() {
+  if (state.recording.active) stopVoice();
   state.activeGroupId = null;
   state.activeGroup = null;
   state.replyTo = null;
@@ -1550,6 +1565,17 @@ function groupPanelHtml(group) {
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
           </svg>
         </button>
+        <button id="group-voice-btn" class="icon-btn" type="button" aria-label="按住说话"
+          data-action="toggle-voice" ${myMuted ? "disabled" : ""}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </button>
+        <span id="group-voice-timer" class="voice-timer" hidden></span>
         <input id="group-attach-input" type="file" multiple hidden
           accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain" />
         <div id="group-reply-bar" class="reply-bar" hidden>
@@ -1652,6 +1678,9 @@ function renderGroupPanel() {
     document.getElementById("group-attach-btn").addEventListener("click", () => {
       document.getElementById("group-attach-input").click();
     });
+    document.getElementById("group-voice-btn").addEventListener("click", () => {
+      toggleVoice(true);
+    });
     document.getElementById("group-attach-input").addEventListener("change", (event) => {
       onAttachSelected(event, true);
     });
@@ -1692,7 +1721,11 @@ async function sendFiles(files, isGroup) {
   for (const file of list) {
     const upload = await uploadWithProgress(file);
     if (!upload) continue;
-    const content_type = upload.mime.startsWith("image/") ? "image" : "file";
+    const content_type = upload.mime.startsWith("image/")
+      ? "image"
+      : upload.mime.startsWith("audio/")
+        ? "audio"
+        : "file";
     const url = isGroup
       ? `/api/groups/${state.activeGroupId}/messages`
       : `/api/conversations/${encodeURIComponent(state.activeSub)}/messages`;
@@ -1834,6 +1867,97 @@ function bindPasteUpload(input, isGroup) {
       sendFiles(files, isGroup);
     }
   });
+}
+
+function voiceFormat(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  const rest = String(seconds % 60).padStart(2, "0");
+  return `${minutes}:${rest}`;
+}
+
+function renderVoiceState() {
+  const active = state.recording.active;
+  const isGroup = state.recording.isGroup;
+  const button = document.getElementById(isGroup ? "group-voice-btn" : "voice-btn");
+  if (button) {
+    button.classList.toggle("voice-recording", active);
+    button.setAttribute("aria-label", active ? "停止录音" : "按住说话");
+  }
+  const timer = document.getElementById(isGroup ? "group-voice-timer" : "voice-timer");
+  if (timer) {
+    timer.hidden = !active;
+    timer.textContent = active ? voiceFormat(state.recording.seconds) : "";
+  }
+}
+
+function updateVoiceTimer() {
+  state.recording.seconds += 1;
+  renderVoiceState();
+}
+
+async function toggleVoice(isGroup) {
+  if (state.recording.active) {
+    stopVoice();
+    return;
+  }
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    toast("当前浏览器不支持录音", "error");
+    return;
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    toast("无法访问麦克风，请检查浏览器权限", "error");
+    return;
+  }
+  const mimeType =
+    window.MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : "audio/webm";
+  let recorder;
+  try {
+    recorder = new MediaRecorder(stream, { mimeType });
+  } catch {
+    recorder = new MediaRecorder(stream);
+  }
+  const chunks = [];
+  recorder.addEventListener("dataavailable", (event) => {
+    if (event.data && event.data.size) chunks.push(event.data);
+  });
+  recorder.addEventListener("stop", () => {
+    stream.getTracks().forEach((track) => track.stop());
+    state.recording.active = false;
+    renderVoiceState();
+    const type = recorder.mimeType || "audio/webm";
+    const extension = type.includes("mp4") ? "m4a" : "webm";
+    const blob = new Blob(chunks, { type });
+    if (blob.size === 0) {
+      toast("没有录制到声音", "error");
+      return;
+    }
+    sendFiles([new File([blob], `语音消息.${extension}`, { type })], isGroup);
+  });
+  recorder.start();
+  state.recording = {
+    active: true,
+    recorder,
+    isGroup,
+    seconds: 0,
+    timer: window.setInterval(updateVoiceTimer, 1000),
+  };
+  renderVoiceState();
+}
+
+function stopVoice() {
+  const recording = state.recording;
+  if (!recording.active) return;
+  recording.active = false;
+  if (recording.timer) window.clearInterval(recording.timer);
+  try {
+    recording.recorder.stop();
+  } catch {
+    /* 已停止 */
+  }
+  renderVoiceState();
 }
 
 async function refreshGroups() {
@@ -1993,6 +2117,7 @@ async function onGroupPanelClick(event) {
 }
 
 async function openChat(sub, locateId = null) {
+  if (state.recording.active) stopVoice();
   const peer =
     state.friends.find((friend) => friend.sub === sub) ||
     state.searchResults.find((result) => result.sub === sub) ||
@@ -2105,6 +2230,7 @@ function loadOlder() {
 }
 
 function closeChat() {
+  if (state.recording.active) stopVoice();
   sendTyping("stop");
   state.editingId = null;
   state.replyTo = null;
@@ -2168,6 +2294,15 @@ function messageHtml(message, previous) {
       ${replyPreview}
       <img class="attachment-image" src="${escapeHtml(message.attachment.url)}"
         alt="图片消息" loading="lazy" />
+      ${message.content
+        ? `<div class="attachment-caption">${escapeHtml(message.content)}</div>`
+        : ""}
+    </div>`;
+  } else if (message.content_type === "audio" && message.attachment) {
+    body = `<div class="message-bubble message-bubble-attachment">
+      ${replyPreview}
+      <audio class="voice-player" controls preload="metadata"
+        src="${escapeHtml(message.attachment.url)}"></audio>
       ${message.content
         ? `<div class="attachment-caption">${escapeHtml(message.content)}</div>`
         : ""}

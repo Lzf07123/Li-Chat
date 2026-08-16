@@ -54,9 +54,9 @@
 | DELETE | `/api/groups/{id}/messages/{mid}/reactions?emoji=` | 会话 + CSRF | 群消息移除回应（仅成员，幂等） |
 | POST | `/api/groups/{id}/read` | 会话 + CSRF | 群已读 `{"last_read_id"}`（仅成员、消息须属该群、游标只前进）；WS 推全成员 |
 | POST | `/api/groups/{id}/forward` | 会话 + CSRF | 转发到群 `{"message_id"}`（仅成员、源消息自己可见、未撤回）；`forwarded:true` |
-| POST | `/api/uploads` | 会话 + CSRF | multipart `file`；大小 ≤ `LICHAT_UPLOAD_MAX_MB`、内容嗅探白名单（jpeg/png/gif/webp/pdf/txt）；413 超限 / 415 非法类型；201 `{id,url,name,size,mime}` |
+| POST | `/api/uploads` | 会话 + CSRF | multipart `file`；大小 ≤ `LICHAT_UPLOAD_MAX_MB`、内容嗅探白名单（jpeg/png/gif/webp/pdf/txt/audio/webm/audio/mp4）；413 超限 / 415 非法类型；201 `{id,url,name,size,mime}` |
 | GET | `/api/uploads/{filename}` | 会话 | 回源（上传者或引用该附件的会话参与者；图片 inline，其他 attachment；nosniff）；401 未登录 / 403 越权 / 404 不存在 |
-| POST | `/api/conversations/{sub}/messages` | 会话 + CSRF | 发消息 `{"content","content_type":"text|image|file","attachment":{url},"reply_to_id","mentions"}`；文本 1–2000 strip 校验，附件消息可带 ≤2000 说明且附件必须属于发送者；reply_to_id 必须同会话（否则 404）；mentions 仅允许对方（否则 422）；201 返回完整消息；400 自聊 / 403 非好友 / 404 未知 |
+| POST | `/api/conversations/{sub}/messages` | 会话 + CSRF | 发消息 `{"content","content_type":"text|image|file|audio","attachment":{url},"reply_to_id","mentions"}`；文本 1–2000 strip 校验，附件/语音消息可带 ≤2000 说明且附件必须属于发送者；reply_to_id 必须同会话（否则 404）；mentions 仅允许对方（否则 422）；201 返回完整消息；400 自聊 / 403 非好友 / 404 未知 |
 | POST | `/api/conversations/{sub}/forward` | 会话 + CSRF | 转发 `{"message_id"}`（源消息须自己可见、未撤回；目标须好友）；`forwarded:true` |
 | GET | `/api/conversations/{sub}/messages?limit=&before=` | 会话 | 历史倒序分页（limit 默认 50、1–100；before 为上一页最小 id 不含）；`{"messages":[...],"next_before":int|null}` |
 | PATCH | `/api/conversations/{sub}/messages/{id}` | 会话 + CSRF | 编辑 `{"content"}`；仅发送者、未撤回、5 分钟内；403 非发送者 / 404 不存在 / 409 已撤回或超窗 |
