@@ -1,6 +1,8 @@
 "use strict";
 
 const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+// 与 app/main.py 的 FRONTEND_VERSION 保持一致；落后即清缓存强制刷新
+const FRONTEND_VERSION = "0.3.0";
 
 const state = {
   me: null,
@@ -121,6 +123,31 @@ async function loadMe() {
   state.me = await response.json();
   renderLoggedIn();
   connectWebSocket();
+}
+
+function ensureFreshFrontend() {
+  const reloadedKey = "lichat-frontend-reloaded";
+  fetch("/api/version", { credentials: "same-origin", cache: "no-store" })
+    .then((response) => response.json())
+    .then((data) => {
+      if (data.frontend_version === FRONTEND_VERSION) {
+        sessionStorage.removeItem(reloadedKey);
+        return;
+      }
+      if (sessionStorage.getItem(reloadedKey) === "true") return;
+      sessionStorage.setItem(reloadedKey, "true");
+      if (window.caches && window.caches.keys) {
+        window.caches
+          .keys()
+          .then((keys) => Promise.all(keys.map((key) => window.caches.delete(key))))
+          .then(() => window.location.reload());
+        return;
+      }
+      window.location.reload();
+    })
+    .catch(() => {
+      /* 版本探测失败不阻塞使用 */
+    });
 }
 
 function renderLoggedOut() {
@@ -2400,4 +2427,5 @@ window.addEventListener("pageshow", (event) => {
   loadMe();
 });
 
+ensureFreshFrontend();
 loadMe();

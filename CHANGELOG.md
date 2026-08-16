@@ -89,6 +89,9 @@
 
 ### 行为变更
 
+- 前端版本检测与强制刷新：`GET /api/version` 下发前端版本，启动时与服务端比对，版本落后则
+  清空 Cache Storage 并强制 `location.reload()`（sessionStorage 防刷新循环）；紧凑密度层
+  明确仅桌面端（≥768px）生效，移动端保持 44px 触控热区
 - 移动端进入聊天时保留个人状态顶栏，聊天框全出血占满其下剩余全屏（面板顶=顶栏底、输入框
   贴视口底），页面不可滚动、仅组件内滚动
 - 页面滚动彻底锁定：`html/body` 均 `overflow:hidden` + `overscroll-behavior:none`，聊天页

@@ -85,3 +85,10 @@ compose 插值变量（应用忽略）：`LICHAT_PORT`（宿主机端口）、`R
 引入后，`messages.recipient_sub` 与 `participant_lo/hi` 对群消息以 `group:{id}` 哨兵占位，
 旧库无需重建即可写入群消息；数据迁移到 PostgreSQL 时需用 Alembic 重建等价语义（届时再收敛
 哨兵设计）。
+
+## 前端发布与缓存
+
+首页与 `app.js/style.css/brand.js/theme.js/ambient.js/favicon.svg` 响应 `Cache-Control:
+no-cache`（配合 ETag 回源校验）；`/api/*` 统一 `no-store`。升级前端资源时需同步修改
+`app/main.py` 的 `FRONTEND_VERSION` 与 `static/app.js` 的同名常量：客户端启动即请求
+`/api/version` 比对，发现落后会清空 Cache Storage 并强制刷新一次，避免旧资源残留。
