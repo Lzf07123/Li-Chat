@@ -2635,3 +2635,52 @@ a {
     animation-duration: 2s;
   }
 }
+
+/* 表情面板 */
+.emoji-panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  width: min(320px, 86vw);
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 10px;
+  border: 1px solid var(--chat-border);
+  border-radius: 12px;
+  background: var(--chat-surface);
+  box-shadow: var(--shadow-lg);
+  overscroll-behavior: contain;
+}
+
+.emoji-category {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.emoji-category-name {
+  font-size: 0.72rem;
+  color: var(--chat-muted);
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+}
+
+.emoji-option {
+  padding: 2px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 1.15rem;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.emoji-option:hover {
+  background: var(--chat-surface-2);
+}

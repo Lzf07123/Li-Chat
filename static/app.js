@@ -1,6 +1,29 @@
 "use strict";
 
 const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+const EMOJI_SETS = {
+  常用: [
+    ...QUICK_EMOJIS,
+    "😀", "😁", "😆", "🤣", "😊", "😇", "🥰", "😍", "🤩", "😘", "😋", "😛", "🤪", "🤨",
+    "🧐", "🤓", "😎", "🥳", "😏", "😒", "😞", "😔", "😕", "🙁", "😣", "😖", "😫", "😩",
+    "🥺", "😢", "😭", "😤", "😠", "😡", "🤯", "😳", "🥵", "🥶", "😱", "😨", "😰", "😥",
+    "🤗", "🤔", "🤭", "🤫", "🤥", "😶", "😐", "😑", "😬", "🙄", "😯", "😦", "😧", "😮",
+    "😲", "🥱", "😴", "🤤", "😪", "😵", "🥴", "🤢", "🤮", "🤧", "😷", "🤒", "🤕", "🤑",
+    "🤠", "😈", "👿", "🤡", "💩", "👻", "💀", "👽", "👾", "🤖", "🎃", "😺", "😸", "😹",
+    "😻", "😼", "😽", "🙀", "😿", "😾",
+  ],
+  手势: [
+    "👋", "🤚", "🖐️", "✋", "🖖", "👌", "🤌", "🤏", "✌️", "🤞", "🫰", "🤟", "🤘", "🤙",
+    "👈", "👉", "👆", "👇", "☝️", "👍", "👎", "✊", "👊", "🤛", "🤜", "👏", "🙌", "👐",
+    "🤲", "🤝", "🙏", "✍️", "💪", "🦾", "🖕",
+  ],
+  符号: [
+    "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "❣️", "💕", "💞", "💓",
+    "💗", "💖", "💘", "💝", "💟", "☮️", "✝️", "☪️", "🕉️", "☸️", "✡️", "🔯", "🕎", "☯️",
+    "☦️", "🛐", "♈", "♉", "♊", "♋", "♌", "♍", "♎", "♏", "♐", "♑", "♒", "♓", "⚛️",
+    "✅", "❌", "❓", "❗", "💯", "🔥", "⭐", "🌟", "✨", "⚡", "💧", "🎉", "🎊", "🎁",
+  ],
+};
 // 与 app/main.py 的 FRONTEND_VERSION 保持一致；落后即清缓存强制刷新
 const FRONTEND_VERSION = "0.3.0";
 let draftTimer = null;
@@ -38,6 +61,7 @@ const state = {
   mentionSubs: [],
   mentionOpen: false,
   recording: { active: false, recorder: null, isGroup: false, seconds: 0, timer: null },
+  emojiOpen: false,
   wsRetry: 0,
   wsReconnectTimer: null,
   wsReconnecting: false,
@@ -479,6 +503,9 @@ function mainHtml() {
             </svg>
           </button>
           <span id="voice-timer" class="voice-timer" hidden></span>
+          <button id="emoji-btn" class="icon-btn" type="button" aria-label="插入表情"
+            data-action="toggle-emoji">😊</button>
+          <div id="emoji-panel" class="emoji-panel" hidden></div>
           <input id="attach-input" type="file" multiple hidden
             accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain" />
           <div id="message-reply-bar" class="reply-bar" hidden>
@@ -540,6 +567,7 @@ function renderLoggedIn() {
     document.getElementById("attach-input").click();
   });
   document.getElementById("voice-btn").addEventListener("click", () => toggleVoice(false));
+  bindEmojiPanel("emoji-btn", "emoji-panel");
   document.getElementById("attach-input").addEventListener("change", (event) => {
     onAttachSelected(event, false);
   });
@@ -1055,6 +1083,11 @@ function onGlobalKeydown(event) {
     const dropdown = document.getElementById("profile-dropdown");
     if (dropdown && !dropdown.hidden) {
       setProfileMenu(false);
+      return;
+    }
+    if (state.emojiOpen) {
+      state.emojiOpen = false;
+      renderEmojiPanel();
       return;
     }
     if (state.editingId) {
@@ -1919,6 +1952,9 @@ function groupPanelHtml(group) {
           </svg>
         </button>
         <span id="group-voice-timer" class="voice-timer" hidden></span>
+        <button id="group-emoji-btn" class="icon-btn" type="button" aria-label="插入表情"
+          data-action="toggle-emoji" ${myMuted ? "disabled" : ""}>😊</button>
+        <div id="group-emoji-panel" class="emoji-panel" hidden></div>
         <input id="group-attach-input" type="file" multiple hidden
           accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain" />
         <div id="group-reply-bar" class="reply-bar" hidden>
@@ -2044,6 +2080,7 @@ function renderGroupPanel() {
     document.getElementById("group-voice-btn").addEventListener("click", () => {
       toggleVoice(true);
     });
+    bindEmojiPanel("group-emoji-btn", "group-emoji-panel");
     document.getElementById("group-attach-input").addEventListener("change", (event) => {
       onAttachSelected(event, true);
     });
@@ -2359,6 +2396,61 @@ function stopVoice() {
     /* 已停止 */
   }
   renderVoiceState();
+}
+
+function toggleEmojiPanel() {
+  state.emojiOpen = !state.emojiOpen;
+  renderEmojiPanel();
+}
+
+function renderEmojiPanel() {
+  const panel = document.getElementById(
+    state.activeGroupId !== null ? "group-emoji-panel" : "emoji-panel"
+  );
+  if (!panel) return;
+  panel.hidden = !state.emojiOpen;
+  if (!state.emojiOpen) return;
+  panel.innerHTML = Object.entries(EMOJI_SETS)
+    .map(
+      ([category, emojis]) => `<div class="emoji-category">
+        <span class="emoji-category-name">${escapeHtml(category)}</span>
+        <div class="emoji-grid">${emojis
+          .map(
+            (emoji) =>
+              `<button class="emoji-option" type="button" data-emoji="${emoji}">${emoji}</button>`
+          )
+          .join("")}</div>
+      </div>`
+    )
+    .join("");
+}
+
+function insertEmoji(emoji) {
+  const input =
+    state.activeGroupId !== null
+      ? document.getElementById("group-message-input")
+      : document.getElementById("message-input");
+  if (!input) return;
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? input.value.length;
+  input.value = input.value.slice(0, start) + emoji + input.value.slice(end);
+  const caret = start + emoji.length;
+  input.setSelectionRange(caret, caret);
+  input.focus();
+  autoGrowInput(input);
+  saveDraftDebounced(input.value);
+}
+
+function bindEmojiPanel(buttonId, panelId) {
+  document.getElementById(buttonId).addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleEmojiPanel();
+  });
+  document.getElementById(panelId).addEventListener("click", (event) => {
+    const option = event.target.closest(".emoji-option");
+    if (!option) return;
+    insertEmoji(option.dataset.emoji);
+  });
 }
 
 async function refreshGroups() {

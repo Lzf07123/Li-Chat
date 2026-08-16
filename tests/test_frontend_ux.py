@@ -262,3 +262,11 @@ async def test_v47_upload_failure_retry(api_client: httpx.AsyncClient) -> None:
     assert "uploadRetry" in text
     css = await _style_css(api_client)
     assert "upload-progress-failed" in css
+
+
+async def test_v48_emoji_picker(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "EMOJI_SETS" in text
+    assert "emoji-panel" in text
+    assert "function insertEmoji(" in text
+    assert "emoji-option" in text
