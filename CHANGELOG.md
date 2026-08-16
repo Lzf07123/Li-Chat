@@ -4,6 +4,9 @@
 
 ### 功能
 
+- 会话管理：WS 连接级 session_id 跟踪、`GET /api/me/sessions`（含 `current` 标记）、
+  `DELETE /api/me/sessions/{id}` 撤销单个会话并断其 WS（4401）、`DELETE /api/me/sessions`
+  退出其他设备（保留当前）；前端「登录设备」列表与撤销按钮
 - 群消息操作补齐：群内编辑/撤回（`PATCH/DELETE /api/groups/{id}/messages/{mid}`，发送者、
   5 分钟窗、墓碑；非成员 404）与表情回应（成员校验、幂等 toggle）；WS
   `message_edited/message_deleted/message_reaction` 群内广播；前端群消息启用编辑/撤回/表情

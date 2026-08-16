@@ -258,7 +258,7 @@ def create_app(
             user_sub = session.user_sub
         manager = cast(ConnectionManager, app.state.ws_manager)
         call_manager = cast(CallManager, app.state.call_manager)
-        await manager.connect(user_sub, websocket)
+        await manager.connect(user_sub, websocket, session_id)
         presence_peers: list[str] = []
         try:
             await websocket.send_json({"type": "hello", "sub": user_sub})

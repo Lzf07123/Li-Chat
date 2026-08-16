@@ -25,7 +25,7 @@ flowchart LR
 | `app/oidc/` | 依赖方实现：发现文档、PKCE、授权状态、令牌校验、用户同步 |
 | `app/sso/` | `/oidc/*` 路由、登出 state 签名、jti 防重放（内存/Redis 双实现） |
 | `app/redis.py` | Redis 客户端构建与登出广播订阅（`LICHAT_REDIS_URL` 可选启用） |
-| `app/ws/` | 内存连接表，按用户 sub 管理 WebSocket；presence/typing/call 信令中继；跨副本断开经 Redis 广播 |
+| `app/ws/` | 内存连接表，按用户 sub 管理 WebSocket（连接级 session_id 跟踪）；presence/typing/call 信令中继；跨副本断开经 Redis 广播 |
 | `app/api/` | `/api/me`、用户搜索、好友、单聊与群聊薄路由 |
 | `app/friends/` | 好友业务：搜索、关系状态、申请生命周期 |
 | `app/messages/` | 消息业务：发送、历史分页、长度/关系校验 |

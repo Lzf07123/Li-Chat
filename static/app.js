@@ -168,6 +168,9 @@ function headerHtml() {
           <button id="open-stars" class="profile-menu-item" role="menuitem" type="button">
             我的收藏
           </button>
+          <button id="open-sessions" class="profile-menu-item" role="menuitem" type="button">
+            登录设备
+          </button>
           <button id="logout" class="profile-menu-item" role="menuitem" type="button">
             退出登录
           </button>
@@ -284,6 +287,7 @@ function renderLoggedIn() {
   document.getElementById("logout").addEventListener("click", logout);
   document.getElementById("edit-profile").addEventListener("click", openProfileModal);
   document.getElementById("open-stars").addEventListener("click", openStarsModal);
+  document.getElementById("open-sessions").addEventListener("click", openSessionsModal);
   document.getElementById("search-form").addEventListener("submit", onSearch);
   document.getElementById("search-form").addEventListener("click", onSearchModeClick);
   document.getElementById("search-results").addEventListener("click", onSearchResultClick);
@@ -404,6 +408,71 @@ async function openStarsModal() {
       return;
     }
     if (event.target === modal || event.target.closest("[data-action='close-stars']")) {
+      modal.remove();
+    }
+  });
+}
+
+async function openSessionsModal() {
+  setProfileMenu(false);
+  await renderSessionsModal();
+}
+
+async function renderSessionsModal() {
+  const response = await api("/api/me/sessions");
+  if (!response.ok) return;
+  const sessions = (await response.json()).sessions;
+  const existing = document.getElementById("sessions-modal");
+  if (existing) existing.remove();
+  const rows = sessions
+    .map((session) => {
+      const time = new Date(session.last_seen_at).toLocaleString([], {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+      return `<li class="contact-item">
+        <span class="contact-main">
+          <span class="contact-name">${session.current ? "当前设备" : "其他设备"} · ${escapeHtml(time)}</span>
+          <span class="contact-preview">有效期至 ${escapeHtml(
+            new Date(session.expires_at).toLocaleDateString()
+          )}</span>
+        </span>
+        ${session.current
+          ? '<span class="badge badge-primary">当前</span>'
+          : `<button class="btn btn-ghost btn-sm" type="button"
+              data-action="revoke-session" data-id="${escapeHtml(session.id)}">撤销</button>`}
+      </li>`;
+    })
+    .join("");
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="sessions-modal" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <h3 class="modal-title">登录设备</h3>
+        <ul class="contact-list forward-list">${rows || '<li class="sidebar-empty">无会话</li>'}</ul>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" data-action="revoke-others">退出其他设备</button>
+          <button class="btn btn-primary" type="button" data-action="close-sessions">关闭</button>
+        </div>
+      </div>
+    </div>`
+  );
+  const modal = document.getElementById("sessions-modal");
+  modal.addEventListener("click", async (event) => {
+    const revoke = event.target.closest("[data-action='revoke-session']");
+    if (revoke) {
+      const result = await api(`/api/me/sessions/${encodeURIComponent(revoke.dataset.id)}`, {
+        method: "DELETE",
+      });
+      if (result.ok) await renderSessionsModal();
+      return;
+    }
+    if (event.target.closest("[data-action='revoke-others']")) {
+      const result = await api("/api/me/sessions", { method: "DELETE" });
+      if (result.ok) await renderSessionsModal();
+      return;
+    }
+    if (event.target === modal || event.target.closest("[data-action='close-sessions']")) {
       modal.remove();
     }
   });

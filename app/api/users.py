@@ -4,6 +4,7 @@ from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, field_validator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.search import ConversationRefOut
@@ -12,7 +13,9 @@ from app.db import get_db
 from app.friends import service as friends_service
 from app.messages import service as messages_service
 from app.models import Session, User
+from app.timeutil import iso_utc
 from app.uploads.service import get_upload
+from app.ws.manager import ConnectionManager
 
 router = APIRouter(prefix="/api", tags=["users"])
 
@@ -86,6 +89,22 @@ class StarredItemOut(BaseModel):
 class StarsOut(BaseModel):
     messages: list[StarredItemOut]
     next_before: int | None
+
+
+class SessionOut(BaseModel):
+    id: str
+    created_at: str
+    last_seen_at: str
+    expires_at: str
+    current: bool
+
+
+class SessionsOut(BaseModel):
+    sessions: list[SessionOut]
+
+
+class StatusOut(BaseModel):
+    status: str
 
 
 def _me_payload(user: User, session: Session) -> MeOut:
@@ -183,6 +202,76 @@ async def starred_messages(
         db, user.sub, cursor=cursor, limit=limit
     )
     return StarsOut(messages=items, next_before=next_before)
+
+
+@router.get("/me/sessions", response_model=SessionsOut)
+async def sessions_list(
+    request: Request,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> SessionsOut:
+    current = cast(Session, request.state.session)
+    rows = (
+        await db.execute(
+            select(Session)
+            .where(Session.user_sub == user.sub)
+            .order_by(Session.created_at.desc())
+        )
+    ).scalars().all()
+    return SessionsOut(
+        sessions=[
+            SessionOut(
+                id=row.id,
+                created_at=iso_utc(row.created_at),
+                last_seen_at=iso_utc(row.last_seen_at),
+                expires_at=iso_utc(row.expires_at),
+                current=row.id == current.id,
+            )
+            for row in rows
+        ]
+    )
+
+
+@router.delete("/me/sessions/{session_id}", response_model=StatusOut)
+async def revoke_session(
+    request: Request,
+    session_id: str,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> StatusOut:
+    target = await db.get(Session, session_id)
+    if target is None or target.user_sub != user.sub:
+        raise HTTPException(status_code=404, detail="session not found")
+    await db.delete(target)
+    await db.commit()
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    await manager.disconnect_session(user.sub, session_id)
+    return StatusOut(status="revoked")
+
+
+@router.delete("/me/sessions", response_model=StatusOut)
+async def revoke_other_sessions(
+    request: Request,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> StatusOut:
+    current = cast(Session, request.state.session)
+    rows = (
+        await db.execute(
+            select(Session).where(
+                Session.user_sub == user.sub, Session.id != current.id
+            )
+        )
+    ).scalars().all()
+    for row in rows:
+        await db.delete(row)
+    await db.commit()
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    for row in rows:
+        await manager.disconnect_session(user.sub, row.id)
+    return StatusOut(status="ok")
 
 
 @router.get("/users/search", response_model=SearchOut)

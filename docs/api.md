@@ -17,6 +17,9 @@
 | PUT | `/api/messages/{id}/star` | 会话 + CSRF | 收藏（幂等；仅自己可见范围，越权 404）；`{"message_id","starred":true}` |
 | DELETE | `/api/messages/{id}/star` | 会话 + CSRF | 取消收藏（幂等）；`{"message_id","starred":false}` |
 | GET | `/api/me/stars?cursor=&limit=` | 会话 | 收藏列表（倒序游标 ≤50；附会话引用与内容摘要）；`{"messages":[...],"next_before"}` |
+| GET | `/api/me/sessions` | 会话 | 当前用户的登录会话列表（含 `current` 标记）；`{"sessions":[{id,created_at,last_seen_at,expires_at,current}]}` |
+| DELETE | `/api/me/sessions/{id}` | 会话 + CSRF | 撤销我的某个会话并断其 WS（4401）；越权 404 |
+| DELETE | `/api/me/sessions` | 会话 + CSRF | 撤销除当前外全部会话（退出其他设备） |
 | GET | `/api/users/search?q=` | 会话 | 昵称/邮箱关键词搜索（1–64 字符，≤20 条）；返回 `sub/nickname/name/picture/friend_status`，不回传邮箱 |
 | GET | `/api/search?kind=messages&q=&limit=&before=` | 会话 | 消息全文搜索（仅自己可见范围：单聊双方/群成员；LIKE 不区分大小写、倒序游标、命中片段）；`{"messages":[{id,sender_sub,conversation:{type,peer_sub,peer_name,group_id,group_name},snippet,created_at}],"next_before"}` |
 | GET | `/api/search?kind=contacts&q=` | 会话 | 联系人搜索（语义同 `/api/users/search`）；`{"contacts":[{sub,nickname,name,picture,friend_status}]}` |
