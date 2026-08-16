@@ -776,6 +776,33 @@ function openShortcutsModal() {
   });
 }
 
+function confirmModal(title, message, onConfirm, confirmLabel = "确认") {
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="confirm-modal" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <h3 class="modal-title">${escapeHtml(title)}</h3>
+        <p class="confirm-message">${escapeHtml(message)}</p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" data-action="close-confirm">取消</button>
+          <button class="btn btn-danger" type="button" id="confirm-ok">${escapeHtml(confirmLabel)}</button>
+        </div>
+      </div>
+    </div>`
+  );
+  const modal = document.getElementById("confirm-modal");
+  const close = () => modal.remove();
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal || event.target.closest("[data-action='close-confirm']")) {
+      close();
+    }
+  });
+  document.getElementById("confirm-ok").addEventListener("click", async () => {
+    close();
+    await onConfirm();
+  });
+}
+
 function onGlobalKeydown(event) {
   const mod = event.ctrlKey || event.metaKey;
   if (mod && event.key.toLowerCase() === "k") {
@@ -1583,6 +1610,9 @@ function groupPanelHtml(group) {
           </section>`
         : ""}
       <section class="group-section">
+        ${myRole === "owner"
+          ? `<button class="btn btn-danger" type="button" data-action="group-dissolve">解散群聊</button>`
+          : ""}
         <button class="btn btn-ghost" type="button" data-action="group-leave">退出群聊</button>
       </section>
     </div>`;
@@ -1943,6 +1973,21 @@ async function onGroupPanelClick(event) {
       toast("已退出群聊", "success");
       return;
     }
+  } else if (action === "group-dissolve") {
+    confirmModal(
+      "解散群聊",
+      "解散后群聊与全部消息将永久删除，且无法恢复。确定要解散吗？",
+      async () => {
+        const response = await api(`/api/groups/${groupId}/dissolve`, { method: "POST" });
+        if (response.ok) {
+          closeGroupPanel();
+          await refreshGroups();
+          toast("群聊已解散", "success");
+        }
+      },
+      "解散"
+    );
+    return;
   }
   await refreshGroups();
 }
@@ -2744,7 +2789,14 @@ function handleServerMessage(data) {
   } else if (data.type === "call") {
     handleCallSignal(data);
   } else if (data.type === "group_event") {
-    refreshGroups();
+    if (data.event === "dissolved") {
+      state.groups = state.groups.filter((group) => group.id !== data.group_id);
+      if (state.activeGroupId === data.group_id) closeGroupPanel();
+      toast("群聊已解散", "info");
+      renderSidebar();
+    } else {
+      refreshGroups();
+    }
   } else if (data.type === "friend_event") {
     refreshSidebar();
   }

@@ -277,6 +277,29 @@ async def leave_group(
     return StatusOut(status="left")
 
 
+@router.post("/{group_id}/dissolve", response_model=StatusOut)
+async def dissolve_group(
+    request: Request,
+    group_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> StatusOut:
+    payload, member_subs = await service.dissolve_group(db, user.sub, group_id)
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    event = {
+        "type": "group_event",
+        "event": "dissolved",
+        "group_id": group_id,
+        "group": payload,
+        "by_sub": user.sub,
+        "at": iso_utc(utcnow()),
+    }
+    for sub in member_subs:
+        await manager.send_to(sub, event)
+    return StatusOut(status="dissolved")
+
+
 @router.post("/{group_id}/transfer", response_model=StatusOut)
 async def transfer_ownership(
     request: Request,

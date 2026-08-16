@@ -143,3 +143,10 @@ async def test_v32_group_mute_ui(api_client: httpx.AsyncClient) -> None:
     text = await _app_js(api_client)
     assert "group-mute" in text
     assert "你已被禁言" in text
+
+
+async def test_v33_group_dissolve_ui(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "group-dissolve" in text
+    assert "function confirmModal(" in text
+    assert '"dissolved"' in text

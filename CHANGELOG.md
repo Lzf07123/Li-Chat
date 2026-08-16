@@ -4,6 +4,10 @@
 
 ### 功能
 
+- 群解散（v33）：`POST /api/groups/{id}/dissolve`（仅 owner，admin/member 403）；显式清理
+  群消息/回应/提及/收藏/成员/已读游标/会话设置（不依赖数据库级联，兼容哨兵占位设计）；
+  WS `group_event(dissolved)` 广播全体；前端群主「解散群聊」入口 + 统一确认弹窗
+  `confirmModal`（后续高风险操作复用），成员侧自动收敛面板并提示
 - 群成员禁言（v32）：`group_members.muted`，`PATCH /api/groups/{id}/members/{sub}/mute`
   （owner/admin；不得禁言 owner/admin 与自己）；被禁言成员发群消息 403 `you are muted`，
   WS `group_event(member_muted)` 全成员广播；前端成员行禁言开关、被禁言者输入框/附件/提及

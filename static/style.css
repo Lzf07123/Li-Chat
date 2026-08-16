@@ -2369,3 +2369,9 @@ a {
   font-size: 0.85rem;
   color: var(--chat-muted);
 }
+
+.confirm-message {
+  margin: 8px 0 4px;
+  line-height: 1.6;
+  color: var(--chat-fg);
+}

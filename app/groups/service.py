@@ -3,11 +3,21 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.friends.service import are_friends
-from app.models import Group, GroupMember, User
+from app.models import (
+    Group,
+    GroupMember,
+    GroupRead,
+    Message,
+    MessageMention,
+    Reaction,
+    User,
+    UserConversationSetting,
+    UserStar,
+)
 from app.timeutil import iso_utc
 from app.uploads.service import get_upload
 
@@ -268,6 +278,38 @@ async def set_announcement(
     group.announcement = text
     await db.commit()
     return await group_payload(db, group)
+
+
+async def dissolve_group(
+    db: AsyncSession, me_sub: str, group_id: int
+) -> tuple[dict[str, Any], list[str]]:
+    await _require_role(db, group_id, me_sub, {"owner"})
+    group = await db.get(Group, group_id)
+    if group is None:
+        raise HTTPException(status_code=404, detail="group not found")
+    subs = await member_subs(db, group_id)
+    payload = {
+        "id": group.id,
+        "name": group.name,
+        "owner_sub": group.owner_sub,
+        "member_count": len(subs),
+    }
+    message_ids = select(Message.id).where(Message.group_id == group_id)
+    await db.execute(delete(MessageMention).where(MessageMention.message_id.in_(message_ids)))
+    await db.execute(delete(Reaction).where(Reaction.message_id.in_(message_ids)))
+    await db.execute(delete(UserStar).where(UserStar.message_id.in_(message_ids)))
+    await db.execute(delete(Message).where(Message.group_id == group_id))
+    await db.execute(delete(GroupRead).where(GroupRead.group_id == group_id))
+    await db.execute(delete(GroupMember).where(GroupMember.group_id == group_id))
+    await db.execute(
+        delete(UserConversationSetting).where(
+            UserConversationSetting.kind == "group",
+            UserConversationSetting.key == str(group_id),
+        )
+    )
+    await db.execute(delete(Group).where(Group.id == group_id))
+    await db.commit()
+    return payload, subs
 
 
 async def set_avatar(

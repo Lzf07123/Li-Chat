@@ -42,6 +42,7 @@
 | PATCH | `/api/groups/{id}/members/{sub}` | 会话 + CSRF | 调整角色 `{"role":"admin|member"}`（仅 owner，不可改 owner 自身） |
 | PATCH | `/api/groups/{id}/members/{sub}/mute` | 会话 + CSRF | 禁言/解除禁言 `{"muted":bool}`（owner/admin；不得禁言 owner/admin 与自己）；被禁言者发消息 403 |
 | POST | `/api/groups/{id}/leave` | 会话 + CSRF | 退出（owner 须先转让，409） |
+| POST | `/api/groups/{id}/dissolve` | 会话 + CSRF | 解散（仅 owner）；级联清理群消息/成员/已读/会话设置，WS `dissolved` 广播全体 |
 | POST | `/api/groups/{id}/transfer` | 会话 + CSRF | 转让 `{"new_owner_sub"}`（仅 owner，目标须为成员） |
 | PATCH | `/api/groups/{id}/announcement` | 会话 + CSRF | 公告 `{"text"}`（≤2000，可清空；owner/admin） |
 | POST | `/api/groups/{id}/avatar` | 会话 + CSRF | 群头像 `{"url"}`（本人上传的图片；owner/admin） |
