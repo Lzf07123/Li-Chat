@@ -27,6 +27,7 @@ class FriendPresenceOut(ProfileOut):
     online: bool
     last_seen_at: str | None = None
     bio: str | None = None
+    remark: str | None = None
 
 
 class FriendsPresenceOut(BaseModel):
@@ -61,6 +62,14 @@ class RequestsOut(BaseModel):
 
 class FriendsOut(BaseModel):
     friends: list[ProfileOut]
+
+
+class RemarkIn(BaseModel):
+    remark: str
+
+
+class RemarkOut(BaseModel):
+    remark: str | None
 
 
 class StatusOut(BaseModel):
@@ -136,9 +145,22 @@ async def friends_list(
                 online=manager.has(sub),
                 last_seen_at=friend["last_seen_at"],
                 bio=friend["bio"],
+                remark=friend["remark"],
             )
         )
     return FriendsPresenceOut(friends=items)
+
+
+@router.patch("/{other_sub}/remark", response_model=RemarkOut)
+async def set_friend_remark(
+    other_sub: str,
+    body: RemarkIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> RemarkOut:
+    remark = await service.set_remark(db, user.sub, other_sub, body.remark)
+    return RemarkOut(remark=remark)
 
 
 @router.post("/requests/{from_sub}/accept", response_model=StatusOut)

@@ -26,6 +26,7 @@
 | GET | `/api/search?kind=messages&q=&limit=&before=` | 会话 | 消息全文搜索（仅自己可见范围：单聊双方/群成员；LIKE 不区分大小写、倒序游标、命中片段）；`{"messages":[{id,sender_sub,conversation:{type,peer_sub,peer_name,group_id,group_name},snippet,created_at}],"next_before"}` |
 | GET | `/api/search?kind=contacts&q=` | 会话 | 联系人搜索（语义同 `/api/users/search`）；`{"contacts":[{sub,nickname,name,picture,friend_status}]}` |
 | GET | `/api/friends` | 会话 | 已接受好友列表 `{"friends":[{...Profile,bio,online:bool,last_seen_at:str|null}]}`（bio 仅好友可见） |
+| PATCH | `/api/friends/{sub}/remark` | 会话 + CSRF | 设置/清除好友备注名 `{"remark"}`（≤32，空串清除，仅好友关系内）；`{"remark":...}` |
 | GET | `/api/friends/requests` | 会话 | `{"incoming":[{"requester":Profile,"created_at"}],"outgoing":[{"addressee":Profile,"created_at"}]}` |
 | GET | `/api/friends/recommendations?limit=` | 会话 | 随机推荐（默认 5、1–20）；排除自己、好友与双方待处理申请，返回 `{"friends":[Profile]}`，不回传邮箱 |
 | POST | `/api/friends/requests` | 会话 + CSRF | 发申请 `{"to_sub":"..."}`；201 返回申请对象；400 自加 / 404 未知 / 409 重复或已是好友 |

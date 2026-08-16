@@ -72,6 +72,7 @@ class Friendship(Base):
         ForeignKey("users.sub", ondelete="CASCADE"), primary_key=True
     )
     status: Mapped[str] = mapped_column(String(16), default="pending")
+    remark: Mapped[str | None] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 

@@ -42,7 +42,7 @@ flowchart LR
 | `users` | `sub`(PK)、nickname、name、picture、email、bio、last_seen_at | 门户 UUID 作主键，登录时 upsert；昵称/头像仅空值回填（本地编辑优先），bio 仅好友可见；last_seen_at 在 WS 连接与心跳时刷新 |
 | `auth_states` | `state`(PK)、verifier、nonce、redirect_after、expires_at | 授权状态，单次使用 |
 | `sessions` | `id`(PK)、user_sub、sid、acr、csrf_token、expires_at、absolute_expires_at | 绑定门户会话 `(sub, sid)`，支撑回程登出 |
-| `friendships` | `requester_sub+addressee_sub`(复合 PK)、status、created_at、updated_at | 申请方向由 requester 表达；`pending`/`accepted`，无自环约束 |
+| `friendships` | `requester_sub+addressee_sub`(复合 PK)、status、remark、created_at、updated_at | 申请方向由 requester 表达；`pending`/`accepted`，无自环约束；remark 为本人视角备注名（≤32，仅自己可见） |
 | `messages` | `id`(自增，SQLite INTEGER/PostgreSQL BIGINT)、sender_sub、recipient_sub、participant_lo/hi、content、conversation_type(dm/group)、group_id、reply_to_id(自引用)、content_type(text/image/file)、forwarded、attachment_*、edited_at、deleted_at、created_at | DM 用 `(participant_lo, participant_hi, id)` 索引；群消息按 `(group_id, id)` 索引，recipient/participant 以 `group:{id}` 哨兵占位兼容旧约束；撤回清空 content 留墓碑；引用预览不递归嵌套；转发复制内容并置 forwarded |
 | `dm_reads` | `user_sub+participant_lo+participant_hi`(复合 PK)、last_read_message_id、updated_at | 单聊已读游标，只前进；未读 = 对方消息 id 大于游标 |
 | `reactions` | `message_id+user_sub+emoji`(复合 PK)、created_at | 幂等 toggle；聚合计数回显，不泄露非上榜用户 |

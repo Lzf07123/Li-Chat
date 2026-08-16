@@ -7,7 +7,7 @@ import httpx
 from starlette.testclient import TestClient
 
 from app.models import Friendship
-from tests.fixtures.chat import seed_session, seed_session_sync, seed_user
+from tests.fixtures.chat import make_friends, seed_session, seed_session_sync, seed_user
 
 
 async def _client_for(app: Any, sub: str) -> tuple[httpx.AsyncClient, str]:
@@ -75,6 +75,52 @@ async def test_search_rejects_blank_or_long_query(app: Any) -> None:
 async def test_search_requires_session(api_client: httpx.AsyncClient) -> None:
     response = await api_client.get("/api/users/search", params={"q": "x"})
     assert response.status_code == 401
+
+
+async def test_set_and_clear_friend_remark(app: Any) -> None:
+    async with app.state.session_factory() as db:
+        await make_friends(db, "u-me", "u-bob")
+    client, csrf = await _client_for(app, "u-me")
+    async with client:
+        set_remark = await client.patch(
+            "/api/friends/u-bob/remark",
+            json={"remark": "老王"},
+            headers={"x-csrf-token": csrf},
+        )
+        listed = await client.get("/api/friends")
+        clear_remark = await client.patch(
+            "/api/friends/u-bob/remark",
+            json={"remark": ""},
+            headers={"x-csrf-token": csrf},
+        )
+        relisted = await client.get("/api/friends")
+    assert set_remark.status_code == 200
+    assert set_remark.json() == {"remark": "老王"}
+    friends = {item["sub"]: item for item in listed.json()["friends"]}
+    assert friends["u-bob"]["remark"] == "老王"
+    assert clear_remark.status_code == 200
+    friends_after = {item["sub"]: item for item in relisted.json()["friends"]}
+    assert friends_after["u-bob"]["remark"] is None
+
+
+async def test_remark_requires_friendship_and_length(app: Any) -> None:
+    async with app.state.session_factory() as db:
+        await make_friends(db, "u-me", "u-bob")
+        await seed_user(db, "u-stranger", nickname="Stranger")
+    client, csrf = await _client_for(app, "u-me")
+    async with client:
+        not_friend = await client.patch(
+            "/api/friends/u-stranger/remark",
+            json={"remark": "X"},
+            headers={"x-csrf-token": csrf},
+        )
+        too_long = await client.patch(
+            "/api/friends/u-bob/remark",
+            json={"remark": "长" * 33},
+            headers={"x-csrf-token": csrf},
+        )
+    assert not_friend.status_code == 404
+    assert too_long.status_code == 422
 
 
 async def test_send_request_ok(app: Any) -> None:

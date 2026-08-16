@@ -12,6 +12,7 @@ from app.timeutil import iso_utc, utcnow
 SEARCH_RESULT_LIMIT = 20
 RECOMMENDATION_DEFAULT_LIMIT = 5
 RECOMMENDATION_MAX_LIMIT = 20
+REMARK_MAX_LENGTH = 32
 
 
 def profile(user: User) -> dict[str, str | None]:
@@ -168,6 +169,7 @@ async def list_friends(db: AsyncSession, me_sub: str) -> list[dict[str, str | No
         row.addressee_sub if row.requester_sub == me_sub else row.requester_sub
         for row in rows
     ]
+    remark_by_sub = {other: row.remark for other, row in zip(others, rows, strict=True)}
     users: dict[str, User] = {}
     if others:
         found = (
@@ -179,9 +181,29 @@ async def list_friends(db: AsyncSession, me_sub: str) -> list[dict[str, str | No
             **profile(user),
             "last_seen_at": iso_utc(user.last_seen_at) if user.last_seen_at else None,
             "bio": user.bio,
+            "remark": remark_by_sub.get(user.sub),
         }
 
     return [_with_seen(users[sub]) for sub in others if sub in users]
+
+
+async def set_remark(
+    db: AsyncSession, me_sub: str, other_sub: str, remark: str
+) -> str | None:
+    row = await _pair_row(db, me_sub, other_sub)
+    if row is None or row.status != "accepted":
+        raise HTTPException(status_code=404, detail="friend not found")
+    cleaned = remark.strip()
+    if len(cleaned) > REMARK_MAX_LENGTH:
+        raise HTTPException(
+            status_code=422,
+            detail=f"remark must be at most {REMARK_MAX_LENGTH} characters",
+        )
+    row.remark = cleaned or None
+    row.updated_at = utcnow()
+    await db.commit()
+    await db.refresh(row)
+    return row.remark
 
 
 async def remove_relationship(

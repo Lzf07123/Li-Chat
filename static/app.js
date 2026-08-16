@@ -184,7 +184,7 @@ function mount(className, inner) {
 }
 
 function displayName(user) {
-  return user.nickname || user.name || user.sub;
+  return user.remark || user.nickname || user.name || user.sub;
 }
 
 function avatarHtml(user) {
@@ -1950,6 +1950,14 @@ async function openChat(sub, locateId = null) {
       }</span>
     </span>
     <span class="chat-peer-actions">
+      <button class="icon-btn" type="button" data-action="friend-remark"
+        aria-label="设置备注">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+        </svg>
+      </button>
       <button class="icon-btn" type="button" data-action="call-audio"
         aria-label="语音通话">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -2754,9 +2762,58 @@ function applyReaction(event) {
 }
 
 function onChatHeaderClick(event) {
+  const remarkButton = event.target.closest("[data-action='friend-remark']");
+  if (remarkButton) {
+    openRemarkModal(state.activePeer);
+    return;
+  }
   const button = event.target.closest("[data-action^='call-']");
   if (!button || !state.activeSub) return;
   startCall(button.dataset.action === "call-video" ? "video" : "audio");
+}
+
+function openRemarkModal(peer) {
+  if (!peer) return;
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="remark-modal" role="dialog" aria-modal="true">
+      <form id="remark-form" class="modal-card">
+        <h3 class="modal-title">设置备注名</h3>
+        <p class="muted">仅你自己可见，展示时优先于对方昵称。</p>
+        <label class="sr-only" for="remark-input">备注名</label>
+        <input id="remark-input" class="input" maxlength="32"
+          placeholder="备注名（留空清除）" value="${escapeHtml(peer.remark || "")}" />
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" data-action="close-remark">取消</button>
+          <button class="btn btn-primary" type="submit">保存</button>
+        </div>
+      </form>
+    </div>`
+  );
+  const modal = document.getElementById("remark-modal");
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal || event.target.closest("[data-action='close-remark']")) {
+      modal.remove();
+    }
+  });
+  document.getElementById("remark-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const remark = document.getElementById("remark-input").value.trim();
+    const response = await api(`/api/friends/${encodeURIComponent(peer.sub)}/remark`, {
+      method: "PATCH",
+      body: JSON.stringify({ remark }),
+    });
+    if (response.ok) {
+      const body = await response.json();
+      peer.remark = body.remark || null;
+      const nameElement = document.querySelector(".chat-peer-name");
+      if (nameElement) nameElement.textContent = displayName(peer);
+      await refreshSidebar();
+      modal.remove();
+      toast("备注已保存", "success");
+    }
+  });
+  document.getElementById("remark-input").focus();
 }
 
 async function startCall(kind) {

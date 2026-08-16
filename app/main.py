@@ -79,6 +79,17 @@ def _ensure_user_columns(conn: Connection) -> None:
         conn.exec_driver_sql("ALTER TABLE users ADD COLUMN bio VARCHAR(200)")
 
 
+def _ensure_friendship_columns(conn: Connection) -> None:
+    """SQLite 兼容迁移：为既有库补齐 friendships.remark（PostgreSQL 走 Alembic）。"""
+    if conn.dialect.name != "sqlite":
+        return
+    names = {
+        row[1] for row in conn.exec_driver_sql("PRAGMA table_info(friendships)").fetchall()
+    }
+    if "remark" not in names:
+        conn.exec_driver_sql("ALTER TABLE friendships ADD COLUMN remark VARCHAR(32)")
+
+
 def _ensure_message_columns(conn: Connection) -> None:
     """SQLite 兼容迁移：为既有库补齐 messages.edited_at/deleted_at。"""
     if conn.dialect.name != "sqlite":
@@ -186,6 +197,7 @@ def create_app(
             await conn.run_sync(Base.metadata.create_all)
             await conn.run_sync(_ensure_session_columns)
             await conn.run_sync(_ensure_user_columns)
+            await conn.run_sync(_ensure_friendship_columns)
             await conn.run_sync(_ensure_message_columns)
             await conn.run_sync(_ensure_group_columns)
         subscriber: asyncio.Task[None] | None = None

@@ -129,3 +129,11 @@ async def test_v30_keyboard_shortcuts_and_help(api_client: httpx.AsyncClient) ->
     assert "event.ctrlKey" in text
     assert '"?"' in text
     assert "open-shortcuts" in text
+
+
+async def test_v31_friend_remark(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function openRemarkModal(" in text
+    assert "friend-remark" in text
+    assert "/remark" in text
+    assert "user.remark" in text
