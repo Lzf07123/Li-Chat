@@ -35,6 +35,8 @@ destructive `#FDEEEE`/`#7F1D1D`）；带文字的软底组件经 fallback 引用
 | .icon-btn / .theme-toggle | 44px 图标按钮；明暗图标随 .dark 切换 |
 | .spinner / .page-enter | 加载与入场 |
 | .ambient-layer | Canvas 氛围层容器（z-0、pointer-events:none） |
+| .aurora / .aurora-blob | 极光层：4 枚 radial-gradient 光斑漂移（18/22/28/24s，alternate），登录后 `.aurora-soft` |
+| .tech-ambience / .tech-grid / .tech-beam / .tech-dot | 科技光效层：缓移网格 12s + 3 条错峰光束 10s + 8 枚呼吸光点 6s；登录后 `.tech-soft`，移动端隐藏光束/光点并停网格 |
 | .toast / .toast-region | 全局反馈（success/error/info，安全区置顶，自动消退） |
 | .skeleton-* | 骨架屏 shimmer（reduced-motion 静止） |
 | .message-day / .message-sender / .message-merged | 日期分组与连续消息合并 |
@@ -81,6 +83,13 @@ RGB 调校审计（2026-08-17，模板 V1.2 附录 E 方法）：模板原值四
 保证明暗两套可读。按钮状态纪律审计：现有异步动作的 pending 均为单按钮/消息气泡
 spinner，无成对按钮双转圈。每个新增 `animation` 均已定义对应 `@keyframes`
 （`chat-btn-sweep`、`chat-halo-breathe`），reduced-motion 下全局降为单帧。
+
+页面特效层回归（2026-08-17，CDP）：认证页 `.tech-grid/.tech-beam/.tech-dot/.aurora-blob`
+四个动画名与对应 `@keyframes`（`tech-grid-drift`/`tech-beam-sweep`/`tech-dot-breathe`/
+`aurora-drift-1..4`）逐项断言通过；登录后外壳 `.tech-soft`/`.aurora-soft` 生效（opacity
+0.55）；移动端 375 下光束/光点 `display:none`、网格动画 `none`、极光 52s 慢速。光效层
+只动 `transform/opacity/background-position`，辉光用 radial-gradient、无 filter/box-shadow
+动画，`aria-hidden` + `pointer-events:none`，位于内容层（z-1）之下。
 
 布局回归（2026-08-16，微信式布局）：桌面 1440×900 与移动 390×844 经无头浏览器程序化验收——
 页面 `scrollY=0`、`body overflow:hidden`、无横向溢出、聊天框内部滚动（可见高度 < 内容高度）、

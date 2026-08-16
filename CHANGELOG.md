@@ -24,6 +24,10 @@
 - 全量采纳 Li-Design V1.2 海玻璃配色方案：浅色全淡色（bg `#F6FBF9`、主色 `#25786D`、
   雾面中性色）+ 深色 D1 雾灰中间调（bg `#3A3F45`、主色 `#7FD4C6`）+ secondary 与六强调
   色板（ice/aqua/lilac/sage/mint/sand 明暗两套）+ 水绿 tint 阴影；品牌位/首帧主题同步
+- 页面特效层落地（Li-Design V1.2）：极光层 4 枚弥散光斑（18/22/28/24s 漂移）+ 科技光效
+  层（56px/336px 双层缓移网格 12s、3 条错峰光束 10s、8 枚呼吸光点 6s）；认证页默认浓度、
+  登录后外壳 `.tech-soft`/`.aurora-soft` 降浓度，移动端隐藏光束/光点并停网格动画，
+  reduced-motion 单帧，全部 `aria-hidden` + `pointer-events:none`
 
 ### 安全加固
 
