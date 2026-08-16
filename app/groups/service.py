@@ -212,6 +212,18 @@ async def remove_member(
     if target_sub == actor_sub:
         raise HTTPException(status_code=400, detail="use leave instead")
     await db.delete(target)
+    await db.execute(
+        delete(GroupRead).where(
+            GroupRead.group_id == group_id, GroupRead.user_sub == target_sub
+        )
+    )
+    await db.execute(
+        delete(UserConversationSetting).where(
+            UserConversationSetting.kind == "group",
+            UserConversationSetting.key == str(group_id),
+            UserConversationSetting.user_sub == target_sub,
+        )
+    )
     await db.commit()
 
 
@@ -254,6 +266,18 @@ async def leave_group(db: AsyncSession, me_sub: str, group_id: int) -> None:
     if member_row.role == "owner":
         raise HTTPException(status_code=409, detail="owner must transfer before leaving")
     await db.delete(member_row)
+    await db.execute(
+        delete(GroupRead).where(
+            GroupRead.group_id == group_id, GroupRead.user_sub == me_sub
+        )
+    )
+    await db.execute(
+        delete(UserConversationSetting).where(
+            UserConversationSetting.kind == "group",
+            UserConversationSetting.key == str(group_id),
+            UserConversationSetting.user_sub == me_sub,
+        )
+    )
     await db.commit()
 
 
