@@ -4,6 +4,9 @@
 
 ### 功能
 
+- 呼叫记录与未接来电：`call_logs` 落账（离线/忙线记 missed、拒接 rejected、接通 accepted、
+  响铃中被挂断记 missed），`GET /api/me/calls` 倒序列表（附对端资料、kind/status/时间）；
+  WS `call` 协议增加 `kind`（audio/video）；前端「通话记录」
 - 会话管理：WS 连接级 session_id 跟踪、`GET /api/me/sessions`（含 `current` 标记）、
   `DELETE /api/me/sessions/{id}` 撤销单个会话并断其 WS（4401）、`DELETE /api/me/sessions`
   退出其他设备（保留当前）；前端「登录设备」列表与撤销按钮

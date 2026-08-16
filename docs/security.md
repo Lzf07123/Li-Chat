@@ -42,6 +42,7 @@
 | 呼叫信令防护 | 仅好友间、载荷 ≤16KB、ICE 限频、状态机校验非法迁移；信令不落库、SDP 不记日志；媒体 P2P 不经服务端 | `app/ws/calls.py` |
 | 登录限流 | `/oidc/login` 与 `/oidc/callback` IP 粒度滑动窗口，超限 429 + Retry-After（进程内实现） | `app/sso/ratelimit.py`、`app/sso/routes.py` |
 | 会话治理 | 仅能列出/撤销自己的会话；撤销即断对应 WS（4401）；退出其他设备保留当前会话 | `app/api/users.py`、`app/ws/manager.py` |
+| 呼叫记录边界 | 仅自己作为主叫/被叫的记录可见；状态如实落账 | `app/api/users.py`、`app/ws/calls.py` |
 | 消息长度与 XSS | 内容 1–2000 strip 校验；前端 `textContent`/escapeHtml 渲染不拼 HTML | `app/api/messages.py`、`static/app.js` |
 | 敏感接口禁缓存 | `/api/*` 响应统一 `Cache-Control: no-store`，防浏览器/代理缓存会话数据 | `app/main.py` |
 

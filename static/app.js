@@ -171,6 +171,9 @@ function headerHtml() {
           <button id="open-sessions" class="profile-menu-item" role="menuitem" type="button">
             登录设备
           </button>
+          <button id="open-calls" class="profile-menu-item" role="menuitem" type="button">
+            通话记录
+          </button>
           <button id="logout" class="profile-menu-item" role="menuitem" type="button">
             退出登录
           </button>
@@ -288,6 +291,7 @@ function renderLoggedIn() {
   document.getElementById("edit-profile").addEventListener("click", openProfileModal);
   document.getElementById("open-stars").addEventListener("click", openStarsModal);
   document.getElementById("open-sessions").addEventListener("click", openSessionsModal);
+  document.getElementById("open-calls").addEventListener("click", openCallsModal);
   document.getElementById("search-form").addEventListener("submit", onSearch);
   document.getElementById("search-form").addEventListener("click", onSearchModeClick);
   document.getElementById("search-results").addEventListener("click", onSearchResultClick);
@@ -473,6 +477,56 @@ async function renderSessionsModal() {
       return;
     }
     if (event.target === modal || event.target.closest("[data-action='close-sessions']")) {
+      modal.remove();
+    }
+  });
+}
+
+async function openCallsModal() {
+  setProfileMenu(false);
+  const response = await api("/api/me/calls?limit=50");
+  if (!response.ok) return;
+  const calls = (await response.json()).calls;
+  const statusLabel = {
+    accepted: "已接通",
+    rejected: "已拒绝",
+    missed: "未接",
+  };
+  const rows = calls
+    .map((call) => {
+      const time = new Date(call.started_at).toLocaleString([], {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+      const peer = call.peer.nickname || call.peer.name || call.peer.sub;
+      return `<li class="contact-item">
+        <span class="contact-main">
+          <span class="contact-name">${escapeHtml(peer)} · ${
+            call.kind === "video" ? "视频" : "语音"
+          }</span>
+          <span class="contact-preview">${escapeHtml(time)}</span>
+        </span>
+        <span class="badge ${call.status === "missed" ? "badge-warning" : "badge-muted"}">${
+          statusLabel[call.status] || "进行中"
+        }</span>
+      </li>`;
+    })
+    .join("");
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="calls-modal" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <h3 class="modal-title">通话记录</h3>
+        <ul class="contact-list forward-list">${rows || '<li class="sidebar-empty">暂无通话记录</li>'}</ul>
+        <div class="modal-actions">
+          <button class="btn btn-primary" type="button" data-action="close-calls">关闭</button>
+        </div>
+      </div>
+    </div>`
+  );
+  const modal = document.getElementById("calls-modal");
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal || event.target.closest("[data-action='close-calls']")) {
       modal.remove();
     }
   });
@@ -2065,7 +2119,7 @@ async function startCall(kind) {
   stream.getTracks().forEach((track) => pc.addTrack(track, stream));
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-  sendCallSignal("offer", pc.localDescription.toJSON());
+  sendCallSignal("offer", pc.localDescription.toJSON(), kind);
   showCallOverlay("呼叫中…");
 }
 
@@ -2081,11 +2135,13 @@ function wireCallEvents() {
   };
 }
 
-function sendCallSignal(op, payload = {}) {
+function sendCallSignal(op, payload = {}, kind = null) {
   const call = state.call;
   const peer = call ? call.peerSub : state.activeSub;
   if (!peer || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
-  state.ws.send(JSON.stringify({ type: "call", op, to: peer, payload }));
+  const frame = { type: "call", op, to: peer, payload };
+  if (kind) frame.kind = kind;
+  state.ws.send(JSON.stringify(frame));
 }
 
 function showCallOverlay(status) {
@@ -2231,7 +2287,11 @@ async function acceptIncomingCall() {
   await pc.setRemoteDescription(call.offer);
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
-  sendCallSignal("answer", pc.localDescription.toJSON());
+  sendCallSignal(
+    "answer",
+    pc.localDescription.toJSON(),
+    call.kind === "unknown" ? "audio" : call.kind
+  );
   showCallOverlay("接听中…");
 }
 

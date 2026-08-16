@@ -20,6 +20,7 @@
 | GET | `/api/me/sessions` | 会话 | 当前用户的登录会话列表（含 `current` 标记）；`{"sessions":[{id,created_at,last_seen_at,expires_at,current}]}` |
 | DELETE | `/api/me/sessions/{id}` | 会话 + CSRF | 撤销我的某个会话并断其 WS（4401）；越权 404 |
 | DELETE | `/api/me/sessions` | 会话 + CSRF | 撤销除当前外全部会话（退出其他设备） |
+| GET | `/api/me/calls?cursor=&limit=` | 会话 | 通话记录（倒序游标 ≤50，附对端资料）；`{"calls":[{id,kind,status,started_at,ended_at,peer}],"next_before"}` |
 | GET | `/api/users/search?q=` | 会话 | 昵称/邮箱关键词搜索（1–64 字符，≤20 条）；返回 `sub/nickname/name/picture/friend_status`，不回传邮箱 |
 | GET | `/api/search?kind=messages&q=&limit=&before=` | 会话 | 消息全文搜索（仅自己可见范围：单聊双方/群成员；LIKE 不区分大小写、倒序游标、命中片段）；`{"messages":[{id,sender_sub,conversation:{type,peer_sub,peer_name,group_id,group_name},snippet,created_at}],"next_before"}` |
 | GET | `/api/search?kind=contacts&q=` | 会话 | 联系人搜索（语义同 `/api/users/search`）；`{"contacts":[{sub,nickname,name,picture,friend_status}]}` |
@@ -70,7 +71,7 @@
 - 客户端发 `{"type":"ping"}` 收到 `{"type":"pong"}`，前端每 25 秒心跳一次。
 - 客户端可发 `{"type":"typing","to":"<sub>","action":"start|stop"}`：仅双方为好友且满足
   2 秒限频时，服务端原样中继为 `{"type":"typing","from":"<sub>","action":...}`；否则静默丢弃。
-- 客户端可发 `{"type":"call","op":"offer|answer|ice|reject|end","to":"<sub>","payload":{}}`：
+- 客户端可发 `{"type":"call","op":"offer|answer|ice|reject|end","to":"<sub>","kind":"audio|video","payload":{}}`：
   仅好友间中继为 `{"type":"call","op":...,"from":"<sub>","payload":...}`；载荷 ≤16KB、ICE
   限频；离线回 `unavailable`、通话中重复 offer 回 `busy`、非法迁移回 `invalid`、超限回
   `error`（只回发起方）。媒体走 WebRTC P2P，服务端不中转流、不落信令。

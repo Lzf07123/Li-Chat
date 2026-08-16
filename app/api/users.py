@@ -4,7 +4,7 @@ from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, field_validator
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.search import ConversationRefOut
@@ -12,7 +12,7 @@ from app.auth.deps import get_current_user, require_csrf
 from app.db import get_db
 from app.friends import service as friends_service
 from app.messages import service as messages_service
-from app.models import Session, User
+from app.models import CallLog, Session, User
 from app.timeutil import iso_utc
 from app.uploads.service import get_upload
 from app.ws.manager import ConnectionManager
@@ -105,6 +105,27 @@ class SessionsOut(BaseModel):
 
 class StatusOut(BaseModel):
     status: str
+
+
+class CallPeerOut(BaseModel):
+    sub: str
+    nickname: str | None = None
+    name: str | None = None
+    picture: str | None = None
+
+
+class CallLogOut(BaseModel):
+    id: int
+    kind: str
+    status: str | None = None
+    started_at: str
+    ended_at: str | None = None
+    peer: CallPeerOut
+
+
+class CallsOut(BaseModel):
+    calls: list[CallLogOut]
+    next_before: int | None
 
 
 def _me_payload(user: User, session: Session) -> MeOut:
@@ -272,6 +293,59 @@ async def revoke_other_sessions(
     for row in rows:
         await manager.disconnect_session(user.sub, row.id)
     return StatusOut(status="ok")
+
+
+@router.get("/me/calls", response_model=CallsOut)
+async def calls_list(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    cursor: Annotated[int | None, Query(ge=1)] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+) -> CallsOut:
+    stmt = (
+        select(CallLog)
+        .where(
+            or_(CallLog.caller_sub == user.sub, CallLog.callee_sub == user.sub)
+        )
+        .order_by(CallLog.id.desc())
+        .limit(limit + 1)
+    )
+    if cursor is not None:
+        stmt = stmt.where(CallLog.id < cursor)
+    rows = (await db.execute(stmt)).scalars().all()
+    has_more = len(rows) > limit
+    page = list(rows[:limit])
+    peer_subs = {
+        row.callee_sub if row.caller_sub == user.sub else row.caller_sub
+        for row in page
+    }
+    users: dict[str, User] = {}
+    if peer_subs:
+        found = (
+            await db.execute(select(User).where(User.sub.in_(list(peer_subs))))
+        ).scalars().all()
+        users = {found_user.sub: found_user for found_user in found}
+    items: list[CallLogOut] = []
+    for row in page:
+        peer_sub = row.callee_sub if row.caller_sub == user.sub else row.caller_sub
+        peer = users.get(peer_sub)
+        items.append(
+            CallLogOut(
+                id=row.id,
+                kind=row.kind,
+                status=row.status,
+                started_at=iso_utc(row.started_at),
+                ended_at=iso_utc(row.ended_at) if row.ended_at else None,
+                peer=CallPeerOut(
+                    sub=peer_sub,
+                    nickname=peer.nickname if peer else None,
+                    name=peer.name if peer else None,
+                    picture=peer.picture if peer else None,
+                ),
+            )
+        )
+    next_before = page[-1].id if has_more and page else None
+    return CallsOut(calls=items, next_before=next_before)
 
 
 @router.get("/users/search", response_model=SearchOut)
