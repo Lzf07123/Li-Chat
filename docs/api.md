@@ -56,6 +56,7 @@
 | POST | `/api/groups/{id}/polls/{pid}/close` | 会话 + CSRF | 结束投票（创建者或 owner/admin）；WS `poll_event(closed)` 群内广播 |
 | PATCH | `/api/groups/{id}/messages/{mid}` | 会话 + CSRF | 群消息编辑（发送者、未撤回、5 分钟内；非成员 404 / 非发送者 403） |
 | DELETE | `/api/groups/{id}/messages/{mid}` | 会话 + CSRF | 群消息撤回（同上鉴权；墓碑不含原文） |
+| DELETE | `/api/groups/{id}/messages/{mid}/me` | 会话 + CSRF | 仅自己删除（幂等；消息须属该群、本人为成员）；自己视角历史/摘要隐藏，他人仍可见 |
 | PUT | `/api/groups/{id}/messages/{mid}/reactions` | 会话 + CSRF | 群消息回应（仅成员，幂等） |
 | DELETE | `/api/groups/{id}/messages/{mid}/reactions?emoji=` | 会话 + CSRF | 群消息移除回应（仅成员，幂等） |
 | POST | `/api/groups/{id}/read` | 会话 + CSRF | 群已读 `{"last_read_id"}`（仅成员、消息须属该群、游标只前进）；WS 推全成员 |
@@ -67,6 +68,7 @@
 | GET | `/api/conversations/{sub}/messages?limit=&before=` | 会话 | 历史倒序分页（limit 默认 50、1–100；before 为上一页最小 id 不含）；`{"messages":[...],"next_before":int|null}` |
 | PATCH | `/api/conversations/{sub}/messages/{id}` | 会话 + CSRF | 编辑 `{"content"}`；仅发送者、未撤回、5 分钟内；403 非发送者 / 404 不存在 / 409 已撤回或超窗 |
 | DELETE | `/api/conversations/{sub}/messages/{id}` | 会话 + CSRF | 撤回；同上鉴权；返回墓碑 `{id,sender_sub,recipient_sub,deleted:true,created_at}`（不含原文） |
+| DELETE | `/api/conversations/{sub}/messages/{id}/me` | 会话 + CSRF | 仅自己删除（幂等；消息须属该会话）；自己视角历史/摘要隐藏，对方仍可见 |
 | PUT | `/api/conversations/{sub}/messages/{id}/reactions` | 会话 + CSRF | 回应 `{"emoji"}`（1–8 字符，禁空白/控制符；幂等）；404 非参与者 / 409 已撤回；`{"message_id","emoji","action":"added","count"}` |
 | DELETE | `/api/conversations/{sub}/messages/{id}/reactions?emoji=` | 会话 + CSRF | 移除回应（幂等）；`{"message_id","emoji","action":"removed","count"}` |
 | GET | `/api/conversations?archived=` | 会话 | 单聊 + 群聊摘要合并，置顶优先、其余按最后消息倒序；每项 `{peer:Profile|null,group:{id,name,owner_sub,member_count}|null,last_message:Message|null,unread_count:int,last_read_id:int,pinned:bool,muted:bool,archived:bool}`（peer/group 二选一出现）；`archived=true` 只回归档会话，缺省只回未归档 |

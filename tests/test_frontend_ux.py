@@ -234,3 +234,9 @@ async def test_v43_conversation_archive_ui(api_client: httpx.AsyncClient) -> Non
     assert "archived-list" in text
     assert '"unarchive"' in text
     assert "archivedConversations" in text
+
+
+async def test_v44_hide_message_for_self_ui(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "hide-message" in text
+    assert "/me" in text

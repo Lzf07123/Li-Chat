@@ -2832,9 +2832,14 @@ function messageHtml(message, previous) {
     ? `<button class="message-action" type="button"
         data-action="retry-send" data-id="${message.id}">重试</button>`
     : "";
+  const hideAction = !message.status
+    ? `<button class="message-action" type="button"
+        data-action="hide-message" data-id="${message.id}">删除</button>`
+    : "";
   const actions = !message.deleted
     ? `<span class="message-actions">${editActions}
         ${retryAction}
+        ${hideAction}
         <button class="message-action" type="button"
           data-action="forward" data-id="${message.id}">转发</button>
         <button class="message-action${message.starred ? " message-star-on" : ""}" type="button"
@@ -3448,6 +3453,30 @@ async function onMessagesClick(event) {
   }
   if (button.dataset.action === "show-reads") {
     await openReadsModal(Number(messageId));
+    return;
+  }
+  if (button.dataset.action === "hide-message") {
+    const message = state.messages.find((item) => String(item.id) === messageId);
+    if (!message) return;
+    confirmModal(
+      "删除消息",
+      "仅从你的会话中删除这条消息，对方仍然可见。",
+      async () => {
+        const url =
+          state.activeGroupId !== null
+            ? `/api/groups/${state.activeGroupId}/messages/${messageId}/me`
+            : `/api/conversations/${encodeURIComponent(state.activeSub)}/messages/${messageId}/me`;
+        const response = await api(url, { method: "DELETE" });
+        if (response.ok) {
+          state.messages = state.messages.filter(
+            (item) => String(item.id) !== messageId
+          );
+          renderMessages();
+          toast("已从你的会话中删除", "success");
+        }
+      },
+      "删除"
+    );
     return;
   }
   if (button.dataset.action === "retry-send") {

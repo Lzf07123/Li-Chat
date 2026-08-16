@@ -213,6 +213,10 @@ class ReadOut(BaseModel):
     last_read_id: int
 
 
+class HideOut(BaseModel):
+    status: str
+
+
 @router.get("", response_model=ConversationsOut)
 async def conversations_list(
     user: Annotated[User, Depends(get_current_user)],
@@ -410,6 +414,18 @@ async def delete_message(
     await manager.send_to(message.sender_sub, event)
     await manager.send_to(message.recipient_sub, event)
     return MessageOut(**payload)
+
+
+@router.delete("/{other_sub}/messages/{message_id}/me", response_model=HideOut)
+async def hide_message(
+    other_sub: str,
+    message_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> HideOut:
+    await service.hide_message_for_self(db, user.sub, message_id, other_sub=other_sub)
+    return HideOut(status="hidden")
 
 
 @router.put("/{other_sub}/messages/{message_id}/reactions", response_model=ReactionOut)

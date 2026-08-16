@@ -4,6 +4,9 @@
 
 ### 功能
 
+- 消息仅自己删除（v44）：`user_message_deletes` 表与 `DELETE .../messages/{id}/me`
+  （单聊/群聊，幂等、校验归属）；删除后自己视角的历史/摘要/未读计数不再出现，对方与
+  其他群成员视角不变；前端消息操作「删除」+ 统一确认弹窗
 - 会话归档（v43）：`user_conversation_settings.archived`；`PATCH /api/conversations/settings`
   支持归档、`GET /api/conversations?archived=true|false` 过滤（缺省未归档）；前端会话行
   「归档」按钮与侧栏「已归档」分区（取消归档/直接打开）

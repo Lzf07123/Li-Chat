@@ -5,7 +5,7 @@ from datetime import timedelta
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.friends.service import are_friends, list_friends
@@ -20,6 +20,7 @@ from app.models import (
     Reaction,
     User,
     UserConversationSetting,
+    UserMessageDelete,
     UserStar,
 )
 from app.polls import service as polls_service
@@ -246,6 +247,7 @@ async def history(
     stmt = (
         select(Message)
         .where(Message.participant_lo == lo, Message.participant_hi == hi)
+        .where(Message.id.not_in(_hidden_message_ids(db, me_sub)))
         .order_by(Message.id.desc())
         .limit(limit + 1)
     )
@@ -401,6 +403,7 @@ async def _dm_conversation_summaries(
                         ),
                     )
                 )
+                .where(Message.id.not_in(_hidden_message_ids(db, me_sub)))
                 .order_by(Message.id.desc())
             )
         ).scalars().all()
@@ -463,6 +466,7 @@ async def _group_conversation_summaries(
                 Message.conversation_type == "group",
                 Message.group_id.in_(list(group_ids)),
             )
+            .where(Message.id.not_in(_hidden_message_ids(db, me_sub)))
             .order_by(Message.id.desc())
         )
     ).scalars().all()
@@ -603,6 +607,7 @@ async def group_history(
     stmt = (
         select(Message)
         .where(Message.conversation_type == "group", Message.group_id == group_id)
+        .where(Message.id.not_in(_hidden_message_ids(db, me_sub)))
         .order_by(Message.id.desc())
         .limit(limit + 1)
     )
@@ -703,6 +708,42 @@ async def group_message_readers(
         if sub in users
     ]
     return readers, len(read_rows), member_count
+
+
+def _hidden_message_ids(db: AsyncSession, me_sub: str) -> Select[tuple[int]]:
+    return select(UserMessageDelete.message_id).where(
+        UserMessageDelete.user_sub == me_sub
+    )
+
+
+async def hide_message_for_self(
+    db: AsyncSession,
+    me_sub: str,
+    message_id: int,
+    *,
+    other_sub: str | None = None,
+    group_id: int | None = None,
+) -> None:
+    message = await db.get(Message, message_id)
+    if message is None:
+        raise HTTPException(status_code=404, detail="message not found")
+    if group_id is not None:
+        if message.conversation_type != "group" or message.group_id != group_id:
+            raise HTTPException(status_code=404, detail="message not found")
+        if await group_membership(db, group_id, me_sub) is None:
+            raise HTTPException(status_code=404, detail="group not found")
+    else:
+        assert other_sub is not None
+        lo, hi = pair_key(me_sub, other_sub)
+        if message.conversation_type != "dm" or (
+            message.participant_lo,
+            message.participant_hi,
+        ) != (lo, hi):
+            raise HTTPException(status_code=404, detail="message not found")
+    row = await db.get(UserMessageDelete, (me_sub, message_id))
+    if row is None:
+        db.add(UserMessageDelete(user_sub=me_sub, message_id=message_id))
+        await db.commit()
 
 
 async def mark_group_read(

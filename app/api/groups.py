@@ -83,6 +83,10 @@ class GroupReadsOut(BaseModel):
     readers: list[ReaderOut]
 
 
+class HideOut(BaseModel):
+    status: str
+
+
 class AnnouncementIn(BaseModel):
     text: str
 
@@ -650,6 +654,20 @@ async def delete_group_message(
     for sub in await service.member_subs(db, group_id):
         await manager.send_to(sub, event)
     return MessageOut(**payload)
+
+
+@router.delete("/{group_id}/messages/{message_id}/me", response_model=HideOut)
+async def hide_group_message(
+    group_id: int,
+    message_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> HideOut:
+    await messages_service.hide_message_for_self(
+        db, user.sub, message_id, group_id=group_id
+    )
+    return HideOut(status="hidden")
 
 
 @router.put(
