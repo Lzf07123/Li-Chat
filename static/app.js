@@ -317,6 +317,10 @@ async function loadMe() {
     return;
   }
   state.me = await response.json();
+  if (!localStorage.getItem("lichat-session-active")) {
+    localStorage.setItem("lichat-session-active", "1");
+    localStorage.setItem("lichat-login", String(Date.now()));
+  }
   renderLoggedIn();
   connectWebSocket();
 }
@@ -4475,6 +4479,8 @@ function replaceMessage(message) {
 function logout() {
   confirmModal("退出登录", "确定要退出当前账号吗？", () => {
     state.loggingOut = true;
+    localStorage.removeItem("lichat-session-active");
+    localStorage.setItem("lichat-logout", String(Date.now()));
     if (state.wsReconnectTimer) {
       window.clearTimeout(state.wsReconnectTimer);
       state.wsReconnectTimer = null;
@@ -4544,6 +4550,8 @@ function connectWebSocket() {
     if (state.call) endCallLocal();
     if (event.code === 4401) {
       state.wsReconnecting = false;
+      localStorage.removeItem("lichat-session-active");
+      localStorage.setItem("lichat-logout", String(Date.now()));
       if (state.loggingOut) {
         setStatus("disconnected", "已退出登录");
         return;
@@ -4574,6 +4582,20 @@ window.addEventListener("visibilitychange", () => {
       state.wsReconnectTimer = null;
     }
     connectWebSocket();
+  }
+});
+
+window.addEventListener("storage", (event) => {
+  if (event.key === "chat-theme") {
+    window.LiChatTheme && window.LiChatTheme.initTheme();
+    return;
+  }
+  if (event.key === "lichat-logout" && event.newValue) {
+    window.location.href = "/";
+    return;
+  }
+  if (event.key === "lichat-login" && event.newValue) {
+    window.location.reload();
   }
 });
 

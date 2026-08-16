@@ -318,3 +318,11 @@ async def test_v56_input_validation_feedback(api_client: httpx.AsyncClient) -> N
     assert "char-count" in text
     assert "还可输入" in text
     assert "2000 字上限截断" in text
+
+
+async def test_v57_multi_tab_coordination(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert '"storage"' in text
+    assert "lichat-logout" in text
+    assert "lichat-session-active" in text
+    assert "LiChatTheme.initTheme" in text
