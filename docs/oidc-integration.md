@@ -26,15 +26,25 @@
 
 在门户「授权网站管理」创建应用时按下表登记（地址必须与代码使用值**逐字符一致**，含协议/路径/端口）：
 
+**标准配置（推荐，按此登记）**：
+
+| 字段 | 标准值 |
+| --- | --- |
+| 回调地址 | `https://<域名>/oidc/callback`（开发 `http://localhost:8000/oidc/callback`） |
+| 首页地址 | `https://<域名>/` |
+| 登出地址 | 留空（已配回程登出，二选一即可） |
+| 登出回跳白名单 | `https://<域名>/`（站点根，勿填 `/oidc/post-logout`） |
+| 回程登出地址 | `https://<域名>/oidc/backchannel-logout`（生产必须 https 且公网可达） |
+
 | 门户表单字段 | Li&Chat 对应值 | 说明 |
 | --- | --- | --- |
 | 回调地址 | `LICHAT_OIDC_REDIRECT_URI`（dev 默认 `http://localhost:8000/oidc/callback`；生产 `https://<域名>/oidc/callback`） | 必填，精确匹配 |
 | 回程登出地址 | `https://<域名>/oidc/backchannel-logout` | 推荐；生产必须 https 且公网可达（不得回环/私网） |
-| 登出回跳白名单 | `LICHAT_OIDC_POST_LOGOUT_REDIRECT_URI`（dev 默认 `http://localhost:8000/`；生产 `https://<域名>/`） | 使用 RP 登出则必填，精确匹配 |
+| 登出回跳白名单 | `LICHAT_OIDC_POST_LOGOUT_REDIRECT_URI`（dev 默认 `http://localhost:8000/`；生产 `https://<域名>/`） | 使用 RP 登出则必填，精确匹配；登记站点根 `/` |
 | 客户端类型 | 机密客户端 | `LICHAT_OIDC_CLIENT_SECRET` 只存服务端，不落前端 |
 | scope | `openid profile email`（`LICHAT_OIDC_SCOPE`） | 邮箱用于资料同步与按邮箱搜索；未验证邮箱不阻塞登录，仅存 `email_verified` 标记 |
 
-> 实际联调确认：门户把回程登出令牌以 form 字段 `logout_token` POST 到「登出回跳地址」而非浏览器回传 `state`。Li&Chat 的 `/oidc/post-logout` 已按此实测行为兼容处理（见 §2），无需额外改门户配置。
+> 历史兼容：早期联调确认门户曾把 `logout_token` POST 到「登出回跳地址」而非标准回程地址。Li&Chat 的 `/oidc/post-logout` 保留该兼容分支（见 §2）作为兜底；**标准配置下门户应把回程登出打到 `/oidc/backchannel-logout`，回跳白名单登记 `/`**，兼容分支不再被触发。
 
 ## 4. 接入验收清单（指南 §2.4 逐项对照）
 

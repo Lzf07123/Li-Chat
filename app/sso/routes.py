@@ -329,6 +329,7 @@ async def post_logout_submit(
         await _extract_post_logout_payload(request)
     )
     if logout_token is not None:
+        # 兼容旧门户行为（回程令牌误打到回跳地址）；标准配置走 /oidc/backchannel-logout
         await _process_logout_token(request, db, logout_token)
         return HTMLResponse(_POST_LOGOUT_LANDING_HTML)
     if not state or verify_state(_settings(request).session_secret, state) is None:

@@ -50,7 +50,7 @@ compose 默认随 `chat` 启动一个编排内 redis（7-alpine、AOF、192mb、
 | `LICHAT_OIDC_CLIENT_ID` | `li-chat-local` | 门户注册的 client_id |
 | `LICHAT_OIDC_CLIENT_SECRET` | 空 | 机密客户端密钥 |
 | `LICHAT_OIDC_REDIRECT_URI` | `http://localhost:8000/oidc/callback` | 必须精确命中门户白名单 |
-| `LICHAT_OIDC_POST_LOGOUT_REDIRECT_URI` | `http://localhost:8000/` | 登出回跳白名单 |
+| `LICHAT_OIDC_POST_LOGOUT_REDIRECT_URI` | `http://localhost:8000/` | RP 登出后的回跳落地页；生产填 `https://<域名>/` 并逐字符登记门户「登出回跳白名单」 |
 | `LICHAT_OIDC_SCOPE` | `openid profile email` | 邮箱用于资料同步与按邮箱搜索；未验证邮箱不阻塞登录 |
 | `LICHAT_SESSION_SECRET` | 开发占位值 | 生产必须 ≥32 字符，用于登出 state 签名 |
 | `LICHAT_SESSION_SLIDING_TTL` | `7200` | 会话滑动过期秒数（2 小时） |
