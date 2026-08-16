@@ -89,6 +89,9 @@
 
 ### 行为变更
 
+- 页面滚动彻底锁定：`html/body` 均 `overflow:hidden` + `overscroll-behavior:none`，聊天页
+  任何位置滚动都不会带动页面；消息列表/侧栏/弹层等内滚容器加 `overscroll-behavior:contain`
+  与 `touch-action:pan-y`，防滚动穿透与移动端橡皮筋回弹
 - 紧凑密度层：桌面端整体收紧组件尺寸（按钮 36px、图标钮 34px、头像 30px、气泡 0.92rem、
   更细的列表/气泡/弹层间距），消除「老人感」；移动端保留 ≥44px 触控热区与更宽松的消息
   排版，可用性不降级
