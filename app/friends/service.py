@@ -178,6 +178,7 @@ async def list_friends(db: AsyncSession, me_sub: str) -> list[dict[str, str | No
         return {
             **profile(user),
             "last_seen_at": iso_utc(user.last_seen_at) if user.last_seen_at else None,
+            "bio": user.bio,
         }
 
     return [_with_seen(users[sub]) for sub in others if sub in users]

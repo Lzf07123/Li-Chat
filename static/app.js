@@ -157,6 +157,9 @@ function headerHtml() {
             ${avatarHtml(state.me)}
             <span class="profile-name">${escapeHtml(displayName(state.me))}</span>
           </div>
+          <button id="edit-profile" class="profile-menu-item" role="menuitem" type="button">
+            编辑资料
+          </button>
           <button id="logout" class="profile-menu-item" role="menuitem" type="button">
             退出登录
           </button>
@@ -266,6 +269,7 @@ function renderLoggedIn() {
   document.addEventListener("click", onProfileClickOutside);
   document.addEventListener("keydown", onProfileKeydown);
   document.getElementById("logout").addEventListener("click", logout);
+  document.getElementById("edit-profile").addEventListener("click", openProfileModal);
   document.getElementById("search-form").addEventListener("submit", onSearch);
   document.getElementById("search-form").addEventListener("click", onSearchModeClick);
   document.getElementById("search-results").addEventListener("click", onSearchResultClick);
@@ -290,6 +294,93 @@ function renderLoggedIn() {
   document.getElementById("chat-back").addEventListener("click", closeChat);
   document.getElementById("group-panel").addEventListener("click", onGroupPanelClick);
   refreshSidebar();
+}
+
+function openProfileModal() {
+  setProfileMenu(false);
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="profile-modal" role="dialog" aria-modal="true">
+      <form id="profile-form" class="modal-card">
+        <h3 class="modal-title">编辑资料</h3>
+        <label class="sr-only" for="profile-nickname">昵称</label>
+        <input id="profile-nickname" class="input" maxlength="32" placeholder="昵称"
+          value="${escapeHtml(state.me.nickname || "")}" />
+        <label class="sr-only" for="profile-bio">简介</label>
+        <textarea id="profile-bio" class="input" rows="3" maxlength="200"
+          placeholder="简介（仅好友可见）">${escapeHtml(state.me.bio || "")}</textarea>
+        <div class="profile-avatar-row">
+          <span class="muted">头像</span>
+          <input id="profile-avatar-input" type="file" hidden
+            accept="image/png,image/jpeg,image/gif,image/webp" />
+          <button id="profile-avatar-btn" class="btn btn-ghost btn-sm" type="button">
+            上传新头像
+          </button>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" data-action="close-profile">取消</button>
+          <button class="btn btn-primary" type="submit">保存</button>
+        </div>
+      </form>
+    </div>`
+  );
+  const modal = document.getElementById("profile-modal");
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal || event.target.closest("[data-action='close-profile']")) {
+      modal.remove();
+    }
+  });
+  document.getElementById("profile-form").addEventListener("submit", onProfileSubmit);
+  document.getElementById("profile-avatar-btn").addEventListener("click", () => {
+    document.getElementById("profile-avatar-input").click();
+  });
+  document.getElementById("profile-avatar-input").addEventListener("change", onAvatarSelected);
+  document.getElementById("profile-nickname").focus();
+}
+
+async function onProfileSubmit(event) {
+  event.preventDefault();
+  const nickname = document.getElementById("profile-nickname").value.trim();
+  const bio = document.getElementById("profile-bio").value.trim();
+  const response = await api("/api/me", {
+    method: "PATCH",
+    body: JSON.stringify({ nickname, bio }),
+  });
+  if (response.ok) {
+    applyMeUpdate(await response.json());
+    document.getElementById("profile-modal").remove();
+  }
+}
+
+async function onAvatarSelected(event) {
+  const input = event.target;
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const form = new FormData();
+  form.append("file", file);
+  const uploadResponse = await api("/api/uploads", { method: "POST", body: form });
+  if (!uploadResponse.ok) return;
+  const upload = await uploadResponse.json();
+  const avatarResponse = await api("/api/me/avatar", {
+    method: "POST",
+    body: JSON.stringify({ url: upload.url }),
+  });
+  if (avatarResponse.ok) applyMeUpdate(await avatarResponse.json());
+}
+
+function applyMeUpdate(me) {
+  state.me.nickname = me.nickname;
+  state.me.bio = me.bio;
+  state.me.picture = me.picture;
+  const name = document.querySelector(".app-profile .profile-name");
+  if (name) name.textContent = displayName(state.me);
+  const toggle = document.getElementById("profile-toggle");
+  const existing = toggle.querySelector(".avatar");
+  if (existing) {
+    const holder = document.createElement("div");
+    holder.innerHTML = avatarHtml(state.me);
+    existing.replaceWith(holder.firstChild);
+  }
 }
 
 function setProfileMenu(open) {

@@ -1245,6 +1245,12 @@ a {
   gap: 8px;
 }
 
+.profile-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .chat-peer-main {
   display: flex;
   flex-direction: column;

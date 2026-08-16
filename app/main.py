@@ -70,6 +70,8 @@ def _ensure_user_columns(conn: Connection) -> None:
     }
     if "last_seen_at" not in names:
         conn.exec_driver_sql("ALTER TABLE users ADD COLUMN last_seen_at DATETIME")
+    if "bio" not in names:
+        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN bio VARCHAR(200)")
 
 
 def _ensure_message_columns(conn: Connection) -> None:

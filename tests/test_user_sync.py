@@ -22,10 +22,21 @@ async def test_upsert_creates_user(db_session: AsyncSession) -> None:
     assert count == 1
 
 
-async def test_upsert_updates_existing_user(db_session: AsyncSession) -> None:
+async def test_upsert_backfills_only_when_local_value_missing(
+    db_session: AsyncSession,
+) -> None:
     await upsert_user(db_session, USERINFO)
+    user = (
+        await db_session.execute(select(User).where(User.sub == "u-1001"))
+    ).scalar_one()
+    user.nickname = "本地昵称"
+    user.picture = "/api/uploads/202608/local.png"
+    await db_session.commit()
     user = await upsert_user(db_session, {**USERINFO, "nickname": "Alicia"})
-    assert user.nickname == "Alicia"
+    assert user.nickname == "本地昵称"
     assert (
         await db_session.execute(select(User).where(User.sub == "u-1001"))
-    ).scalar_one().nickname == "Alicia"
+    ).scalar_one().nickname == "本地昵称"
+    assert (
+        await db_session.execute(select(User).where(User.sub == "u-1001"))
+    ).scalar_one().picture == "/api/uploads/202608/local.png"

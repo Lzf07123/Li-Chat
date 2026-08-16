@@ -12,10 +12,12 @@
 | GET | `/oidc/post-logout?state=` | 无 | 门户登出回跳（浏览器 GET 带签名 `state`）：验签后 302 首页，无效 400 |
 | POST | `/oidc/backchannel-logout` | 无 | 门户服务器间调用，form 字段 `logout_token`，返回 `{"status":"ok"}` 或 `{"status":"ignored"}` |
 | GET | `/api/me` | 会话 | 当前用户 `{sub, nickname, name, picture, email, csrf_token}` |
+| PATCH | `/api/me` | 会话 + CSRF | 改资料 `{"nickname"?, "bio"?}`（昵称 1–32、简介 ≤200） |
+| POST | `/api/me/avatar` | 会话 + CSRF | 设头像 `{"url"}`（须为本人上传的图片）；422 非图片/非法地址、403 他人附件 |
 | GET | `/api/users/search?q=` | 会话 | 昵称/邮箱关键词搜索（1–64 字符，≤20 条）；返回 `sub/nickname/name/picture/friend_status`，不回传邮箱 |
 | GET | `/api/search?kind=messages&q=&limit=&before=` | 会话 | 消息全文搜索（仅自己可见范围：单聊双方/群成员；LIKE 不区分大小写、倒序游标、命中片段）；`{"messages":[{id,sender_sub,conversation:{type,peer_sub,peer_name,group_id,group_name},snippet,created_at}],"next_before"}` |
 | GET | `/api/search?kind=contacts&q=` | 会话 | 联系人搜索（语义同 `/api/users/search`）；`{"contacts":[{sub,nickname,name,picture,friend_status}]}` |
-| GET | `/api/friends` | 会话 | 已接受好友列表 `{"friends":[{...Profile,online:bool,last_seen_at:str|null}]}` |
+| GET | `/api/friends` | 会话 | 已接受好友列表 `{"friends":[{...Profile,bio,online:bool,last_seen_at:str|null}]}`（bio 仅好友可见） |
 | GET | `/api/friends/requests` | 会话 | `{"incoming":[{"requester":Profile,"created_at"}],"outgoing":[{"addressee":Profile,"created_at"}]}` |
 | GET | `/api/friends/recommendations?limit=` | 会话 | 随机推荐（默认 5、1–20）；排除自己、好友与双方待处理申请，返回 `{"friends":[Profile]}`，不回传邮箱 |
 | POST | `/api/friends/requests` | 会话 + CSRF | 发申请 `{"to_sub":"..."}`；201 返回申请对象；400 自加 / 404 未知 / 409 重复或已是好友 |

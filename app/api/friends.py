@@ -26,6 +26,7 @@ class ProfileOut(BaseModel):
 class FriendPresenceOut(ProfileOut):
     online: bool
     last_seen_at: str | None = None
+    bio: str | None = None
 
 
 class FriendsPresenceOut(BaseModel):
@@ -134,6 +135,7 @@ async def friends_list(
                 picture=friend["picture"],
                 online=manager.has(sub),
                 last_seen_at=friend["last_seen_at"],
+                bio=friend["bio"],
             )
         )
     return FriendsPresenceOut(friends=items)
