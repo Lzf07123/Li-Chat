@@ -4,7 +4,7 @@
 
 | 方法 | 路径 | 鉴权 | 说明 |
 | --- | --- | --- | --- |
-| GET | `/healthz` | 无 | 健康检查，返回 `{"status":"ok"}` |
+| GET | `/healthz` | 无 | 健康检查：`{"status":"ok|degraded","database":"ok|error","version"}`；数据库探测失败降级并记结构化日志 |
 | GET | `/api/version` | 无 | 前端版本 `{"frontend_version":"0.3.0"}`（`no-store`；前端据此检测落后并强制刷新） |
 | GET | `/oidc/login?redirect_after=/` | 无 | 生成 PKCE 并 302 到授权页；`redirect_after` 仅接受站内相对路径 |
 | GET | `/oidc/callback` | 无 | 授权回调（code/state/error/error_description），成功 302 回 `redirect_after` 并种会话 Cookie |

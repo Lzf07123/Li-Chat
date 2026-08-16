@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
@@ -10,6 +11,7 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
+from sqlalchemy import text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
@@ -46,6 +48,7 @@ logger = get_logger(__name__)
 # 前端构建版本：升级 static/ 资源时同步修改此处与 static/app.js 的 FRONTEND_VERSION
 FRONTEND_VERSION = "0.3.0"
 APP_VERSION = "0.1.0"
+SLOW_REQUEST_MS = 500.0
 
 _STATIC_PATHS = {
     "/",
@@ -262,6 +265,22 @@ def create_app(
     app = FastAPI(title=app_settings.app_name, lifespan=lifespan)
 
     @app.middleware("http")
+    async def slow_request_log(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        started = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - started) * 1000
+        if duration_ms >= SLOW_REQUEST_MS:
+            logger.info(
+                "slow_request",
+                method=request.method,
+                path=request.url.path,
+                duration_ms=round(duration_ms, 1),
+            )
+        return response
+
+    @app.middleware("http")
     async def no_store_api(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
@@ -374,7 +393,18 @@ def create_app(
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
-        return {"status": "ok"}
+        try:
+            async with session_factory() as db:
+                await db.execute(text("SELECT 1"))
+            database = "ok"
+        except Exception:
+            logger.exception("healthz_database_check_failed")
+            database = "error"
+        return {
+            "status": "ok" if database == "ok" else "degraded",
+            "database": database,
+            "version": APP_VERSION,
+        }
 
     @app.get("/api/version")
     async def api_version() -> dict[str, str]:
