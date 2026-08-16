@@ -101,7 +101,10 @@ compose 插值变量（应用忽略）：`LICHAT_PORT`（宿主机端口）、`R
 
 ## Issuer 注意事项
 
-发现文档声明的 `issuer` 与五个端点为 `http://account.lizf.cn`（http 字面值），但传输层实际走 https。本实现自 2026-08-16 起把五个传输端点统一升级为 https（`issuer` 保留原文用于严格校验）；建议推动 Li&Pass 侧将 issuer 改为 https，修改后无需改代码（发现文档启动时拉取并按 TTL 缓存）。
+发现文档声明的 `issuer` 与五个端点自 2026-08-17 起为 `https://account.lizf.cn`
+（https 字面值，Li&Pass 已收敛）。本实现仍保留 http→https 升级兜底（旧文档回退时
+强制 https 调用，`issuer` 保留原文用于严格校验）；无需改配置（发现文档启动时拉取并
+按 TTL 缓存）。
 
 ## 数据库结构演进（SQLite 开发库）
 

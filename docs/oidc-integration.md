@@ -8,16 +8,19 @@
 - Li&Pass 是 IdP：仅支持 `response_type=code` + PKCE `S256`；scope 支持 `openid`、`profile`、`email`；`access_token` 15 分钟、`id_token` 5 分钟，不提供刷新令牌——因此登录完成后本地会话是唯一鉴权依据。
 - 门户端点一律从发现文档读取（`GET /.well-known/openid-configuration`），其中 authorize / token / userinfo / jwks / end-session 五个端点。
 
-> 已知门户配置（遗留风险）：发现文档声明的 `issuer` 为 `http://account.lizf.cn`，传输层实际走 `https://account.lizf.cn`。Li&Chat 把五个传输端点升级为 https 调用，`iss` 仍按发现文档原文校验；等门户把 issuer 改为 https 后即可完全收敛（见 `docs/security.md`）。
+> 门户配置（2026-08-17 起）：发现文档声明的 `issuer` 与五个端点已收敛为
+> `https://account.lizf.cn`。Li&Chat 仍保留 http→https 升级兜底（旧文档回退时强制
+> https 调用），`iss` 按发现文档原文校验（见 `docs/security.md`）。
 
 ## 2. Li&Chat 实现的接口（对照指南 §2）
 
 | 接口 | 路径/方法 | 行为 |
 | --- | --- | --- |
-| 授权回调 | `GET /oidc/callback` | 校验 `state` 且单次使用（取出即删、600 秒过期）；`error=access_denied`/`error_description=account_blocked` 按失败处理并提示；`code + code_verifier + client_secret` 换令牌；`id_token` 按 `kid` 选钥 RS256 验签并校验 `iss`、`aud=client_id`、`nonce`、`iat/exp`；`access_token` 只用于 userinfo 且不校验其 `aud`；userinfo `sub` 与 id_token `sub` 一致后 upsert 用户，本地会话绑定 `(sub, sid)`（`sid` 取自 id_token）；黑名单的 403 映射为友好提示 |
+| 授权回调 | `GET /oidc/callback` | 校验 `state` 且单次使用（取出即删、600 秒过期）；`error=access_denied`/`error_description=account_blocked` 按失败处理并提示；`code + code_verifier + client_secret` 换令牌；`id_token` 按 `kid` 选钥 RS256 验签并校验 `iss`、`aud=client_id`、`nonce`、`iat/exp`、`at_hash`（等于 `base64url(SHA256(access_token) 左 16 字节)`）；`access_token` 只用于 userinfo 且不校验其 `aud`；userinfo `sub` 与 id_token `sub` 一致后 upsert 用户，本地会话绑定 `(sub, sid)`（`sid` 取自 id_token）；token/userinfo 命中黑名单的 403 映射为友好提示 |
 | 回程登出 | `POST /oidc/backchannel-logout` | form 字段 `logout_token`；`kid` 选钥验签、`iss`、`aud=client_id`、`iat` 120 秒新鲜窗口 + `exp` 有效性、`jti` 已见缓存防重放（内存/Redis）、`events` 必须含 backchannel-logout；优先清 `(sub,sid)` 会话，`sid` 缺失或未命中时回退删除该用户全部会话并断开 WS；成功返回 2xx JSON `{"status":"ok"/"ignored"}` |
 | 登出回跳 | `GET /oidc/post-logout?state=` | 标准浏览器回跳：HMAC 验签 `state` 后 302 首页；无效 400 |
-| RP 发起登出 | `POST /oidc/logout`（CSRF） | 清本地会话并断开 WS → 302 门户 `end-session`（带 `id_token_hint` + `client_id` + `post_logout_redirect_uri` + HMAC 签名 `state`）→ 门户展示「退出所有会话/仅退出当前网站」确认页 → 回跳 `/oidc/post-logout` 验签 |
+| RP 发起登出（登出 SSO） | `POST /oidc/logout`（CSRF） | 清本地会话并断开 WS → 302 门户 `end-session`（带 `id_token_hint` + `client_id` + `post_logout_redirect_uri` + HMAC 签名 `state`）→ 门户展示「登出 SSO / 仅登出本网站」确认页 → 回跳 `/oidc/post-logout` 验签 |
+| 仅登出本网站 | `POST /oidc/logout-local`（CSRF） | 只清本地会话并断开 WS，302 首页；**不**调门户 `end-session`（前端退出弹窗提供两个选项，对应指南 §8.1 两种语义） |
 | 授权单飞 | `GET /oidc/login` | 同一浏览器复用未完成的 auth state（HttpOnly Cookie `lichat_auth`）；任一授权完成后即删除 state 并清 Cookie，其余授权确认页随之作废，防止多个确认页并行放行出多个会话 |
 
 前端行为：任何接口 401 与 WS 4401 一律回落到 `/` 登录卡片页，**不会自动发起**授权流程；用户手动点击「使用 Li&Pass 登录」才进入授权。

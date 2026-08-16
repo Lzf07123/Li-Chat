@@ -34,6 +34,7 @@ class OIDCMetadata:
     end_session_endpoint: str
     scopes_supported: tuple[str, ...]
     backchannel_logout_supported: bool
+    frontchannel_logout_supported: bool
 
 
 class DiscoveryStore:
@@ -69,10 +70,11 @@ class DiscoveryStore:
 
     @staticmethod
     def _upgrade_transport_scheme(metadata: OIDCMetadata) -> OIDCMetadata:
-        """发现文档经 https 拉取时，传输端点同样走 https。
+        """防御性兜底：发现文档经 https 拉取时，传输端点同样走 https。
 
-        Li&Pass 发现文档声明的端点是 http 字面值，而 80 端口只做 301；
-        httpx 对带体的 POST 不跟随该 301，会把它当成功响应导致令牌缺失。
+        历史：Li&Pass 发现文档曾声明 http 端点而 80 端口只做 301，httpx 对
+        带体的 POST 不跟随 301，会把重定向页当成功响应导致令牌缺失。2026-08-17
+        起 IdP 已收敛为 https 字面值，本逻辑当前是 no-op，保留以防回退。
         issuer 保持文档原文，供 iss 严格校验。
         """
 
@@ -106,4 +108,5 @@ class DiscoveryStore:
             end_session_endpoint=data["end_session_endpoint"],
             scopes_supported=tuple(data.get("scopes_supported", [])),
             backchannel_logout_supported=bool(data.get("backchannel_logout_supported", False)),
+            frontchannel_logout_supported=bool(data.get("frontchannel_logout_supported", False)),
         )

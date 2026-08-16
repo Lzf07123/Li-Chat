@@ -15,6 +15,7 @@ async def test_get_returns_metadata(mock_idp: MockIdP, mock_transport: httpx.ASG
     assert meta.authorization_endpoint == f"{mock_idp.ISSUER}/oauth2/authorize"
     assert "openid" in meta.scopes_supported
     assert meta.backchannel_logout_supported is True
+    assert meta.frontchannel_logout_supported is False
 
 
 async def test_cached_within_ttl(mock_idp: MockIdP, mock_transport: httpx.ASGITransport) -> None:
