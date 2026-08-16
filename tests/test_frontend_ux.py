@@ -246,7 +246,8 @@ async def test_v45_high_risk_confirms(api_client: httpx.AsyncClient) -> None:
     text = await _app_js(api_client)
     assert "friend-delete" in text
     assert "撤回后对方将无法看到此消息" in text
-    assert "确定要退出当前账号吗" in text
+    assert "仅退出本网站，或同时退出所有已授权网站（单点登出）" in text
+    assert "退出 SSO" in text
 
 
 async def test_v46_announcement_time_and_empty_state(api_client: httpx.AsyncClient) -> None:
