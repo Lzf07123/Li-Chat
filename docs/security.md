@@ -49,7 +49,8 @@
 | 搜索信息泄露防护 | 消息搜索限定自己可见范围（单聊双方 / 群成员）；排除已撤回；命中片段截断；q ≤64、limit ≤50 | `app/search/service.py` |
 | 资料与头像防护 | 昵称/简介长度校验；简介仅好友可见（搜索不回传）；头像必须为本人上传的图片；CSRF 保护 | `app/api/users.py`、`app/friends/service.py` |
 | 备注名边界 | 备注仅本人可见、长度 ≤32（空串清除）；仅已接受好友关系可设置，非好友 404；不下发他人 | `app/friends/service.py`、`app/api/friends.py` |
-| 呼叫信令防护 | 仅好友间、载荷 ≤16KB、ICE 限频、状态机校验非法迁移；信令不落库、SDP 不记日志；媒体 P2P 不经服务端 | `app/ws/calls.py` |
+| 呼叫信令防护 | 仅好友间、载荷 ≤16KB、ICE 限频（超限静默丢弃，不回 invalid）、状态机校验非法迁移；信令不落库、SDP 不记日志；媒体 P2P 不经服务端 | `app/ws/calls.py` |
+| ICE 服务器配置 | `LICHAT_RTC_ICE_SERVERS` 解析即校验（stun/stuns/turn/turns 前缀白名单、≤8 个，非法值拒绝启动）；列表随 `/api/me` 下发，TURN 凭据仅登录用户可见；默认空 = 仅同网/直连，不隐式引入第三方 STUN | `app/config.py`、`app/api/users.py` |
 | 登录限流 | `/oidc/login` 与 `/oidc/callback` IP 粒度滑动窗口，超限 429 + Retry-After（进程内实现） | `app/sso/ratelimit.py`、`app/sso/routes.py` |
 | 写操作限流 | 发消息/编辑/上传/投票按用户滑动窗口限流（`LICHAT_ACTION_RATE_*`），超限 429 + Retry-After（进程内实现，多副本需共享存储） | `app/auth/deps.py`、`app/sso/ratelimit.py` |
 | 会话治理 | 仅能列出/撤销自己的会话；撤销即断对应 WS（4401）；退出其他设备保留当前会话 | `app/api/users.py`、`app/ws/manager.py` |
@@ -64,3 +65,7 @@
 - 登录限流为进程内实现；多副本部署需在网关或共享存储层限流（当前已按 IP 滑动窗口缓解单进程暴力尝试）。
 - 数据库迁移尚未引入 Alembic。
 - 发现文档声明的 http 端点已在本端升级为 https 传输（2026-08-16 起，issuer 字面值仍按原文校验）；彻底收敛仍需 IdP 侧把 issuer 改为 https。注意 http→https 的 301 不会被 httpx 的带体 POST 跟随，端点必须用 https 字面值调用。
+- 音视频呼叫默认无 ICE 服务器，只走 host 候选：同网/直连可用，跨 NAT/跨网需配置
+  `LICHAT_RTC_ICE_SERVERS`（自建或购买 STUN/TURN）后才能建连。
+- 麦克风/摄像头采集（语音消息与音视频通话）依赖安全上下文：生产必须 https；局域网
+  http 地址（非 localhost）下浏览器不会暴露 `getUserMedia`。

@@ -10,9 +10,9 @@
 
 步骤（TDD）：
 
-- [ ] 红：`test_call_offer_relays_kind`、`test_call_throttled_ice_dropped_silently`
-- [ ] 绿：最小实现 `app/ws/calls.py`
-- [ ] 全量 `pytest -q` 全绿，独立提交 `fix: 呼叫信令透传 kind 且限频 ICE 静默丢弃`
+- [x] 红：`test_call_offer_relays_kind`、`test_call_throttled_ice_dropped_silently`
+- [x] 绿：最小实现 `app/ws/calls.py`
+- [x] 全量 `pytest -q` 全绿，独立提交 `fix: 呼叫信令透传 kind 且限频 ICE 静默丢弃`
 
 ## Task 2：可配置 ICE 服务器（STUN/TURN）
 
@@ -21,9 +21,9 @@
 
 步骤（TDD）：
 
-- [ ] 红：配置解析与非法值拒绝；`/api/me` 含 `ice_servers`（含非空值）
-- [ ] 绿：`Settings.rtc_ice_servers` + `MeOut.ice_servers`
-- [ ] 全量验证，独立提交 `feat: 可配置 ICE 服务器（STUN/TURN）`
+- [x] 红：配置解析与非法值拒绝；`/api/me` 含 `ice_servers`（含非空值）
+- [x] 绿：`Settings.rtc_ice_servers` + `MeOut.ice_servers`
+- [x] 全量验证，独立提交 `feat: 可配置 ICE 服务器（STUN/TURN）`
 
 ## Task 3：前端通话修复
 
@@ -33,9 +33,9 @@
 
 步骤（TDD）：
 
-- [ ] 红：前端契约断言（pendingIce/flushPendingIce/iceServers/视频来电 等标记）
-- [ ] 绿：最小实现 `static/app.js`
-- [ ] 全量验证，独立提交 `fix: 通话前端 ICE 缓冲与音视频类型对齐`
+- [x] 红：前端契约断言（pendingIce/flushPendingIce/iceServers/视频来电 等标记）
+- [x] 绿：最小实现 `static/app.js`
+- [x] 全量验证，独立提交 `fix: 通话前端 ICE 缓冲与音视频类型对齐`
 
 ## Task 4：文档收口
 
@@ -45,8 +45,8 @@
 
 步骤：
 
-- [ ] 更新上述文件
-- [ ] 独立提交 `docs: 同步通话修复文档与 CHANGELOG`
+- [x] 更新上述文件
+- [x] 独立提交 `docs: 同步通话修复文档与 CHANGELOG`
 
 ## 验收
 

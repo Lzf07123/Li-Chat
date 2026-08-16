@@ -70,6 +70,7 @@ compose 默认随 `chat` 启动一个编排内 redis（7-alpine、AOF、192mb、
 | `LICHAT_DISCOVERY_CACHE_TTL` | `300` | 发现文档缓存时长（秒） |
 | `LICHAT_UPLOAD_MAX_MB` | `10` | 单文件大小上限（MB，1–20） |
 | `LICHAT_UPLOAD_DIR` | `./data/uploads` | 附件存储目录；容器部署建议挂卷持久化 |
+| `LICHAT_RTC_ICE_SERVERS` | 空（仅同网/直连） | WebRTC ICE 服务器 JSON 数组（仅 stun/stuns/turn/turns 前缀，≤8 个），如 `[{"urls":"stun:stun.example.com:3478"}]`；跨网通话需配置 STUN/TURN |
 | `LICHAT_LOGIN_RATE_LIMIT` | `10` | 登录限流：每 IP 窗口内允许次数（1–1000） |
 | `LICHAT_LOGIN_RATE_WINDOW` | `60` | 登录限流窗口秒数（≥1） |
 | `LICHAT_ACTION_RATE_LIMIT` | `60` | 写操作限流：每用户窗口内允许次数（1–10000，发消息/编辑/上传/投票） |
@@ -85,6 +86,7 @@ compose 插值变量（应用忽略）：`LICHAT_PORT`（宿主机端口）、`R
 4. 数据库换 PostgreSQL，接入 Alembic 管理迁移。
 5. 多副本时把 jti 防重放与会话状态迁到 Redis（当前为进程内实现）。
 6. 在网关或应用层给登录/回程接口加限流。
+7. 跨网音视频通话需配置 `LICHAT_RTC_ICE_SERVERS`（自建或购买 STUN/TURN，默认仅同网/直连）。
 
 ### PostgreSQL 兼容性验证
 
