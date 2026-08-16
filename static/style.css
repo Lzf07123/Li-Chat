@@ -1020,6 +1020,47 @@ a {
   align-items: flex-start;
 }
 
+.message-day {
+  align-self: center;
+  margin: 10px 0 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--chat-surface-2);
+  color: var(--chat-muted);
+  font-size: 0.72rem;
+}
+
+.message-sender {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px 2px;
+}
+
+.message-sender .avatar {
+  width: 20px;
+  height: 20px;
+  font-size: 0.68rem;
+  flex: none;
+}
+
+.message-sender-name {
+  font-size: 0.78rem;
+  color: var(--chat-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+
+.message-merged {
+  margin-top: -4px;
+}
+
+.message-merged .message-sender {
+  display: none;
+}
+
 .message-bubble {
   padding: 8px 12px;
   border-radius: 14px;

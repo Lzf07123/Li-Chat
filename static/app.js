@@ -130,6 +130,30 @@ function friendlyError(status, detail) {
   return "操作失败，请稍后重试";
 }
 
+function dayLabel(iso) {
+  const date = new Date(iso);
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfDay = new Date(date);
+  startOfDay.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((startOfToday - startOfDay) / 86400000);
+  if (diffDays === 0) return "今天";
+  if (diffDays === 1) return "昨天";
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  if (date.getFullYear() === startOfToday.getFullYear()) {
+    return `${month}月${day}日`;
+  }
+  return `${date.getFullYear()}年${month}月${day}日`;
+}
+
+function groupMemberMap() {
+  const members = state.activeGroup && state.activeGroup.members
+    ? state.activeGroup.members
+    : [];
+  return new Map(members.map((member) => [member.user.sub, member.user]));
+}
+
 function footerHtml() {
   return `<footer class="site-footer">${escapeHtml(BRAND.footer())}</footer>`;
 }
@@ -1636,7 +1660,7 @@ function closeChat() {
   document.getElementById("app").classList.remove("chat-open");
 }
 
-function messageHtml(message) {
+function messageHtml(message, previous) {
   const own = message.sender_sub === state.me.sub;
   const mentioned = (message.mentions || []).includes(state.me.sub);
   const readByPeer = state.readUpTo[state.activeSub];
@@ -1645,6 +1669,33 @@ function messageHtml(message) {
     hour: "2-digit",
     minute: "2-digit",
   });
+  const day = dayLabel(message.created_at);
+  const previousDay = previous ? dayLabel(previous.created_at) : null;
+  const dayDivider =
+    day !== previousDay ? `<div class="message-day">${escapeHtml(day)}</div>` : "";
+  const sameAuthor = Boolean(
+    previous &&
+      previous.sender_sub === message.sender_sub &&
+      !previous.deleted &&
+      !message.deleted
+  );
+  const closeInTime = Boolean(
+    previous &&
+      new Date(message.created_at).getTime() -
+        new Date(previous.created_at).getTime() <
+        5 * 60 * 1000
+  );
+  const merged = Boolean(sameAuthor && closeInTime && previousDay === day);
+  const senderHeader = (() => {
+    if (own || state.activeGroupId === null) return "";
+    const sender = groupMemberMap().get(message.sender_sub) || {
+      sub: message.sender_sub,
+    };
+    return `<div class="message-sender">
+      ${avatarHtml(sender)}
+      <span class="message-sender-name">${escapeHtml(displayName(sender))}</span>
+    </div>`;
+  })();
   const replyPreview = message.reply_to
     ? `<div class="message-reply-preview">${
         message.reply_to.deleted
@@ -1703,7 +1754,9 @@ function messageHtml(message) {
   const reactions = message.deleted ? "" : reactionsHtml(message);
   return `<div class="message ${own ? "message-own" : "message-other"}${
     mentioned ? " message-mentioned" : ""
-  }">
+  }${merged ? " message-merged" : ""}">
+    ${dayDivider}
+    ${senderHeader}
     ${body}
     <div class="message-meta">${escapeHtml(time)}${read
       ? '<span class="message-read">已读</span>'
@@ -1737,19 +1790,19 @@ function reactionsHtml(message) {
 function renderMessages() {
   const container = messagesContainer();
   if (!container) return;
-  container.innerHTML = state.messages
-    .slice()
-    .sort((a, b) => a.id - b.id)
-    .map(messageHtml)
+  const sorted = state.messages.slice().sort((a, b) => a.id - b.id);
+  container.innerHTML = sorted
+    .map((message, index) => messageHtml(message, sorted[index - 1]))
     .join("");
 }
 
 function appendMessage(message) {
   if (state.messages.some((item) => item.id === message.id)) return;
+  const previous = state.messages[state.messages.length - 1];
   state.messages.push(message);
   const container = messagesContainer();
   if (!container) return;
-  container.insertAdjacentHTML("beforeend", messageHtml(message));
+  container.insertAdjacentHTML("beforeend", messageHtml(message, previous));
   container.scrollTop = container.scrollHeight;
 }
 

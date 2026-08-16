@@ -42,3 +42,16 @@ async def test_v22_websocket_auto_reconnect(api_client: httpx.AsyncClient) -> No
     assert '"visibilitychange"' in text
     assert "已重新连接" in text
     assert "state.loggingOut" in text
+
+
+async def test_v23_day_grouping_and_merged_messages(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function dayLabel(" in text
+    assert "message-day" in text
+    assert "message-merged" in text
+    assert "message-sender" in text
+    assert '"今天"' in text
+    css = await _style_css(api_client)
+    assert ".message-day" in css
+    assert ".message-merged" in css
+    assert ".message-sender" in css
