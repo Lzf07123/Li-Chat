@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import time
 from typing import Any
 
@@ -13,6 +16,12 @@ from app.logging import get_logger
 logger = get_logger(__name__)
 
 _BACKCHANNEL_LOGOUT_EVENT = "http://schemas.openid.net/event/backchannel-logout"
+
+
+def _at_hash(access_token: str) -> str:
+    """OIDC Core §3.3.2.11：base64url(SHA256(access_token) 左 16 字节)。"""
+    digest = hashlib.sha256(access_token.encode()).digest()[:16]
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
 
 class TokenValidationError(RuntimeError):
@@ -39,10 +48,14 @@ class TokenVerifier:
         self._key_set: PyJWKSet | None = None
         self._fetched_at = 0.0
 
-    async def validate_id_token(self, token: str, nonce: str) -> dict[str, Any]:
+    async def validate_id_token(
+        self, token: str, nonce: str, access_token: str
+    ) -> dict[str, Any]:
         claims = await self._decode(token, audience=self._client_id)
         if claims.get("nonce") != nonce:
             raise TokenValidationError("nonce mismatch")
+        if not hmac.compare_digest(str(claims.get("at_hash") or ""), _at_hash(access_token)):
+            raise TokenValidationError("at_hash mismatch")
         return claims
 
     async def validate_logout_token(self, token: str, *, max_skew: int) -> dict[str, Any]:

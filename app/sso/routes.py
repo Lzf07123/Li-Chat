@@ -152,7 +152,7 @@ async def callback(
         logger.warning("token_exchange_failed", error_code=exc.error_code)
         message = (
             "该账号已被此网站限制访问"
-            if exc.error_code == "account_blocked"
+            if exc.error_code in ("account_blocked", "access_denied")
             else "登录凭证已失效，请重新登录"
         )
         return _error_redirect(message)
@@ -165,7 +165,7 @@ async def callback(
     metadata = await provider.discovery_metadata()
     try:
         claims = await _token_verifier(request, metadata).validate_id_token(
-            id_token, auth_state.nonce
+            id_token, auth_state.nonce, access_token
         )
     except TokenValidationError as exc:
         logger.warning("id_token_validation_failed", error=str(exc))
