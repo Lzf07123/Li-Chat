@@ -2242,3 +2242,26 @@ a {
     transition: none;
   }
 }
+
+/* 搜索命中高亮 */
+.message-flash {
+  border-radius: 8px;
+  animation: message-flash 1.6s var(--ease-out);
+}
+
+@keyframes message-flash {
+  0%,
+  55% {
+    background: var(--chat-primary-soft);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message-flash {
+    animation: none;
+    background: var(--chat-primary-soft);
+  }
+}

@@ -959,8 +959,8 @@ function messageHitHtml(hit) {
       : hit.conversation.peer_name;
   const target =
     hit.conversation.type === "group"
-      ? `data-action="open-group-hit" data-group="${hit.conversation.group_id}"`
-      : `data-action="open-dm-hit" data-peer="${escapeHtml(hit.conversation.peer_sub)}"`;
+      ? `data-action="open-group-hit" data-group="${hit.conversation.group_id}" data-message="${hit.id}"`
+      : `data-action="open-dm-hit" data-peer="${escapeHtml(hit.conversation.peer_sub)}" data-message="${hit.id}"`;
   return `<li class="contact-item search-item search-hit">
     <button class="contact-button" type="button" ${target}>
       <span class="contact-main">
@@ -1041,11 +1041,11 @@ async function onSearchResultClick(event) {
     return;
   }
   if (button.dataset.action === "open-dm-hit") {
-    openChat(button.dataset.peer);
+    openChat(button.dataset.peer, Number(button.dataset.message));
     return;
   }
   if (button.dataset.action === "open-group-hit") {
-    openGroup(Number(button.dataset.group));
+    openGroup(Number(button.dataset.group), Number(button.dataset.message));
     return;
   }
   if (button.dataset.action === "open") {
@@ -1148,7 +1148,7 @@ async function toggleConversationSetting(button) {
   await refreshSidebar();
 }
 
-async function openGroup(groupId) {
+async function openGroup(groupId, locateId = null) {
   const response = await api(`/api/groups/${groupId}`);
   if (!response.ok) return;
   state.activeGroupId = groupId;
@@ -1169,6 +1169,7 @@ async function openGroup(groupId) {
   document.getElementById("app").classList.add("chat-open");
   await loadGroupHistory();
   await markGroupRead();
+  if (locateId) await locateMessage(locateId);
 }
 
 function closeGroupPanel() {
@@ -1677,7 +1678,7 @@ async function onGroupPanelClick(event) {
   await refreshGroups();
 }
 
-async function openChat(sub) {
+async function openChat(sub, locateId = null) {
   const peer =
     state.friends.find((friend) => friend.sub === sub) ||
     state.searchResults.find((result) => result.sub === sub) ||
@@ -1729,6 +1730,7 @@ async function openChat(sub) {
   document.getElementById("app").classList.add("chat-open");
   await loadHistory();
   await markReadActive();
+  if (locateId) await locateMessage(locateId);
   if (window.innerWidth >= 768) document.getElementById("message-input").focus();
 }
 
@@ -1887,7 +1889,7 @@ function messageHtml(message, previous) {
   const reactions = message.deleted ? "" : reactionsHtml(message);
   return `<div class="message ${own ? "message-own" : "message-other"}${
     mentioned ? " message-mentioned" : ""
-  }${merged ? " message-merged" : ""}">
+  }${merged ? " message-merged" : ""}" data-message-id="${message.id}">
     ${dayDivider}
     ${senderHeader}
     ${body}
@@ -2026,6 +2028,33 @@ function clearGroupUnread(groupId, lastReadId) {
     item.last_read_id = lastReadId;
   }
   renderSidebar();
+}
+
+async function locateMessage(messageId) {
+  state.locateMessageId = messageId;
+  await ensureMessageLoaded(messageId, 0);
+  scrollToMessage(messageId);
+}
+
+async function ensureMessageLoaded(messageId, depth) {
+  if (!messageId || depth >= 20) return;
+  if (state.messages.some((item) => item.id === messageId)) return;
+  if (!state.nextBefore) return;
+  if (state.activeGroupId !== null) await loadGroupHistory(state.nextBefore);
+  else await loadHistory(state.nextBefore);
+  await ensureMessageLoaded(messageId, depth + 1);
+}
+
+function scrollToMessage(messageId) {
+  const container = messagesContainer();
+  if (!container) return;
+  const element = container.querySelector(`[data-message-id="${messageId}"]`);
+  if (!element) return;
+  element.scrollIntoView({ block: "center" });
+  element.classList.remove("message-flash");
+  void element.offsetWidth;
+  element.classList.add("message-flash");
+  window.setTimeout(() => element.classList.remove("message-flash"), 1600);
 }
 
 async function onGroupComposerSubmit(event) {

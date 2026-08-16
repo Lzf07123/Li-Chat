@@ -88,3 +88,14 @@ async def test_v26_upload_progress(api_client: httpx.AsyncClient) -> None:
     css = await _style_css(api_client)
     assert ".upload-progress" in css
     assert ".upload-progress-fill" in css
+
+
+async def test_v27_search_hit_locate_and_highlight(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function locateMessage(" in text
+    assert "function scrollToMessage(" in text
+    assert "data-message-id" in text
+    assert "scrollIntoView" in text
+    assert "data-message=" in text
+    css = await _style_css(api_client)
+    assert ".message-flash" in css
