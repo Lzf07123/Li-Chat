@@ -20,6 +20,10 @@
   let shapes = [];
   let colors = { primary: "#25786d", border: "#e1ece8", muted: "#64736c" };
   let density = (document.getElementById("app") || {}).className.includes("auth-shell") ? 10 : 8;
+  let typing = false;
+  let wind = 1;
+  let lastScrollTop = 0;
+  let lastScrollAt = 0;
 
   function readColors() {
     const css = getComputedStyle(document.documentElement);
@@ -60,26 +64,26 @@
     buildShapes();
   }
 
-  function drawShape(shape, t) {
+  function drawShape(shape, t, factor) {
     ctx.globalAlpha = shape.alpha;
     ctx.strokeStyle = colors.primary;
     ctx.fillStyle = colors.primary;
     ctx.lineWidth = 1.5;
     ctx.lineCap = "round";
     if (shape.kind === "square") {
-      const x = shape.x + Math.sin(t * shape.speed * 0.004 + shape.phase) * 60;
-      const y = shape.y + Math.sin(t * shape.speed * 0.002 + shape.phase) * 24;
+      const x = shape.x + Math.sin(t * shape.speed * factor * 0.004 + shape.phase) * 60;
+      const y = shape.y + Math.sin(t * shape.speed * factor * 0.002 + shape.phase) * 24;
       ctx.strokeRect(x, y, shape.size, shape.size);
     } else if (shape.kind === "line") {
-      const x = ((t * shape.speed + shape.x) % (width + 240)) - 120;
-      const y = shape.y + Math.sin(t * shape.speed * 0.003 + shape.phase) * 18;
+      const x = ((t * shape.speed * factor + shape.x) % (width + 240)) - 120;
+      const y = shape.y + Math.sin(t * shape.speed * factor * 0.003 + shape.phase) * 18;
       ctx.beginPath();
       ctx.moveTo(x, y);
       ctx.lineTo(x + 90, y);
       ctx.stroke();
     } else if (shape.kind === "z") {
-      const x = ((t * shape.speed * 0.7 + shape.x) % (width + 240)) - 120;
-      const y = shape.y + Math.sin(t * shape.speed * 0.002 + shape.phase) * 14;
+      const x = ((t * shape.speed * factor * 0.7 + shape.x) % (width + 240)) - 120;
+      const y = shape.y + Math.sin(t * shape.speed * factor * 0.002 + shape.phase) * 14;
       ctx.beginPath();
       ctx.moveTo(x, y);
       ctx.lineTo(x + 28, y);
@@ -89,7 +93,7 @@
     } else {
       const cx = width * (0.15 + ((shape.phase / (Math.PI * 2)) % 1) * 0.7);
       const cy = height * 0.45;
-      const angle = t * shape.speed * 0.002 + shape.phase;
+      const angle = t * shape.speed * factor * 0.002 + shape.phase;
       ctx.beginPath();
       ctx.arc(
         cx + Math.cos(angle) * shape.size * 3,
@@ -105,9 +109,11 @@
 
   function frame(t) {
     frameCount += 1;
+    wind += (1 - wind) * 0.03;
     if (frameCount % 60 === 0) readColors();
     ctx.clearRect(0, 0, width, height);
-    for (const shape of shapes) drawShape(shape, t);
+    const factor = (typing ? 0.5 : 1) * wind;
+    for (const shape of shapes) drawShape(shape, t, factor);
     rafId = window.requestAnimationFrame(frame);
   }
 
@@ -123,6 +129,32 @@
   }
 
   window.addEventListener("resize", resize);
+  document.addEventListener("focusin", (event) => {
+    if (event.target instanceof Element && event.target.closest("input, textarea")) {
+      typing = true;
+      document.body.classList.add("is-typing");
+    }
+  });
+  document.addEventListener("focusout", (event) => {
+    if (event.target instanceof Element && event.target.closest("input, textarea")) {
+      typing = false;
+      document.body.classList.remove("is-typing");
+    }
+  });
+  document.addEventListener(
+    "scroll",
+    (event) => {
+      if (!(event.target instanceof Element)) return;
+      const top = event.target.scrollTop || 0;
+      const now = performance.now();
+      const dt = Math.max(16, now - lastScrollAt);
+      const velocity = Math.abs(top - lastScrollTop) / dt;
+      wind = Math.min(1.5, Math.max(0.5, 1 + velocity * 0.5));
+      lastScrollTop = top;
+      lastScrollAt = now;
+    },
+    { capture: true, passive: true }
+  );
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       window.cancelAnimationFrame(rafId);

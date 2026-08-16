@@ -57,6 +57,7 @@
   --shadow-lg: 0 0.6px 1.8px rgba(24, 58, 51, 0.04), 0 2.4px 7.2px rgba(24, 58, 51, 0.05),
     0 8px 32px rgba(24, 58, 51, 0.1);
   --ease-out: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-in: cubic-bezier(0.55, 0.06, 0.68, 0.19);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --motion-fast: 150ms;
   --motion-base: 250ms;
@@ -274,6 +275,39 @@ a {
   text-align: center;
 }
 
+.card-signature {
+  border-color: transparent;
+}
+
+.card-signature::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--chat-flow-gradient) border-box;
+  background-size: 200% 100%;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: chat-signature-border 9s linear infinite;
+}
+
+@keyframes chat-signature-border {
+  from {
+    background-position: 0% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+
 .auth-halo {
   position: absolute;
   inset: -14px;
@@ -324,6 +358,28 @@ a {
   padding: 12px 20px;
   border-bottom: 1px solid var(--chat-border);
   background: var(--chat-bg);
+}
+
+.flow-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--chat-flow-gradient);
+  background-size: 200% 100%;
+  opacity: 0.7;
+  pointer-events: none;
+  animation: chat-flow-line 5s linear infinite;
+}
+
+@keyframes chat-flow-line {
+  from {
+    background-position: 0% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
 }
 
 .app-brand {
@@ -398,6 +454,7 @@ a {
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
+  overflow: hidden;
   transition:
     color var(--motion-fast) var(--ease-out),
     background-color var(--motion-fast) var(--ease-out),
@@ -520,7 +577,25 @@ a {
   padding: 8px 14px;
 }
 
+.btn-ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.24;
+  transform: scale(0);
+  pointer-events: none;
+  animation: chat-btn-ripple 500ms var(--ease-out);
+}
+
+@keyframes chat-btn-ripple {
+  to {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
 .icon-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -586,6 +661,13 @@ a {
   border-color: var(--chat-primary);
   outline: none;
   box-shadow: 0 0 0 3px var(--chat-primary-soft);
+}
+
+.input-sm {
+  min-height: 36px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  font-size: 0.85rem;
 }
 
 .badge {
@@ -713,6 +795,24 @@ a {
 
 .page-enter {
   animation: page-fade-up var(--motion-slow) var(--ease-out) both;
+}
+
+.blur-unit {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(6px);
+  filter: blur(8px);
+  will-change: transform, opacity, filter;
+  animation: chat-blur-in 450ms var(--ease-out) both;
+  animation-delay: calc(var(--blur-index, 0) * 35ms);
+}
+
+@keyframes chat-blur-in {
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
 }
 
 @keyframes page-fade-up {
@@ -2145,8 +2245,9 @@ a {
     min-height: 36px;
     padding: 0 10px;
     font-size: 0.875rem;
-    border-radius: 8px;
-  }
+  border-radius: 8px;
+  overflow: hidden;
+}
 
   .app-main-chat {
     grid-template-columns: 270px minmax(0, 1fr);
