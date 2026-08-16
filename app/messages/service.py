@@ -12,6 +12,7 @@ from app.friends.service import are_friends, list_friends
 from app.groups.service import membership as group_membership
 from app.models import DmRead, Group, GroupMember, GroupRead, Message, Reaction, User
 from app.timeutil import iso_utc, utcnow
+from app.uploads.service import get_upload
 
 MAX_MESSAGE_LENGTH = 2000
 HISTORY_DEFAULT_LIMIT = 50
@@ -40,9 +41,46 @@ def message_payload(message: Message) -> dict[str, Any]:
     else:
         payload["deleted"] = False
         payload["content"] = message.content
+        payload["content_type"] = message.content_type
+        if message.attachment_name is not None:
+            payload["attachment"] = {
+                "name": message.attachment_name,
+                "size": message.attachment_size,
+                "mime": message.attachment_mime,
+                "url": message.attachment_url,
+            }
         if message.edited_at is not None:
             payload["edited_at"] = iso_utc(message.edited_at)
     return payload
+
+
+async def resolve_attachment(
+    db: AsyncSession,
+    sender_sub: str,
+    content_type: str,
+    attachment: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if content_type == "text":
+        if attachment is not None:
+            raise HTTPException(
+                status_code=422, detail="text messages cannot have attachments"
+            )
+        return {}
+    if attachment is None:
+        raise HTTPException(status_code=422, detail="attachment required")
+    url = attachment.get("url")
+    prefix = "/api/uploads/"
+    if not isinstance(url, str) or not url.startswith(prefix):
+        raise HTTPException(status_code=422, detail="invalid attachment url")
+    upload = await get_upload(db, url[len(prefix) :])
+    if upload.owner_sub != sender_sub:
+        raise HTTPException(status_code=403, detail="attachment must belong to you")
+    return {
+        "attachment_name": upload.original_name,
+        "attachment_size": upload.size,
+        "attachment_mime": upload.mime,
+        "attachment_url": url,
+    }
 
 
 async def _advance_read(
@@ -63,7 +101,13 @@ async def _advance_read(
 
 
 async def send_message(
-    db: AsyncSession, sender_sub: str, recipient_sub: str, content: str
+    db: AsyncSession,
+    sender_sub: str,
+    recipient_sub: str,
+    content: str,
+    *,
+    content_type: str = "text",
+    attachment: dict[str, Any] | None = None,
 ) -> Message:
     if sender_sub == recipient_sub:
         raise HTTPException(status_code=400, detail="cannot message yourself")
@@ -71,6 +115,9 @@ async def send_message(
         raise HTTPException(status_code=404, detail="user not found")
     if not await are_friends(db, sender_sub, recipient_sub):
         raise HTTPException(status_code=403, detail="not friends")
+    attachment_fields = await resolve_attachment(
+        db, sender_sub, content_type, attachment
+    )
     lo, hi = pair_key(sender_sub, recipient_sub)
     message = Message(
         sender_sub=sender_sub,
@@ -78,6 +125,8 @@ async def send_message(
         participant_lo=lo,
         participant_hi=hi,
         content=content,
+        content_type=content_type,
+        **attachment_fields,
     )
     db.add(message)
     await db.flush()
@@ -272,7 +321,13 @@ async def _group_member_count(db: AsyncSession, group_id: int) -> int:
 
 
 async def send_group_message(
-    db: AsyncSession, sender_sub: str, group_id: int, content: str
+    db: AsyncSession,
+    sender_sub: str,
+    group_id: int,
+    content: str,
+    *,
+    content_type: str = "text",
+    attachment: dict[str, Any] | None = None,
 ) -> Message:
     member_row = await group_membership(db, group_id, sender_sub)
     if member_row is None:
@@ -280,6 +335,9 @@ async def send_group_message(
     group = await db.get(Group, group_id)
     if group is None:
         raise HTTPException(status_code=404, detail="group not found")
+    attachment_fields = await resolve_attachment(
+        db, sender_sub, content_type, attachment
+    )
     marker = f"{GROUP_RECIPIENT_PREFIX}{group_id}"
     message = Message(
         sender_sub=sender_sub,
@@ -289,6 +347,8 @@ async def send_group_message(
         content=content,
         conversation_type="group",
         group_id=group_id,
+        content_type=content_type,
+        **attachment_fields,
     )
     db.add(message)
     await db.flush()

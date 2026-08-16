@@ -1005,6 +1005,40 @@ a {
   color: var(--chat-muted);
 }
 
+.message-bubble-attachment {
+  padding: 6px;
+  overflow: hidden;
+}
+
+.attachment-image {
+  display: block;
+  max-width: 260px;
+  max-height: 220px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.attachment-caption {
+  padding: 4px 6px 0;
+  font-size: 0.9rem;
+}
+
+.attachment-link {
+  display: inline-block;
+  padding: 4px 6px;
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.attachment-link:hover {
+  text-decoration: underline;
+}
+
+.message-own .attachment-link {
+  color: var(--chat-primary-fg);
+}
+
 .reactions-row {
   display: flex;
   align-items: center;

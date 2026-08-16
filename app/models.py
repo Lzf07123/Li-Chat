@@ -99,6 +99,11 @@ class Message(Base):
         BigInteger().with_variant(Integer, "sqlite"),
         ForeignKey("groups.id", ondelete="CASCADE"),
     )
+    content_type: Mapped[str] = mapped_column(String(16), default="text")
+    attachment_name: Mapped[str | None] = mapped_column(String(255))
+    attachment_size: Mapped[int | None] = mapped_column(Integer)
+    attachment_mime: Mapped[str | None] = mapped_column(String(64))
+    attachment_url: Mapped[str | None] = mapped_column(String(255))
     edited_at: Mapped[datetime | None] = mapped_column(DateTime)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -196,3 +201,21 @@ class GroupRead(Base):
         BigInteger().with_variant(Integer, "sqlite"), default=0
     )
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class Upload(Base):
+    __tablename__ = "uploads"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    owner_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), index=True
+    )
+    filename: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    original_name: Mapped[str] = mapped_column(String(255))
+    mime: Mapped[str] = mapped_column(String(64))
+    size: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

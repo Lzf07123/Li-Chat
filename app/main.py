@@ -18,6 +18,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from app.api.friends import router as friends_router
 from app.api.groups import router as groups_router
 from app.api.messages import router as messages_router
+from app.api.uploads import router as uploads_router
 from app.api.users import router as users_router
 from app.auth.session import get_session
 from app.config import Settings
@@ -30,6 +31,7 @@ from app.redis import build_redis, logout_subscriber
 from app.sso.replay import MemoryReplayCache, RedisReplayCache, ReplayCache
 from app.sso.routes import router as sso_router
 from app.timeutil import iso_utc, utcnow
+from app.uploads.service import resolve_upload_root
 from app.ws.manager import ConnectionManager
 from app.ws.relay import relay_typing
 
@@ -90,6 +92,19 @@ def _ensure_message_columns(conn: Connection) -> None:
             "ALTER TABLE messages ADD COLUMN group_id INTEGER "
             "REFERENCES groups(id) ON DELETE CASCADE"
         )
+    if "content_type" not in names:
+        conn.exec_driver_sql(
+            "ALTER TABLE messages ADD COLUMN content_type VARCHAR(16) "
+            "NOT NULL DEFAULT 'text'"
+        )
+    if "attachment_name" not in names:
+        conn.exec_driver_sql("ALTER TABLE messages ADD COLUMN attachment_name VARCHAR(255)")
+    if "attachment_size" not in names:
+        conn.exec_driver_sql("ALTER TABLE messages ADD COLUMN attachment_size INTEGER")
+    if "attachment_mime" not in names:
+        conn.exec_driver_sql("ALTER TABLE messages ADD COLUMN attachment_mime VARCHAR(64)")
+    if "attachment_url" not in names:
+        conn.exec_driver_sql("ALTER TABLE messages ADD COLUMN attachment_url VARCHAR(255)")
 
 
 async def _friend_subs(db: AsyncSession, sub: str) -> list[str]:
@@ -139,6 +154,7 @@ def create_app(
         database_path = _sqlite_path(app_settings.database_url)
         if database_path is not None:
             database_path.parent.mkdir(parents=True, exist_ok=True)
+        resolve_upload_root(app_settings).mkdir(parents=True, exist_ok=True)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             await conn.run_sync(_ensure_session_columns)
@@ -193,6 +209,7 @@ def create_app(
     app.include_router(friends_router)
     app.include_router(groups_router)
     app.include_router(messages_router)
+    app.include_router(uploads_router)
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:

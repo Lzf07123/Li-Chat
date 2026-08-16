@@ -4,6 +4,11 @@
 
 ### 功能
 
+- 附件与图片消息：上传端点（`LICHAT_UPLOAD_MAX_MB` 默认 10、≤20；内容嗅探白名单
+  jpeg/png/gif/webp/pdf/txt，拒绝 SVG/HTML 与伪造类型；随机文件名防遍历）、`uploads`
+  表、会话鉴权回源（仅上传者可下载、nosniff、图片 inline / 其他 attachment）、消息
+  `content_type + attachment` 元数据（单聊 + 群）与附件归属校验；前端附件按钮与图片/文件
+  消息渲染
 - 群消息与群已读（里程碑三核心）：`messages` 会话抽象（`conversation_type dm|group` +
   `group_id`，SQLite 兼容迁移自动补列、旧 DM 数据不动；群消息以 `group:{id}` 哨兵占位
   recipient/participant 满足旧库约束）、`group_reads` 已读游标（只前进）、群发送/历史

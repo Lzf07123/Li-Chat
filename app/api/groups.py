@@ -251,7 +251,12 @@ async def send_group_message(
     _csrf: Annotated[None, Depends(require_csrf)],
 ) -> MessageOut:
     message = await messages_service.send_group_message(
-        db, user.sub, group_id, body.content
+        db,
+        user.sub,
+        group_id,
+        body.content,
+        content_type=body.content_type,
+        attachment=body.attachment.model_dump() if body.attachment else None,
     )
     payload = messages_service.message_payload(message)
     manager = cast(ConnectionManager, request.app.state.ws_manager)

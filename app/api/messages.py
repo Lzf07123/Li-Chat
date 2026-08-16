@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user, require_csrf
@@ -17,19 +17,32 @@ router = APIRouter(prefix="/api/conversations", tags=["messages"])
 
 
 class MessageIn(BaseModel):
-    content: str
+    content: str = ""
+    content_type: Literal["text", "image", "file"] = "text"
+    attachment: AttachmentIn | None = None
 
     @field_validator("content")
     @classmethod
-    def _validate_content(cls, value: str) -> str:
+    def _validate_content(cls, value: str, info: ValidationInfo) -> str:
         stripped = value.strip()
-        if not stripped:
+        if info.data.get("content_type", "text") == "text" and not stripped:
             raise ValueError("content must not be blank")
         if len(stripped) > MAX_MESSAGE_LENGTH:
             raise ValueError(
                 f"content must be at most {MAX_MESSAGE_LENGTH} characters"
             )
         return stripped
+
+
+class AttachmentIn(BaseModel):
+    url: str
+
+
+class AttachmentOut(BaseModel):
+    name: str
+    size: int | None = None
+    mime: str | None = None
+    url: str | None = None
 
 
 class ReactionCountOut(BaseModel):
@@ -44,6 +57,8 @@ class MessageOut(BaseModel):
     conversation_type: str = "dm"
     group_id: int | None = None
     content: str | None = None
+    content_type: str = "text"
+    attachment: AttachmentOut | None = None
     deleted: bool = False
     edited_at: str | None = None
     created_at: str
@@ -152,7 +167,14 @@ async def send_message(
     db: Annotated[AsyncSession, Depends(get_db)],
     _csrf: Annotated[None, Depends(require_csrf)],
 ) -> MessageOut:
-    message = await service.send_message(db, user.sub, other_sub, body.content)
+    message = await service.send_message(
+        db,
+        user.sub,
+        other_sub,
+        body.content,
+        content_type=body.content_type,
+        attachment=body.attachment.model_dump() if body.attachment else None,
+    )
     payload = service.message_payload(message)
     manager = cast(ConnectionManager, request.app.state.ws_manager)
     event = {"type": "message", "message": payload}

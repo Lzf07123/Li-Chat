@@ -230,6 +230,14 @@ function mainHtml() {
           <div id="messages" class="messages" role="log" aria-live="polite" aria-label="聊天记录"></div>
         </div>
         <form id="composer" class="composer">
+          <button id="attach-btn" class="icon-btn" type="button" aria-label="发送附件">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </button>
+          <input id="attach-input" type="file" hidden
+            accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain" />
           <label class="sr-only" for="message-input">消息内容</label>
           <textarea id="message-input" class="input" rows="1" maxlength="2000"
             placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
@@ -261,6 +269,12 @@ function renderLoggedIn() {
   document.getElementById("message-input").addEventListener("keydown", onComposerKeydown);
   document.getElementById("message-input").addEventListener("input", onComposerInput);
   document.getElementById("message-input").addEventListener("blur", onComposerBlur);
+  document.getElementById("attach-btn").addEventListener("click", () => {
+    document.getElementById("attach-input").click();
+  });
+  document.getElementById("attach-input").addEventListener("change", (event) => {
+    onAttachSelected(event, false);
+  });
   document.getElementById("messages").addEventListener("click", onMessagesClick);
   document.getElementById("load-older").addEventListener("click", loadOlder);
   document.getElementById("chat-back").addEventListener("click", closeChat);
@@ -399,7 +413,11 @@ function friendHtml(friend, summary) {
   const preview = summary && summary.last_message
     ? summary.last_message.deleted
       ? "消息已撤回"
-      : summary.last_message.content
+      : summary.last_message.content_type === "image"
+        ? "[图片]"
+        : summary.last_message.content_type === "file"
+          ? "[文件]"
+          : summary.last_message.content
     : "";
   const online = friend.online === true;
   return `<li class="contact-item">
@@ -426,7 +444,11 @@ function groupHtml(group, summary) {
   const preview = summary && summary.last_message
     ? summary.last_message.deleted
       ? "消息已撤回"
-      : summary.last_message.content
+      : summary.last_message.content_type === "image"
+        ? "[图片]"
+        : summary.last_message.content_type === "file"
+          ? "[文件]"
+          : summary.last_message.content
     : "";
   return `<li class="contact-item">
     <button class="contact-button" type="button"
@@ -645,6 +667,14 @@ function groupPanelHtml(group) {
       <div id="group-messages" class="messages" role="log" aria-live="polite"
         aria-label="群聊记录"></div>
       <form id="group-composer" class="composer">
+        <button id="group-attach-btn" class="icon-btn" type="button" aria-label="发送附件">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+          </svg>
+        </button>
+        <input id="group-attach-input" type="file" hidden
+          accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain" />
         <label class="sr-only" for="group-message-input">消息内容</label>
         <textarea id="group-message-input" class="input" rows="1" maxlength="2000"
           placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
@@ -698,7 +728,37 @@ function renderGroupPanel() {
       "keydown",
       onGroupComposerKeydown
     );
+    document.getElementById("group-attach-btn").addEventListener("click", () => {
+      document.getElementById("group-attach-input").click();
+    });
+    document.getElementById("group-attach-input").addEventListener("change", (event) => {
+      onAttachSelected(event, true);
+    });
   }
+}
+
+async function onAttachSelected(event, isGroup) {
+  const input = event.target;
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const form = new FormData();
+  form.append("file", file);
+  const uploadResponse = await api("/api/uploads", { method: "POST", body: form });
+  input.value = "";
+  if (!uploadResponse.ok) return;
+  const upload = await uploadResponse.json();
+  const content_type = upload.mime.startsWith("image/") ? "image" : "file";
+  const url = isGroup
+    ? `/api/groups/${state.activeGroupId}/messages`
+    : `/api/conversations/${encodeURIComponent(state.activeSub)}/messages`;
+  await api(url, {
+    method: "POST",
+    body: JSON.stringify({
+      content: "",
+      content_type,
+      attachment: { url: upload.url },
+    }),
+  });
 }
 
 async function refreshGroups() {
@@ -922,9 +982,28 @@ function messageHtml(message) {
     hour: "2-digit",
     minute: "2-digit",
   });
-  const body = message.deleted
-    ? '<div class="message-bubble message-bubble-deleted">消息已撤回</div>'
-    : `<div class="message-bubble">${escapeHtml(message.content)}</div>`;
+  let body;
+  if (message.deleted) {
+    body = '<div class="message-bubble message-bubble-deleted">消息已撤回</div>';
+  } else if (message.content_type === "image" && message.attachment) {
+    body = `<div class="message-bubble message-bubble-attachment">
+      <img class="attachment-image" src="${escapeHtml(message.attachment.url)}"
+        alt="图片消息" loading="lazy" />
+      ${message.content
+        ? `<div class="attachment-caption">${escapeHtml(message.content)}</div>`
+        : ""}
+    </div>`;
+  } else if (message.attachment) {
+    body = `<div class="message-bubble message-bubble-attachment">
+      <a class="attachment-link" href="${escapeHtml(message.attachment.url)}" download>
+        📎 ${escapeHtml(message.attachment.name)}</a>
+      ${message.content
+        ? `<div class="attachment-caption">${escapeHtml(message.content)}</div>`
+        : ""}
+    </div>`;
+  } else {
+    body = `<div class="message-bubble">${escapeHtml(message.content)}</div>`;
+  }
   const actions = own && !message.deleted && !state.activeGroupId
     ? `<span class="message-actions">
         <button class="message-action" type="button"

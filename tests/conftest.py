@@ -35,6 +35,7 @@ def settings(tmp_path, mock_idp: MockIdP) -> Settings:
         oidc_redirect_uri="http://test/oidc/callback",
         oidc_post_logout_redirect_uri="http://test/",
         session_secret="test-session-secret",
+        upload_dir=str(tmp_path / "uploads"),
     )
 
 
