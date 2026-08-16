@@ -16,7 +16,7 @@
 | --- | --- | --- |
 | 授权回调 | `GET /oidc/callback` | 校验 `state` 且单次使用（取出即删、600 秒过期）；`error=access_denied`/`error_description=account_blocked` 按失败处理并提示；`code + code_verifier + client_secret` 换令牌；`id_token` 按 `kid` 选钥 RS256 验签并校验 `iss`、`aud=client_id`、`nonce`、`iat/exp`；`access_token` 只用于 userinfo 且不校验其 `aud`；userinfo `sub` 与 id_token `sub` 一致后 upsert 用户，本地会话绑定 `(sub, sid)`（`sid` 取自 id_token）；黑名单的 403 映射为友好提示 |
 | 回程登出 | `POST /oidc/backchannel-logout` | form 字段 `logout_token`；`kid` 选钥验签、`iss`、`aud=client_id`、`iat` 120 秒新鲜窗口 + `exp` 有效性、`jti` 已见缓存防重放（内存/Redis）、`events` 必须含 backchannel-logout；优先清 `(sub,sid)` 会话，`sid` 缺失或未命中时回退删除该用户全部会话并断开 WS；成功返回 2xx JSON `{"status":"ok"/"ignored"}` |
-| 登出回跳 | `GET/POST /oidc/post-logout` | 兼容两种门户实际行为：带 `state`（query/form/JSON/原始 body）→ HMAC 验签后 302 首页；带 `logout_token` → 走与回程登出相同的完整校验，清会话断 WS 后返回 **200 HTML 跳转页**（meta refresh + JS 回 `/`，浏览器落回登录卡片页，门户侧仍 2xx）；无有效凭据返回 400 并记录来源/字段名（不落令牌值） |
+| 登出回跳 | `GET /oidc/post-logout?state=` | 标准浏览器回跳：HMAC 验签 `state` 后 302 首页；无效 400 |
 | RP 发起登出 | `POST /oidc/logout`（CSRF） | 清本地会话并断开 WS → 302 门户 `end-session`（带 `id_token_hint` + `client_id` + `post_logout_redirect_uri` + HMAC 签名 `state`）→ 门户展示「退出所有会话/仅退出当前网站」确认页 → 回跳 `/oidc/post-logout` 验签 |
 | 授权单飞 | `GET /oidc/login` | 同一浏览器复用未完成的 auth state（HttpOnly Cookie `lichat_auth`）；任一授权完成后即删除 state 并清 Cookie，其余授权确认页随之作废，防止多个确认页并行放行出多个会话 |
 
@@ -44,7 +44,7 @@
 | 客户端类型 | 机密客户端 | `LICHAT_OIDC_CLIENT_SECRET` 只存服务端，不落前端 |
 | scope | `openid profile email`（`LICHAT_OIDC_SCOPE`） | 邮箱用于资料同步与按邮箱搜索；未验证邮箱不阻塞登录，仅存 `email_verified` 标记 |
 
-> 历史兼容：早期联调确认门户曾把 `logout_token` POST 到「登出回跳地址」而非标准回程地址。Li&Chat 的 `/oidc/post-logout` 保留该兼容分支（见 §2）作为兜底；**标准配置下门户应把回程登出打到 `/oidc/backchannel-logout`，回跳白名单登记 `/`**，兼容分支不再被触发。
+> 配置要求：门户「回程登出地址」必须填 `/oidc/backchannel-logout`、「登出回跳白名单」填 `/`；`/oidc/post-logout` 仅作为门户浏览器回跳的标准接收端点（GET + 签名 `state`），不接受任何其他形态。
 
 ## 4. 接入验收清单（指南 §2.4 逐项对照）
 
