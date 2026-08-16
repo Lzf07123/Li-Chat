@@ -464,6 +464,7 @@ async def _group_conversation_summaries(
                     "name": group.name,
                     "owner_sub": group.owner_sub,
                     "member_count": await _group_member_count(db, group.id),
+                    "avatar_url": group.avatar_url,
                 },
                 "last_message": message_payload(last) if last is not None else None,
                 "unread_count": unread_by_group.get(group.id, 0),

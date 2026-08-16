@@ -208,6 +208,8 @@ class Group(Base):
     owner_sub: Mapped[str] = mapped_column(
         ForeignKey("users.sub", ondelete="CASCADE"), index=True
     )
+    announcement: Mapped[str | None] = mapped_column(Text)
+    avatar_url: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 

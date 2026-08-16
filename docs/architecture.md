@@ -49,7 +49,7 @@ flowchart LR
 | `message_mentions` | `message_id+user_sub`(复合 PK) | @提及落账；发送时校验成员/对端 |
 | `user_stars` | `user_sub+message_id`(复合 PK)、created_at | 收藏幂等 toggle；列表按 message_id 倒序游标 |
 | `user_conversation_settings` | `user_sub+kind+key`(复合 PK)、pinned、muted | 会话置顶/免打扰；key：单聊 pair 排序键 / 群 id |
-| `groups` | `id`、name、owner_sub、created_at、updated_at | 群元数据；owner 变更随转让同步 |
+| `groups` | `id`、name、owner_sub、announcement、avatar_url、created_at、updated_at | 群元数据；公告/头像由 owner/admin 维护，owner 变更随转让同步 |
 | `group_members` | `group_id+user_sub`(复合 PK)、role(owner/admin/member)、joined_at | 角色约束 + 权限矩阵在 service 层强校验 |
 | `group_reads` | `user_sub+group_id`(复合 PK)、last_read_message_id、updated_at | 群已读游标，只前进；未读 = 群消息 id 大于游标且非本人发送 |
 | `uploads` | `id`、owner_sub、filename(唯一)、original_name、mime、size、created_at | 随机文件名防遍历；仅上传者可回源 |

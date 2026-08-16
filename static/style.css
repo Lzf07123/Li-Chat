@@ -1135,6 +1135,27 @@ a {
   color: var(--chat-primary);
 }
 
+.group-avatar-img {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.group-announcement {
+  padding: 10px 12px;
+  border: 1px solid var(--chat-border);
+  border-radius: 10px;
+  background: var(--chat-surface-2);
+}
+
+.group-announcement p {
+  margin: 0 0 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .group-panel {
   flex: 1;
   display: flex;

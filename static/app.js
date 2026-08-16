@@ -638,7 +638,9 @@ function groupHtml(group, summary) {
   return `<li class="contact-item">
     <button class="contact-button" type="button"
       data-action="open-group" data-id="${group.id}">
-      <div class="avatar avatar-placeholder group-avatar" aria-hidden="true">#</div>
+      ${group.avatar_url
+        ? `<img class="avatar group-avatar-img" src="${escapeHtml(group.avatar_url)}" alt="群头像" />`
+        : '<div class="avatar avatar-placeholder group-avatar" aria-hidden="true">#</div>'}
       <span class="contact-main">
         <span class="contact-name">${escapeHtml(group.name)}</span>
         <span class="contact-preview">${preview || `${count} 位成员`}</span>
@@ -949,7 +951,9 @@ function groupPanelHtml(group) {
         </svg>
       </button>
       <div class="chat-peer">
-        <div class="avatar avatar-placeholder group-avatar" aria-hidden="true">#</div>
+        ${group.avatar_url
+          ? `<img class="avatar group-avatar-img" src="${escapeHtml(group.avatar_url)}" alt="群头像" />`
+          : '<div class="avatar avatar-placeholder group-avatar" aria-hidden="true">#</div>'}
         <span class="chat-peer-main">
           <span class="chat-peer-name">${escapeHtml(group.name)}</span>
           <span class="chat-peer-status">${group.members.length} 位成员</span>
@@ -986,6 +990,20 @@ function groupPanelHtml(group) {
     </div>
     <div class="group-panel-body">
       <section class="group-section">
+        <h3 class="group-section-title">公告</h3>
+        <div class="group-announcement">
+          <p id="group-announcement-text">${escapeHtml(group.announcement || "暂无公告")}</p>
+          ${manager
+            ? `<div class="group-rename-row">
+                <textarea id="group-announcement-input" class="input" rows="2"
+                  maxlength="2000" placeholder="编辑群公告">${escapeHtml(group.announcement || "")}</textarea>
+                <button class="btn btn-secondary btn-sm" type="button"
+                  data-action="group-announcement">发布</button>
+              </div>`
+            : ""}
+        </div>
+      </section>
+      <section class="group-section">
         <h3 class="group-section-title">成员</h3>
         <ul class="contact-list">${members}</ul>
       </section>
@@ -1005,6 +1023,13 @@ function groupPanelHtml(group) {
                 </select>
                 <button class="btn btn-secondary btn-sm" type="button"
                   data-action="group-invite" ${candidates.length ? "" : "disabled"}>邀请</button>
+              </div>
+              <div class="group-rename-row">
+                <span class="muted">群头像</span>
+                <input id="group-avatar-input" type="file" hidden
+                  accept="image/png,image/jpeg,image/gif,image/webp" />
+                <button class="btn btn-ghost btn-sm" type="button"
+                  data-action="group-avatar-pick">上传头像</button>
               </div>
             </div>
           </section>`
@@ -1047,7 +1072,33 @@ function renderGroupPanel() {
     document.getElementById("group-attach-input").addEventListener("change", (event) => {
       onAttachSelected(event, true);
     });
+    const avatarPick = document.querySelector("[data-action='group-avatar-pick']");
+    if (avatarPick) {
+      avatarPick.addEventListener("click", () => {
+        document.getElementById("group-avatar-input").click();
+      });
+      document.getElementById("group-avatar-input").addEventListener(
+        "change",
+        onGroupAvatarSelected
+      );
+    }
   }
+}
+
+async function onGroupAvatarSelected(event) {
+  const input = event.target;
+  const file = input.files && input.files[0];
+  if (!file || !state.activeGroupId) return;
+  const form = new FormData();
+  form.append("file", file);
+  const uploadResponse = await api("/api/uploads", { method: "POST", body: form });
+  if (!uploadResponse.ok) return;
+  const upload = await uploadResponse.json();
+  const avatarResponse = await api(`/api/groups/${state.activeGroupId}/avatar`, {
+    method: "POST",
+    body: JSON.stringify({ url: upload.url }),
+  });
+  if (avatarResponse.ok) await refreshGroups();
 }
 
 async function onAttachSelected(event, isGroup) {
@@ -1165,6 +1216,12 @@ async function onGroupPanelClick(event) {
     await api(`/api/groups/${groupId}/members`, {
       method: "POST",
       body: JSON.stringify({ member_subs: [sub] }),
+    });
+  } else if (action === "group-announcement") {
+    const text = document.getElementById("group-announcement-input").value.trim();
+    await api(`/api/groups/${groupId}/announcement`, {
+      method: "PATCH",
+      body: JSON.stringify({ text }),
     });
   } else if (action === "group-remove") {
     await api(`/api/groups/${groupId}/members/${encodeURIComponent(button.dataset.sub)}`, {

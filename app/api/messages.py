@@ -152,6 +152,7 @@ class GroupSummaryOut(BaseModel):
     name: str
     owner_sub: str
     member_count: int
+    avatar_url: str | None = None
 
 
 class ConversationsOut(BaseModel):

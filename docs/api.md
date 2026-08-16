@@ -36,6 +36,8 @@
 | PATCH | `/api/groups/{id}/members/{sub}` | 会话 + CSRF | 调整角色 `{"role":"admin|member"}`（仅 owner，不可改 owner 自身） |
 | POST | `/api/groups/{id}/leave` | 会话 + CSRF | 退出（owner 须先转让，409） |
 | POST | `/api/groups/{id}/transfer` | 会话 + CSRF | 转让 `{"new_owner_sub"}`（仅 owner，目标须为成员） |
+| PATCH | `/api/groups/{id}/announcement` | 会话 + CSRF | 公告 `{"text"}`（≤2000，可清空；owner/admin） |
+| POST | `/api/groups/{id}/avatar` | 会话 + CSRF | 群头像 `{"url"}`（本人上传的图片；owner/admin） |
 | POST | `/api/groups/{id}/messages` | 会话 + CSRF | 群发消息（文本/附件/引用/提及，语义同单聊；仅成员；mentions 须为群成员）；201 返回消息（附 `group_id`）；WS 推全成员 |
 | GET | `/api/groups/{id}/messages?limit=&before=` | 会话 | 群历史倒序分页（仅成员；参数语义同单聊） |
 | POST | `/api/groups/{id}/read` | 会话 + CSRF | 群已读 `{"last_read_id"}`（仅成员、消息须属该群、游标只前进）；WS 推全成员 |

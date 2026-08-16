@@ -43,8 +43,28 @@ class GroupOut(BaseModel):
     id: int
     name: str
     owner_sub: str
+    announcement: str | None = None
+    avatar_url: str | None = None
     created_at: str
     members: list[MemberOut]
+
+
+class AnnouncementIn(BaseModel):
+    text: str
+
+    @field_validator("text")
+    @classmethod
+    def _validate_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if len(stripped) > service.GROUP_ANNOUNCEMENT_MAX:
+            raise ValueError(
+                f"announcement must be at most {service.GROUP_ANNOUNCEMENT_MAX} characters"
+            )
+        return stripped
+
+
+class AvatarIn(BaseModel):
+    url: str
 
 
 class GroupsOut(BaseModel):
@@ -247,6 +267,34 @@ async def transfer_ownership(
     group = await service.get_group(db, user.sub, group_id)
     await _broadcast(request, db, group_id, "owner_changed", group, user.sub)
     return StatusOut(status="transferred")
+
+
+@router.patch("/{group_id}/announcement", response_model=GroupOut)
+async def set_announcement(
+    request: Request,
+    group_id: int,
+    body: AnnouncementIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> GroupOut:
+    group = await service.set_announcement(db, user.sub, group_id, body.text)
+    await _broadcast(request, db, group_id, "announcement_updated", group, user.sub)
+    return GroupOut.model_validate(group)
+
+
+@router.post("/{group_id}/avatar", response_model=GroupOut)
+async def set_group_avatar(
+    request: Request,
+    group_id: int,
+    body: AvatarIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> GroupOut:
+    group = await service.set_avatar(db, user.sub, group_id, body.url)
+    await _broadcast(request, db, group_id, "avatar_updated", group, user.sub)
+    return GroupOut.model_validate(group)
 
 
 @router.post("/{group_id}/messages", response_model=MessageOut, status_code=201)

@@ -117,6 +117,19 @@ def _ensure_message_columns(conn: Connection) -> None:
         )
 
 
+def _ensure_group_columns(conn: Connection) -> None:
+    """SQLite 兼容迁移：为既有库补齐 groups.announcement/avatar_url。"""
+    if conn.dialect.name != "sqlite":
+        return
+    names = {
+        row[1] for row in conn.exec_driver_sql("PRAGMA table_info(groups)").fetchall()
+    }
+    if "announcement" not in names:
+        conn.exec_driver_sql("ALTER TABLE groups ADD COLUMN announcement TEXT")
+    if "avatar_url" not in names:
+        conn.exec_driver_sql("ALTER TABLE groups ADD COLUMN avatar_url VARCHAR(255)")
+
+
 async def _friend_subs(db: AsyncSession, sub: str) -> list[str]:
     friends = await list_friends(db, sub)
     return [friend["sub"] for friend in friends if friend["sub"] is not None]
@@ -170,6 +183,7 @@ def create_app(
             await conn.run_sync(_ensure_session_columns)
             await conn.run_sync(_ensure_user_columns)
             await conn.run_sync(_ensure_message_columns)
+            await conn.run_sync(_ensure_group_columns)
         subscriber: asyncio.Task[None] | None = None
         if redis_client is not None:
             await redis_client.ping()

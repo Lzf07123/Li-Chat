@@ -9,10 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.friends.service import are_friends
 from app.models import Group, GroupMember, User
 from app.timeutil import iso_utc
+from app.uploads.service import get_upload
 
 GROUP_NAME_MAX = 64
 GROUP_MEMBERS_MAX = 200
 INVITE_BATCH_MAX = 20
+GROUP_ANNOUNCEMENT_MAX = 2000
 
 
 def clean_name(value: str) -> str:
@@ -86,6 +88,8 @@ async def group_payload(db: AsyncSession, group: Group) -> dict[str, Any]:
         "id": group.id,
         "name": group.name,
         "owner_sub": group.owner_sub,
+        "announcement": group.announcement,
+        "avatar_url": group.avatar_url,
         "created_at": iso_utc(group.created_at),
         "members": members,
     }
@@ -236,3 +240,35 @@ async def transfer_ownership(
     target.role = "owner"
     group.owner_sub = new_owner_sub
     await db.commit()
+
+
+async def set_announcement(
+    db: AsyncSession, me_sub: str, group_id: int, text: str
+) -> dict[str, Any]:
+    await _require_role(db, group_id, me_sub, {"owner", "admin"})
+    group = await db.get(Group, group_id)
+    if group is None:
+        raise HTTPException(status_code=404, detail="group not found")
+    group.announcement = text
+    await db.commit()
+    return await group_payload(db, group)
+
+
+async def set_avatar(
+    db: AsyncSession, me_sub: str, group_id: int, url: str
+) -> dict[str, Any]:
+    await _require_role(db, group_id, me_sub, {"owner", "admin"})
+    prefix = "/api/uploads/"
+    if not url.startswith(prefix):
+        raise HTTPException(status_code=422, detail="invalid avatar url")
+    upload = await get_upload(db, url[len(prefix) :])
+    if upload.owner_sub != me_sub:
+        raise HTTPException(status_code=403, detail="avatar must be your upload")
+    if not upload.mime.startswith("image/"):
+        raise HTTPException(status_code=422, detail="avatar must be an image")
+    group = await db.get(Group, group_id)
+    if group is None:
+        raise HTTPException(status_code=404, detail="group not found")
+    group.avatar_url = url
+    await db.commit()
+    return await group_payload(db, group)

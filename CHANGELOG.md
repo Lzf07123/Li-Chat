@@ -4,6 +4,9 @@
 
 ### 功能
 
+- 群公告与群头像：`groups.announcement`（≤2000，owner/admin 维护、可清空）、
+  `groups.avatar_url`（owner/admin 引用本人上传的图片，非图片 422 / 他人附件 403）；WS
+  `announcement_updated/avatar_updated` 全成员广播；前端群公告横幅/编辑与头像上传
 - 会话置顶与免打扰：`user_conversation_settings`（dm/group 键归属校验：单聊必须包含本人、
   群必须为成员）、`PATCH /api/conversations/settings` upsert、会话摘要附 `pinned/muted`
   且置顶会话排在前面；前端会话行置顶/免打扰开关，免打扰会话不显示未读徽标
