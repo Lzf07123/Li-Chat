@@ -12,6 +12,13 @@
 > `https://account.lizf.cn`。Li&Chat 仍保留 http→https 升级兜底（旧文档回退时强制
 > https 调用），`iss` 按发现文档原文校验（见 `docs/security.md`）。
 
+> **账号绑定规则（指南 §3.4）**：`sub`（id_token/userinfo 中的 openid 主体标识）是
+> Li&Pass 用户终身不变的 UUID，是**唯一可信的账号标识**。本地 `users` 表以 `sub` 为
+> 唯一主键，**不把 `email` 当主键、唯一约束或长期缓存的身份标识**；`email` 是可变
+> 属性（用户中心可更换登录邮箱），每次登录以 userinfo 最新值刷新，仅作资料展示与
+> 按邮箱搜索属性。网站自助黑名单同理：封禁已注册用户建议用 `user_id`，按 `email`
+> 封禁只适合「预封禁未来注册邮箱」场景。
+
 ## 2. Li&Chat 实现的接口（对照指南 §2）
 
 | 接口 | 路径/方法 | 行为 |

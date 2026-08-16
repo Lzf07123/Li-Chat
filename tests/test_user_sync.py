@@ -40,3 +40,20 @@ async def test_upsert_backfills_only_when_local_value_missing(
     assert (
         await db_session.execute(select(User).where(User.sub == "u-1001"))
     ).scalar_one().picture == "/api/uploads/202608/local.png"
+
+
+async def test_upsert_binds_by_sub_and_refreshes_mutable_email(
+    db_session: AsyncSession,
+) -> None:
+    """指南 §3.4：sub 是唯一稳定标识，email 可变——换邮箱不得新建账号。"""
+    await upsert_user(
+        db_session, {**USERINFO, "email": "alice@example.com", "email_verified": True}
+    )
+    user = await upsert_user(
+        db_session, {**USERINFO, "email": "alice.new@example.com", "email_verified": True}
+    )
+    assert user.sub == "u-1001"
+    rows = (await db_session.execute(select(User))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].sub == "u-1001"
+    assert rows[0].email == "alice.new@example.com"

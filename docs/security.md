@@ -6,6 +6,7 @@
 | state/nonce 校验且单次使用 | 服务端存储，取出即删除，10 分钟过期 | `app/oidc/state.py` |
 | redirect_uri 精确匹配 | 只从配置读取，不拼接、不做前缀匹配 | `app/config.py` |
 | 开放重定向防护 | `redirect_after` 仅允许站内相对路径 | `app/sso/routes.py:_safe_redirect_after` |
+| 身份绑定 | `users.sub` 唯一主键、按 sub upsert；每次登录刷新 email/name/email_verified；email 无唯一约束、不参与鉴权查找，换邮箱不改身份（唯一可信标识是 sub） | `app/oidc/user_sync.py`、`app/models.py` |
 | id_token 校验 | iss、aud=client_id、nonce、RS256、iat/exp、`at_hash`（等于 `base64url(SHA256(access_token) 左 16 字节)`，缺失/不符即拒绝）、按 kid 从 JWKS 选钥，密钥轮换时自动刷新 | `app/oidc/tokens.py` |
 | access_token 用途限定 | 只用于调用 userinfo，不在本地校验 aud | `app/oidc/provider.py` |
 | 本地会话 | HttpOnly + SameSite=Lax（生产 Secure）、滑动 2h/绝对 7d、绑定门户 sid | `app/auth/session.py` |
