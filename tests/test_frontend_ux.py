@@ -55,3 +55,14 @@ async def test_v23_day_grouping_and_merged_messages(api_client: httpx.AsyncClien
     assert ".message-day" in css
     assert ".message-merged" in css
     assert ".message-sender" in css
+
+
+async def test_v24_image_viewer(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function openImageViewer(" in text
+    assert "image-viewer" in text
+    assert "attachment-image" in text
+    assert '"Escape"' in text
+    css = await _style_css(api_client)
+    assert ".image-viewer" in css
+    assert ".image-viewer-img" in css

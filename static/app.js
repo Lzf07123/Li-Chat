@@ -1787,6 +1787,42 @@ function reactionsHtml(message) {
       data-id="${message.id}" aria-label="添加回应">+</button>${picker}</div>`;
 }
 
+function closeImageKeydown(event) {
+  if (event.key !== "Escape") return;
+  const viewer = document.getElementById("image-viewer");
+  if (!viewer) return;
+  viewer.remove();
+  document.removeEventListener("keydown", closeImageKeydown);
+}
+
+function openImageViewer(src) {
+  const existing = document.getElementById("image-viewer");
+  if (existing) existing.remove();
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="image-viewer" id="image-viewer" role="dialog" aria-modal="true"
+      aria-label="图片查看器">
+      <button class="image-viewer-close" type="button"
+        data-action="close-image-viewer" aria-label="关闭查看器">×</button>
+      <img class="image-viewer-img" src="${escapeHtml(src)}" alt="查看大图" />
+    </div>`
+  );
+  const viewer = document.getElementById("image-viewer");
+  const close = () => {
+    viewer.remove();
+    document.removeEventListener("keydown", closeImageKeydown);
+  };
+  viewer.addEventListener("click", (event) => {
+    if (
+      event.target === viewer ||
+      event.target.closest("[data-action='close-image-viewer']")
+    ) {
+      close();
+    }
+  });
+  document.addEventListener("keydown", closeImageKeydown);
+}
+
 function renderMessages() {
   const container = messagesContainer();
   if (!container) return;
@@ -2034,6 +2070,11 @@ async function onComposerSubmit(event) {
 }
 
 async function onMessagesClick(event) {
+  const image = event.target.closest(".attachment-image");
+  if (image && image.src) {
+    openImageViewer(image.src);
+    return;
+  }
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const messageId = button.dataset.id;

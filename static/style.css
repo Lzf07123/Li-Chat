@@ -2137,3 +2137,42 @@ a {
     transition: none;
   }
 }
+
+/* 图片查看器 */
+.image-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 6, 23, 0.9);
+  cursor: zoom-out;
+}
+
+.image-viewer-img {
+  max-width: 92vw;
+  max-height: 88vh;
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  cursor: default;
+}
+
+.image-viewer-close {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.image-viewer-close:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
