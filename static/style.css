@@ -65,6 +65,9 @@ html {
 }
 
 body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
   margin: 0;
   height: 100vh;
   height: 100dvh;
@@ -1506,6 +1509,7 @@ a {
   min-height: 44px;
   max-height: 120px;
   resize: none;
+  overflow-y: auto;
   font: inherit;
 }
 
@@ -1527,6 +1531,10 @@ a {
 }
 
 @media (max-width: 767px) {
+  .app-shell {
+    touch-action: none;
+  }
+
   .app-main-chat {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
