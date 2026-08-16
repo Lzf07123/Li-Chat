@@ -28,6 +28,12 @@
   层（56px/336px 双层缓移网格 12s、3 条错峰光束 10s、8 枚呼吸光点 6s）；认证页默认浓度、
   登录后外壳 `.tech-soft`/`.aurora-soft` 降浓度，移动端隐藏光束/光点并停网格动画，
   reduced-motion 单帧，全部 `aria-hidden` + `pointer-events:none`
+- 全量采纳 Li-Design V1.2 其余提及项（零第三方依赖等价实现）：认证卡流色签名描边（9s）、
+  顶栏流光线（5s）、按钮点击涟漪（500ms）、文字浮现 BlurText（词级 blur+位移入场）、
+  数字滚动 CountUp（未读/申请/归档徽章 450ms 三次缓动）、表单聚焦联动 `.is-typing`
+  （氛围周期 ×2）、滚动联动 scroll wind（0.5x–1.5x 向 1 衰减）；补齐 `--ease-in` 令牌与
+  `.input-sm` 紧凑输入框；表格/标签页/Bento（gsap 组件、无使用场景）与 Lexend 自托管
+  字体（需字体资产）暂缓
 
 ### 安全加固
 

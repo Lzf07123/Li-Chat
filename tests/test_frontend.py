@@ -115,6 +115,35 @@ async def test_ambient_script(api_client: httpx.AsyncClient) -> None:
     assert response.status_code == 200
     assert "canvas" in response.text
     assert "prefers-reduced-motion" in response.text
+    assert "is-typing" in response.text
+    assert "wind" in response.text
+
+
+async def test_v12_full_adoption_contracts(api_client: httpx.AsyncClient) -> None:
+    css = (await api_client.get("/style.css")).text
+    app = (await api_client.get("/app.js")).text
+    for marker in [
+        "--ease-in",
+        ".card-signature",
+        "@keyframes chat-signature-border",
+        ".flow-line",
+        "@keyframes chat-flow-line",
+        ".btn-ripple",
+        "@keyframes chat-btn-ripple",
+        ".blur-unit",
+        "@keyframes chat-blur-in",
+        ".input-sm",
+    ]:
+        assert marker in css
+    for marker in [
+        "initMotionEffects",
+        "blurText",
+        "countUp",
+        'class="flow-line"',
+        "card-signature",
+        "btn-ripple",
+    ]:
+        assert marker in app
 
 
 async def test_static_assets_force_revalidation(api_client: httpx.AsyncClient) -> None:

@@ -368,7 +368,7 @@ function renderLoggedOut() {
     `${themeToggleHtml()}
     <div class="auth-brand">${BRAND.logo}<span class="brand-name">${escapeHtml(BRAND.name)}</span></div>
     <p class="slogan">${escapeHtml(BRAND.slogan)}</p>
-    <section class="card card-interactive auth-card page-enter">
+    <section class="card card-interactive auth-card card-signature page-enter">
       <div class="auth-halo" aria-hidden="true"></div>
       <h1>欢迎回来</h1>
       <p class="muted">统一使用 Li&Pass 账号登录，本地不保存密码。</p>
@@ -376,6 +376,12 @@ function renderLoggedOut() {
     </section>
     ${footerHtml()}`
   );
+  const heading = document.querySelector(".auth-card h1");
+  const brandName = document.querySelector(".brand-name");
+  if (window.LiChatMotion) {
+    if (heading) window.LiChatMotion.blurText(heading);
+    if (brandName) window.LiChatMotion.blurText(brandName);
+  }
 }
 
 function headerHtml() {
@@ -440,6 +446,7 @@ function headerHtml() {
         </div>
       </div>
       ${themeToggleHtml()}
+      <span class="flow-line" aria-hidden="true"></span>
     </div>
   </header>`;
 }
@@ -882,8 +889,16 @@ function openNotifySettingsModal() {
 function updateNotifyBadge() {
   const badge = document.getElementById("notify-badge");
   if (!badge) return;
-  badge.hidden = state.notificationsUnread === 0;
-  badge.textContent = state.notificationsUnread > 99 ? "99+" : String(state.notificationsUnread);
+  const value = state.notificationsUnread;
+  badge.hidden = value === 0;
+  const capped = Math.min(value, 99);
+  if (window.LiChatMotion) {
+    window.LiChatMotion.countUp(badge, capped, () => {
+      if (value > 99) badge.textContent = "99+";
+    });
+  } else {
+    badge.textContent = value > 99 ? "99+" : String(value);
+  }
 }
 
 async function loadNotifications(append = false) {
@@ -1190,6 +1205,58 @@ function onGlobalKeydown(event) {
 
 let lastFocusElement = null;
 
+function blurTextInto(element, { unit = "word" } = {}) {
+  const source = element.textContent || "";
+  const tokens = unit === "word" ? source.split(/(\s+)/) : Array.from(source);
+  element.textContent = "";
+  tokens.forEach((token, index) => {
+    const span = document.createElement("span");
+    span.className = "blur-unit";
+    span.style.setProperty("--blur-index", String(index));
+    span.textContent = token;
+    element.appendChild(span);
+  });
+}
+
+function countUpTo(element, to, onDone) {
+  const from = Number(element.dataset.count || 0);
+  element.dataset.count = String(to);
+  if (from === to) return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    element.textContent = String(to);
+    if (onDone) onDone();
+    return;
+  }
+  const start = performance.now();
+  const duration = 450;
+  const step = (now) => {
+    const progress = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    element.textContent = String(Math.round(from + (to - from) * eased));
+    if (progress < 1) window.requestAnimationFrame(step);
+    else if (onDone) onDone();
+  };
+  window.requestAnimationFrame(step);
+}
+
+function initMotionEffects() {
+  document.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target.closest(".btn, .icon-btn") : null;
+    if (!target || target.disabled) return;
+    const rect = target.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height) * 2;
+    const ripple = document.createElement("span");
+    ripple.className = "btn-ripple";
+    ripple.style.width = `${size}px`;
+    ripple.style.height = `${size}px`;
+    ripple.style.left = `${event.clientX - rect.left - size / 2}px`;
+    ripple.style.top = `${event.clientY - rect.top - size / 2}px`;
+    target.appendChild(ripple);
+    ripple.addEventListener("animationend", () => ripple.remove());
+  });
+  window.LiChatMotion = { blurText: blurTextInto, countUp: countUpTo };
+}
+
 function trapTab(modal, event) {
   const focusable = modal.querySelectorAll(
     'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
@@ -1430,7 +1497,11 @@ function sidebarRetryHtml() {
 function renderSidebar() {
   const badge = document.getElementById("requests-badge");
   badge.hidden = state.requests.incoming.length === 0;
-  badge.textContent = String(state.requests.incoming.length);
+  if (window.LiChatMotion) {
+    window.LiChatMotion.countUp(badge, state.requests.incoming.length);
+  } else {
+    badge.textContent = String(state.requests.incoming.length);
+  }
   document.getElementById("requests-empty").hidden =
     state.requests.incoming.length + state.requests.outgoing.length > 0;
   document.getElementById("requests-list").innerHTML = [
@@ -1496,7 +1567,11 @@ function renderSidebar() {
     state.archivedConversations.length > 0;
   const archivedCount = document.getElementById("archived-count");
   archivedCount.hidden = state.archivedConversations.length === 0;
-  archivedCount.textContent = String(state.archivedConversations.length);
+  if (window.LiChatMotion) {
+    window.LiChatMotion.countUp(archivedCount, state.archivedConversations.length);
+  } else {
+    archivedCount.textContent = String(state.archivedConversations.length);
+  }
   document.getElementById("archived-list").innerHTML = state.archivedConversations
     .map(archivedRowHtml)
     .join("");
@@ -4799,5 +4874,6 @@ window.addEventListener("pageshow", (event) => {
 });
 
 ensureFreshFrontend();
+initMotionEffects();
 initFocusTracking();
 loadMe();
