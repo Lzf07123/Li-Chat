@@ -183,6 +183,19 @@ class UserStar(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class UserConversationSetting(Base):
+    __tablename__ = "user_conversation_settings"
+
+    user_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), primary_key=True
+    )
+    kind: Mapped[str] = mapped_column(String(8), primary_key=True)
+    key: Mapped[str] = mapped_column(String(160), primary_key=True)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    muted: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
 class Group(Base):
     __tablename__ = "groups"
 

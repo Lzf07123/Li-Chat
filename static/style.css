@@ -1396,6 +1396,19 @@ a {
   border: 1px solid var(--chat-primary);
 }
 
+.conv-actions {
+  gap: 0;
+}
+
+.conv-toggle {
+  opacity: 0.45;
+  font-size: 0.85rem;
+}
+
+.conv-toggle-on {
+  opacity: 1;
+}
+
 .chat-peer-main {
   display: flex;
   flex-direction: column;

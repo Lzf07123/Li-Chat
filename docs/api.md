@@ -49,7 +49,8 @@
 | DELETE | `/api/conversations/{sub}/messages/{id}` | 会话 + CSRF | 撤回；同上鉴权；返回墓碑 `{id,sender_sub,recipient_sub,deleted:true,created_at}`（不含原文） |
 | PUT | `/api/conversations/{sub}/messages/{id}/reactions` | 会话 + CSRF | 回应 `{"emoji"}`（1–8 字符，禁空白/控制符；幂等）；404 非参与者 / 409 已撤回；`{"message_id","emoji","action":"added","count"}` |
 | DELETE | `/api/conversations/{sub}/messages/{id}/reactions?emoji=` | 会话 + CSRF | 移除回应（幂等）；`{"message_id","emoji","action":"removed","count"}` |
-| GET | `/api/conversations` | 会话 | 单聊 + 群聊摘要合并，按最后消息倒序；每项 `{peer:Profile|null,group:{id,name,owner_sub,member_count}|null,last_message:Message|null,unread_count:int,last_read_id:int}`（peer/group 二选一出现） |
+| GET | `/api/conversations` | 会话 | 单聊 + 群聊摘要合并，置顶优先、其余按最后消息倒序；每项 `{peer:Profile|null,group:{id,name,owner_sub,member_count}|null,last_message:Message|null,unread_count:int,last_read_id:int,pinned:bool,muted:bool}`（peer/group 二选一出现） |
+| PATCH | `/api/conversations/settings` | 会话 + CSRF | 置顶/免打扰 `{"kind":"dm|group","key","pinned"?, "muted"?}`（至少一项；键须归属本人，否则 404）；返回 `{kind,key,pinned,muted}` |
 | POST | `/api/conversations/{sub}/read` | 会话 + CSRF | 标记已读 `{"last_read_id":int>=1}`；403 非好友 / 404 消息不属于该会话；游标只前进；`{"status":"ok","last_read_id":n}` |
 | GET | `/` | 无 | 同源前端页面 |
 

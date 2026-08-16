@@ -582,6 +582,9 @@ function recommendHtml(user) {
 
 function friendHtml(friend, summary) {
   const unread = summary ? summary.unread_count : 0;
+  const pinned = summary ? summary.pinned : false;
+  const muted = summary ? summary.muted : false;
+  const dmKey = [state.me.sub, friend.sub].sort().join(":");
   const preview = summary && summary.last_message
     ? summary.last_message.deleted
       ? "消息已撤回"
@@ -603,16 +606,26 @@ function friendHtml(friend, summary) {
         </span>
         ${preview ? `<span class="contact-preview">${escapeHtml(preview)}</span>` : ""}
       </span>
-      ${unread > 0
+      ${unread > 0 && !muted
         ? `<span class="badge badge-unread" data-role="unread" data-sub="${escapeHtml(friend.sub)}">${unread}</span>`
         : ""}
     </button>
+    <span class="contact-actions conv-actions">
+      <button class="icon-btn conv-toggle${pinned ? " conv-toggle-on" : ""}" type="button"
+        data-action="toggle-pin" data-kind="dm" data-key="${dmKey}"
+        data-value="${pinned}" aria-label="置顶">📌</button>
+      <button class="icon-btn conv-toggle${muted ? " conv-toggle-on" : ""}" type="button"
+        data-action="toggle-mute" data-kind="dm" data-key="${dmKey}"
+        data-value="${muted}" aria-label="免打扰">🔕</button>
+    </span>
   </li>`;
 }
 
 function groupHtml(group, summary) {
   const count = group.members ? group.members.length : 0;
   const unread = summary ? summary.unread_count : 0;
+  const pinned = summary ? summary.pinned : false;
+  const muted = summary ? summary.muted : false;
   const preview = summary && summary.last_message
     ? summary.last_message.deleted
       ? "消息已撤回"
@@ -630,10 +643,18 @@ function groupHtml(group, summary) {
         <span class="contact-name">${escapeHtml(group.name)}</span>
         <span class="contact-preview">${preview || `${count} 位成员`}</span>
       </span>
-      ${unread > 0
+      ${unread > 0 && !muted
         ? `<span class="badge badge-unread" data-role="unread" data-id="${group.id}">${unread}</span>`
         : ""}
     </button>
+    <span class="contact-actions conv-actions">
+      <button class="icon-btn conv-toggle${pinned ? " conv-toggle-on" : ""}" type="button"
+        data-action="toggle-pin" data-kind="group" data-key="${group.id}"
+        data-value="${pinned}" aria-label="置顶">📌</button>
+      <button class="icon-btn conv-toggle${muted ? " conv-toggle-on" : ""}" type="button"
+        data-action="toggle-mute" data-kind="group" data-key="${group.id}"
+        data-value="${muted}" aria-label="免打扰">🔕</button>
+    </span>
   </li>`;
 }
 
@@ -802,15 +823,39 @@ async function loadRecommendations() {
 }
 
 function onFriendListClick(event) {
-  const button = event.target.closest("[data-action='open']");
+  const button = event.target.closest("[data-action]");
   if (!button) return;
+  if (button.dataset.action === "toggle-pin" || button.dataset.action === "toggle-mute") {
+    toggleConversationSetting(button);
+    return;
+  }
+  if (button.dataset.action !== "open") return;
   openChat(button.dataset.sub);
 }
 
 function onGroupListClick(event) {
-  const button = event.target.closest("[data-action='open-group']");
+  const button = event.target.closest("[data-action]");
   if (!button) return;
+  if (button.dataset.action === "toggle-pin" || button.dataset.action === "toggle-mute") {
+    toggleConversationSetting(button);
+    return;
+  }
+  if (button.dataset.action !== "open-group") return;
   openGroup(Number(button.dataset.id));
+}
+
+async function toggleConversationSetting(button) {
+  const field = button.dataset.action === "toggle-pin" ? "pinned" : "muted";
+  const value = button.dataset.value === "true";
+  await api("/api/conversations/settings", {
+    method: "PATCH",
+    body: JSON.stringify({
+      kind: button.dataset.kind,
+      key: button.dataset.key,
+      [field]: !value,
+    }),
+  });
+  await refreshSidebar();
 }
 
 async function openGroup(groupId) {

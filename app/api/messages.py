@@ -129,6 +129,22 @@ class ConversationSummaryOut(BaseModel):
     last_message: MessageOut | None
     unread_count: int
     last_read_id: int
+    pinned: bool = False
+    muted: bool = False
+
+
+class ConversationSettingsIn(BaseModel):
+    kind: Literal["dm", "group"]
+    key: str
+    pinned: bool | None = None
+    muted: bool | None = None
+
+
+class ConversationSettingsOut(BaseModel):
+    kind: str
+    key: str
+    pinned: bool
+    muted: bool
 
 
 class GroupSummaryOut(BaseModel):
@@ -159,6 +175,19 @@ async def conversations_list(
     return ConversationsOut.model_validate(
         {"conversations": await service.conversation_summaries(db, user.sub)}
     )
+
+
+@router.patch("/settings", response_model=ConversationSettingsOut)
+async def update_conversation_settings(
+    body: ConversationSettingsIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> ConversationSettingsOut:
+    result = await service.set_conversation_setting(
+        db, user.sub, body.kind, body.key, body.pinned, body.muted
+    )
+    return ConversationSettingsOut(**result)
 
 
 @router.post("/{other_sub}/read", response_model=ReadOut)

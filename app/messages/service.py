@@ -19,6 +19,7 @@ from app.models import (
     MessageMention,
     Reaction,
     User,
+    UserConversationSetting,
     UserStar,
 )
 from app.timeutil import iso_utc, utcnow
@@ -35,6 +36,11 @@ MAX_MENTIONS = 50
 
 def pair_key(a: str, b: str) -> tuple[str, str]:
     return (a, b) if a < b else (b, a)
+
+
+def dm_key(a: str, b: str) -> str:
+    lo, hi = pair_key(a, b)
+    return f"{lo}:{hi}"
 
 
 def message_payload(
@@ -250,13 +256,81 @@ async def conversation_summaries(db: AsyncSession, me_sub: str) -> list[dict[str
     dm_summaries = await _dm_conversation_summaries(db, me_sub)
     group_summaries = await _group_conversation_summaries(db, me_sub)
     summaries = [*dm_summaries, *group_summaries]
+    settings = await conversation_settings_for(db, me_sub)
+    for item in summaries:
+        if item["peer"] is not None:
+            kind = "dm"
+            key = dm_key(me_sub, item["peer"]["sub"])
+        else:
+            kind = "group"
+            key = str(item["group"]["id"])
+        row = settings.get((kind, key))
+        item["pinned"] = row.pinned if row is not None else False
+        item["muted"] = row.muted if row is not None else False
     summaries.sort(
         key=lambda item: (
-            item["last_message"]["id"] if item["last_message"] is not None else -1
+            0 if item["pinned"] else 1,
+            -(
+                item["last_message"]["id"]
+                if item["last_message"] is not None
+                else -1
+            ),
         ),
-        reverse=True,
     )
     return summaries
+
+
+async def set_conversation_setting(
+    db: AsyncSession,
+    me_sub: str,
+    kind: str,
+    key: str,
+    pinned: bool | None,
+    muted: bool | None,
+) -> dict[str, Any]:
+    if kind not in {"dm", "group"}:
+        raise HTTPException(status_code=422, detail="invalid kind")
+    if pinned is None and muted is None:
+        raise HTTPException(status_code=422, detail="pinned or muted is required")
+    if kind == "dm":
+        parts = key.split(":", 1)
+        if len(parts) != 2 or parts[0] == parts[1]:
+            raise HTTPException(status_code=422, detail="invalid dm key")
+        if me_sub not in parts:
+            raise HTTPException(status_code=404, detail="conversation not found")
+        if dm_key(parts[0], parts[1]) != key:
+            raise HTTPException(status_code=422, detail="invalid dm key")
+    else:
+        if not key.isdigit():
+            raise HTTPException(status_code=422, detail="invalid group key")
+        if await group_membership(db, int(key), me_sub) is None:
+            raise HTTPException(status_code=404, detail="group not found")
+    row = await db.get(UserConversationSetting, (me_sub, kind, key))
+    if row is None:
+        row = UserConversationSetting(
+            user_sub=me_sub, kind=kind, key=key, pinned=False, muted=False
+        )
+        db.add(row)
+    if pinned is not None:
+        row.pinned = pinned
+    if muted is not None:
+        row.muted = muted
+    await db.commit()
+    await db.refresh(row)
+    return {"kind": kind, "key": key, "pinned": row.pinned, "muted": row.muted}
+
+
+async def conversation_settings_for(
+    db: AsyncSession, me_sub: str
+) -> dict[tuple[str, str], UserConversationSetting]:
+    rows = (
+        await db.execute(
+            select(UserConversationSetting).where(
+                UserConversationSetting.user_sub == me_sub
+            )
+        )
+    ).scalars().all()
+    return {(row.kind, row.key): row for row in rows}
 
 
 async def _dm_conversation_summaries(

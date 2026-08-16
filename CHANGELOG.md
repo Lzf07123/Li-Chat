@@ -4,6 +4,9 @@
 
 ### 功能
 
+- 会话置顶与免打扰：`user_conversation_settings`（dm/group 键归属校验：单聊必须包含本人、
+  群必须为成员）、`PATCH /api/conversations/settings` upsert、会话摘要附 `pinned/muted`
+  且置顶会话排在前面；前端会话行置顶/免打扰开关，免打扰会话不显示未读徽标
 - 收藏消息：`user_stars` 幂等 star/unstar（`PUT/DELETE /api/messages/{id}/star`，仅自己
   可见范围、越权 404）、收藏列表 `GET /api/me/stars`（会话引用 + 倒序游标 ≤50）、历史载荷
   按查看者附 `starred`；前端收藏切换与「我的收藏」列表
