@@ -1277,6 +1277,7 @@ function requestIncomingHtml(item) {
     <div class="contact-info">
       ${avatarHtml(item.requester)}
       <span class="contact-name">${escapeHtml(displayName(item.requester))}</span>
+      ${item.reason ? `<span class="contact-preview">${escapeHtml(item.reason)}</span>` : ""}
     </div>
     <div class="contact-actions">
       <button class="btn btn-primary btn-sm" type="button"
@@ -1292,6 +1293,7 @@ function requestOutgoingHtml(item) {
     <div class="contact-info">
       ${avatarHtml(item.addressee)}
       <span class="contact-name">${escapeHtml(displayName(item.addressee))}</span>
+      ${item.reason ? `<span class="contact-preview">${escapeHtml(item.reason)}</span>` : ""}
     </div>
     <button class="btn btn-ghost btn-sm" type="button"
       data-action="cancel" data-sub="${escapeHtml(item.addressee.sub)}">撤回</button>
@@ -1507,15 +1509,7 @@ async function onSearchResultClick(event) {
     openChat(button.dataset.sub);
     return;
   }
-  const response = await api("/api/friends/requests", {
-    method: "POST",
-    body: JSON.stringify({ to_sub: button.dataset.sub }),
-  });
-  if (response.ok || response.status === 409) {
-    await refreshSidebar();
-    document.getElementById("search-input").value = "";
-    document.getElementById("search-results").hidden = true;
-  }
+  openRequestModal(button.dataset.sub);
 }
 
 async function onRequestListClick(event) {
@@ -1538,11 +1532,49 @@ async function onRequestListClick(event) {
 async function onRecommendListClick(event) {
   const button = event.target.closest("button[data-action='add']");
   if (!button) return;
-  const response = await api("/api/friends/requests", {
-    method: "POST",
-    body: JSON.stringify({ to_sub: button.dataset.sub }),
+  openRequestModal(button.dataset.sub);
+}
+
+function openRequestModal(sub) {
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="request-modal" role="dialog" aria-modal="true">
+      <form id="request-form" class="modal-card">
+        <h3 class="modal-title">添加好友</h3>
+        <label class="sr-only" for="request-reason">附言</label>
+        <textarea id="request-reason" class="input" rows="3" maxlength="200"
+          placeholder="附言（可选，200 字以内）"></textarea>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" data-action="close-request">取消</button>
+          <button class="btn btn-primary" type="submit">发送申请</button>
+        </div>
+      </form>
+    </div>`
+  );
+  const modal = document.getElementById("request-modal");
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal || event.target.closest("[data-action='close-request']")) {
+      modal.remove();
+    }
   });
-  if (response.ok || response.status === 409) await refreshSidebar();
+  document.getElementById("request-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const message = document.getElementById("request-reason").value.trim();
+    const response = await api("/api/friends/requests", {
+      method: "POST",
+      body: JSON.stringify({ to_sub: sub, message }),
+    });
+    if (response.ok) {
+      modal.remove();
+      await refreshSidebar();
+      const input = document.getElementById("search-input");
+      if (input) input.value = "";
+      const results = document.getElementById("search-results");
+      if (results) results.hidden = true;
+      toast("好友申请已发送", "success");
+    }
+  });
+  document.getElementById("request-reason").focus();
 }
 
 async function loadRecommendations() {

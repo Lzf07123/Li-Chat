@@ -123,6 +123,33 @@ async def test_remark_requires_friendship_and_length(app: Any) -> None:
     assert too_long.status_code == 422
 
 
+async def test_friend_request_with_reason(app: Any) -> None:
+    async with app.state.session_factory() as db:
+        await seed_user(db, "u-bob", nickname="Bob")
+    client, csrf = await _client_for(app, "u-alice")
+    bob_client, _ = await _client_for(app, "u-bob")
+    async with client:
+        response = await client.post(
+            "/api/friends/requests",
+            json={"to_sub": "u-bob", "message": "我是项目组的 Alice"},
+            headers={"x-csrf-token": csrf},
+        )
+        too_long = await client.post(
+            "/api/friends/requests",
+            json={"to_sub": "u-bob", "message": "长" * 201},
+            headers={"x-csrf-token": csrf},
+        )
+    assert response.status_code == 201
+    assert response.json()["reason"] == "我是项目组的 Alice"
+
+    async with bob_client:
+        incoming = await bob_client.get("/api/friends/requests")
+    item = incoming.json()["incoming"][0]
+    assert item["requester"]["sub"] == "u-alice"
+    assert item["reason"] == "我是项目组的 Alice"
+    assert too_long.status_code == 422
+
+
 async def test_send_request_ok(app: Any) -> None:
     async with app.state.session_factory() as db:
         await seed_user(db, "u-bob", nickname="Bob")

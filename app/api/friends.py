@@ -38,22 +38,26 @@ class FriendsPresenceOut(BaseModel):
 
 class FriendRequestIn(BaseModel):
     to_sub: str
+    message: str | None = None
 
 
 class FriendRequestOut(BaseModel):
     requester_sub: str
     addressee_sub: str
     status: str
+    reason: str | None = None
     created_at: str
 
 
 class IncomingRequestOut(BaseModel):
     requester: ProfileOut
+    reason: str | None = None
     created_at: str
 
 
 class OutgoingRequestOut(BaseModel):
     addressee: ProfileOut
+    reason: str | None = None
     created_at: str
 
 
@@ -109,7 +113,7 @@ async def create_request(
     db: Annotated[AsyncSession, Depends(get_db)],
     _csrf: Annotated[None, Depends(require_csrf)],
 ) -> FriendRequestOut:
-    friendship = await service.send_request(db, user.sub, body.to_sub)
+    friendship = await service.send_request(db, user.sub, body.to_sub, body.message)
     await _manager(request).send_to(
         friendship.addressee_sub,
         {
@@ -127,6 +131,7 @@ async def create_request(
         requester_sub=friendship.requester_sub,
         addressee_sub=friendship.addressee_sub,
         status=friendship.status,
+        reason=friendship.reason,
         created_at=iso_utc(friendship.created_at),
     )
 

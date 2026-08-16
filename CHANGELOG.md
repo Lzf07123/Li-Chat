@@ -4,6 +4,8 @@
 
 ### 功能
 
+- 好友申请附言（v40）：`friendships.reason`（≤200，strip 后空串存空）；申请/收发申请列表
+  附 `reason`；前端「添加好友」改为弹层输入附言（发送前校验长度），申请卡片展示附言
 - 通知中心（v39）：`notifications` 表与 `/api/me/notifications`（倒序游标 + 未读计数）、
   `POST /api/me/notifications/read`；事件源覆盖好友申请、@提及（单聊/群聊）、禁言/解除、
   角色变更、群解散，产生时 WS `notification` 定向推送；前端头部铃铛 + 未读角标 + 通知列表

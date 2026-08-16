@@ -201,3 +201,10 @@ async def test_v39_notification_center_ui(api_client: httpx.AsyncClient) -> None
     assert "function openNotificationsModal(" in text
     assert "function notificationText(" in text
     assert "notifications/read" in text
+
+
+async def test_v40_friend_request_reason(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function openRequestModal(" in text
+    assert "request-reason" in text
+    assert "item.reason" in text

@@ -90,6 +90,8 @@ def _ensure_friendship_columns(conn: Connection) -> None:
     }
     if "remark" not in names:
         conn.exec_driver_sql("ALTER TABLE friendships ADD COLUMN remark VARCHAR(32)")
+    if "reason" not in names:
+        conn.exec_driver_sql("ALTER TABLE friendships ADD COLUMN reason VARCHAR(200)")
 
 
 def _ensure_message_columns(conn: Connection) -> None:

@@ -13,6 +13,7 @@ SEARCH_RESULT_LIMIT = 20
 RECOMMENDATION_DEFAULT_LIMIT = 5
 RECOMMENDATION_MAX_LIMIT = 20
 REMARK_MAX_LENGTH = 32
+REQUEST_REASON_MAX_LENGTH = 200
 
 
 def profile(user: User) -> dict[str, str | None]:
@@ -70,12 +71,21 @@ async def search_users(
 
 
 async def send_request(
-    db: AsyncSession, requester_sub: str, addressee_sub: str
+    db: AsyncSession,
+    requester_sub: str,
+    addressee_sub: str,
+    message: str | None = None,
 ) -> Friendship:
     if requester_sub == addressee_sub:
         raise HTTPException(status_code=400, detail="cannot send friend request to yourself")
     if await db.get(User, addressee_sub) is None:
         raise HTTPException(status_code=404, detail="user not found")
+    reason = (message or "").strip() or None
+    if reason is not None and len(reason) > REQUEST_REASON_MAX_LENGTH:
+        raise HTTPException(
+            status_code=422,
+            detail=f"message must be at most {REQUEST_REASON_MAX_LENGTH} characters",
+        )
     existing = await _pair_row(db, requester_sub, addressee_sub)
     if existing is not None:
         if existing.status == "accepted":
@@ -84,7 +94,10 @@ async def send_request(
             raise HTTPException(status_code=409, detail="friend request already sent")
         raise HTTPException(status_code=409, detail="incoming friend request already exists")
     friendship = Friendship(
-        requester_sub=requester_sub, addressee_sub=addressee_sub, status="pending"
+        requester_sub=requester_sub,
+        addressee_sub=addressee_sub,
+        status="pending",
+        reason=reason,
     )
     db.add(friendship)
     await db.commit()
@@ -121,13 +134,21 @@ async def list_requests(db: AsyncSession, me_sub: str) -> dict[str, list[dict[st
             other = users.get(row.addressee_sub)
             if other is not None:
                 outgoing.append(
-                    {"addressee": profile(other), "created_at": iso_utc(row.created_at)}
+                    {
+                        "addressee": profile(other),
+                        "reason": row.reason,
+                        "created_at": iso_utc(row.created_at),
+                    }
                 )
         else:
             other = users.get(row.requester_sub)
             if other is not None:
                 incoming.append(
-                    {"requester": profile(other), "created_at": iso_utc(row.created_at)}
+                    {
+                        "requester": profile(other),
+                        "reason": row.reason,
+                        "created_at": iso_utc(row.created_at),
+                    }
                 )
     return {"incoming": incoming, "outgoing": outgoing}
 
