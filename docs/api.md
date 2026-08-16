@@ -48,6 +48,7 @@
 | POST | `/api/groups/{id}/avatar` | 会话 + CSRF | 群头像 `{"url"}`（本人上传的图片；owner/admin） |
 | POST | `/api/groups/{id}/messages` | 会话 + CSRF | 群发消息（文本/附件/语音/投票/引用/提及，语义同单聊；仅成员；mentions 须为群成员）；投票消息 `content_type:"poll"` + `poll:{question,options,multiple}`（问题 ≤120、2–10 个选项各 ≤60，不可带附件/引用）；201 返回消息（附 `group_id`/`poll`）；WS 推全成员 |
 | GET | `/api/groups/{id}/messages?limit=&before=` | 会话 | 群历史倒序分页（仅成员；参数语义同单聊） |
+| GET | `/api/groups/{id}/messages/{mid}/reads` | 会话 | 群消息已读明细（仅成员、消息须属该群且未撤回）；`{"read_count","total_members","readers":[{sub,nickname,name,picture}]}`；自己的群消息载荷附 `read_count` |
 | GET | `/api/groups/{id}/files?limit=&before=` | 会话 | 群内文件/语音附件聚合（仅成员，倒序游标 ≤50）；`{"files":[{message_id,sender_sub,name,size,mime,url,created_at}],"next_before"}` |
 | PUT | `/api/groups/{id}/polls/{pid}/vote` | 会话 + CSRF | 投票/改票 `{"option_indexes":[...]}`（仅成员；单选投票最多 1 项；已关闭 409；非法下标 422）；WS `poll_event(voted)` 群内广播 |
 | POST | `/api/groups/{id}/polls/{pid}/close` | 会话 + CSRF | 结束投票（创建者或 owner/admin）；WS `poll_event(closed)` 群内广播 |

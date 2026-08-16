@@ -44,6 +44,7 @@ const state = {
   activeGroup: null,
   groupFiles: [],
   groupFilesNext: null,
+  groupReadBy: {},
   messages: [],
   call: null,
   nextBefore: null,
@@ -1453,6 +1454,7 @@ async function openGroup(groupId, locateId = null) {
   state.mentionOpen = false;
   state.groupFiles = [];
   state.groupFilesNext = null;
+  state.groupReadBy = {};
   state.messages = [];
   state.nextBefore = null;
   document.getElementById("chat-empty").hidden = true;
@@ -1474,6 +1476,7 @@ function closeGroupPanel() {
   state.replyTo = null;
   state.groupFiles = [];
   state.groupFilesNext = null;
+  state.groupReadBy = {};
   state.messages = [];
   state.nextBefore = null;
   document.getElementById("chat-empty").hidden = false;
@@ -2516,6 +2519,13 @@ function messageHtml(message, previous) {
     ? '<span class="message-read">已转发</span>'
     : "";
   const mentionMark = mentioned ? '<span class="message-read">@我</span>' : "";
+  const groupReadInfo =
+    own && state.activeGroupId !== null
+      ? `<button class="message-action" type="button"
+          data-action="show-reads" data-id="${message.id}">${
+          message.read_count || 0
+        } 人已读</button>`
+      : "";
   const reactions = message.deleted ? "" : reactionsHtml(message);
   const selectCheck =
     state.selectMode && !message.deleted
@@ -2533,7 +2543,7 @@ function messageHtml(message, previous) {
     ${body}
     <div class="message-meta">${escapeHtml(time)}${read
       ? '<span class="message-read">已读</span>'
-      : ""}${editedMark}${forwardMark}${mentionMark}${actions}</div>
+      : ""}${editedMark}${forwardMark}${mentionMark}${groupReadInfo}${actions}</div>
     ${reactions}
   </div>`;
 }
@@ -3070,6 +3080,10 @@ async function onMessagesClick(event) {
     }
     return;
   }
+  if (button.dataset.action === "show-reads") {
+    await openReadsModal(Number(messageId));
+    return;
+  }
   if (button.dataset.action !== "edit" && button.dataset.action !== "withdraw") return;
   if (!sub && !groupId) return;
   if (button.dataset.action === "edit") {
@@ -3160,6 +3174,55 @@ function openForwardModal(messages) {
   });
 }
 
+async function openReadsModal(messageId) {
+  if (!state.activeGroupId) return;
+  const response = await api(
+    `/api/groups/${state.activeGroupId}/messages/${messageId}/reads`
+  );
+  if (!response.ok) return;
+  const body = await response.json();
+  const rows = body.readers
+    .map(
+      (reader) => `<li class="contact-item">
+        ${avatarHtml(reader)}
+        <span class="contact-name">${escapeHtml(displayName(reader))}</span>
+      </li>`
+    )
+    .join("");
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="reads-modal" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <h3 class="modal-title">已读 ${body.read_count}/${body.total_members}</h3>
+        <ul class="contact-list forward-list">${
+          rows || '<li class="sidebar-empty">还没有人已读</li>'
+        }</ul>
+        <div class="modal-actions">
+          <button class="btn btn-primary" type="button" data-action="close-reads">关闭</button>
+        </div>
+      </div>
+    </div>`
+  );
+  const modal = document.getElementById("reads-modal");
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal || event.target.closest("[data-action='close-reads']")) {
+      modal.remove();
+    }
+  });
+}
+
+function applyGroupReadReceipt(bySub, lastReadId) {
+  for (const message of state.messages) {
+    if (message.sender_sub !== state.me.sub || message.id > lastReadId) continue;
+    if (!state.groupReadBy[message.id]) state.groupReadBy[message.id] = new Set();
+    if (!state.groupReadBy[message.id].has(bySub)) {
+      state.groupReadBy[message.id].add(bySub);
+      message.read_count = (message.read_count || 0) + 1;
+    }
+  }
+  renderMessages();
+}
+
 function onComposerKeydown(event) {
   if (event.key === "Escape" && state.editingId) {
     cancelEditing();
@@ -3232,7 +3295,9 @@ function handleServerMessage(data) {
       }
     }
   } else if (data.type === "read_receipt") {
-    if (data.peer_sub === state.activeSub) {
+    if (data.group_id != null && data.group_id === state.activeGroupId) {
+      applyGroupReadReceipt(data.by_sub, data.last_read_id);
+    } else if (data.peer_sub === state.activeSub) {
       state.readUpTo[data.by_sub] = data.last_read_id;
       renderMessages();
     }

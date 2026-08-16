@@ -186,3 +186,10 @@ async def test_v37_group_poll_ui(api_client: httpx.AsyncClient) -> None:
     assert "poll_event" in text
     css = await _style_css(api_client)
     assert ".poll-card" in css
+
+
+async def test_v38_group_read_receipts_ui(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "show-reads" in text
+    assert "function openReadsModal(" in text
+    assert "function applyGroupReadReceipt(" in text

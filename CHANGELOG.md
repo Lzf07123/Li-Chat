@@ -4,6 +4,9 @@
 
 ### 功能
 
+- 群已读明细（v38）：`GET /api/groups/{id}/messages/{mid}/reads`（仅成员、消息属该群且未
+  撤回），自己的群消息载荷附 `read_count`；前端气泡「N 人已读」点击弹名单（头像 + 昵称 +
+  已读/总数），WS 群已读回执实时推进计数（按人幂等去重，重载后以服务端为准）
 - 群投票（v37）：`polls`/`poll_votes` 表与 `content_type:"poll"` 消息（问题 ≤120、2–10 个
   选项各 ≤60、可多选、不可带附件/引用/转发）；`PUT /api/groups/{id}/polls/{pid}/vote`
   投票/改票、`POST .../close` 结束（创建者或 owner/admin）、已关闭 409、非法下标 422；

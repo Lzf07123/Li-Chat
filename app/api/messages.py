@@ -129,6 +129,7 @@ class MessageOut(BaseModel):
     reactions: list[ReactionCountOut] = []
     my_reactions: list[str] = []
     poll: PollOut | None = None
+    read_count: int = 0
 
 
 class ReactionIn(BaseModel):

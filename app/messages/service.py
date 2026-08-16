@@ -641,6 +641,54 @@ async def group_files(
     return items, next_before
 
 
+async def group_message_readers(
+    db: AsyncSession, me_sub: str, group_id: int, message_id: int
+) -> tuple[list[dict[str, Any]], int, int]:
+    if await group_membership(db, group_id, me_sub) is None:
+        raise HTTPException(status_code=404, detail="group not found")
+    message = await db.get(Message, message_id)
+    if (
+        message is None
+        or message.conversation_type != "group"
+        or message.group_id != group_id
+        or message.deleted_at is not None
+    ):
+        raise HTTPException(status_code=404, detail="message not found")
+    read_rows = (
+        await db.execute(
+            select(GroupRead).where(
+                GroupRead.group_id == group_id,
+                GroupRead.last_read_message_id >= message_id,
+            )
+        )
+    ).scalars().all()
+    member_count = int(
+        (
+            await db.execute(
+                select(func.count())
+                .select_from(GroupMember)
+                .where(GroupMember.group_id == group_id)
+            )
+        ).scalar_one()
+    )
+    subs = [row.user_sub for row in read_rows]
+    users: dict[str, User] = {}
+    if subs:
+        found = (await db.execute(select(User).where(User.sub.in_(subs)))).scalars().all()
+        users = {user.sub: user for user in found}
+    readers = [
+        {
+            "sub": sub,
+            "nickname": users[sub].nickname,
+            "name": users[sub].name,
+            "picture": users[sub].picture,
+        }
+        for sub in subs
+        if sub in users
+    ]
+    return readers, len(read_rows), member_count
+
+
 async def mark_group_read(
     db: AsyncSession, me_sub: str, group_id: int, last_read_id: int
 ) -> None:

@@ -21,7 +21,7 @@ from app.auth.deps import get_current_user, require_csrf
 from app.db import get_db
 from app.groups import service
 from app.messages import service as messages_service
-from app.models import Message, Poll, User
+from app.models import GroupRead, Message, Poll, User
 from app.polls import service as polls_service
 from app.timeutil import iso_utc, utcnow
 from app.ws.manager import ConnectionManager
@@ -66,6 +66,19 @@ class GroupFileOut(BaseModel):
 class GroupFilesOut(BaseModel):
     files: list[GroupFileOut]
     next_before: int | None
+
+
+class ReaderOut(BaseModel):
+    sub: str
+    nickname: str | None = None
+    name: str | None = None
+    picture: str | None = None
+
+
+class GroupReadsOut(BaseModel):
+    read_count: int
+    total_members: int
+    readers: list[ReaderOut]
 
 
 class AnnouncementIn(BaseModel):
@@ -216,6 +229,25 @@ async def group_files(
         db, user.sub, group_id, before=before, limit=limit
     )
     return GroupFilesOut(files=files, next_before=next_before)
+
+
+@router.get("/{group_id}/messages/{message_id}/reads", response_model=GroupReadsOut)
+async def group_message_reads(
+    group_id: int,
+    message_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> GroupReadsOut:
+    readers, read_count, total_members = (
+        await messages_service.group_message_readers(
+            db, user.sub, group_id, message_id
+        )
+    )
+    return GroupReadsOut(
+        read_count=read_count,
+        total_members=total_members,
+        readers=readers,
+    )
 
 
 @router.patch("/{group_id}", response_model=GroupOut)
@@ -404,6 +436,16 @@ async def send_group_message(
         poll_row = await db.get(Poll, message.poll_id)
         if poll_row is not None:
             payload["poll"] = await polls_service.poll_payload(db, poll_row, user.sub)
+    if message.sender_sub == user.sub:
+        read_rows = (
+            await db.execute(
+                select(GroupRead).where(
+                    GroupRead.group_id == group_id,
+                    GroupRead.last_read_message_id >= message.id,
+                )
+            )
+        ).scalars().all()
+        payload["read_count"] = len(read_rows)
     manager = cast(ConnectionManager, request.app.state.ws_manager)
     event = {"type": "message", "message": payload}
     for sub in await service.member_subs(db, group_id):
@@ -437,6 +479,9 @@ async def group_history(
         poll_row = await db.get(Poll, poll_id)
         if poll_row is not None:
             polls_map[poll_id] = await polls_service.poll_payload(db, poll_row, user.sub)
+    read_rows = (
+        await db.execute(select(GroupRead).where(GroupRead.group_id == group_id))
+    ).scalars().all()
     reply_ids = [item.reply_to_id for item in rows if item.reply_to_id is not None]
     replies: dict[int, Message] = {}
     if reply_ids:
@@ -456,6 +501,12 @@ async def group_history(
         data = messages_service.message_payload(item, reply)
         if item.poll_id is not None and item.poll_id in polls_map:
             data["poll"] = polls_map[item.poll_id]
+        if item.sender_sub == user.sub:
+            data["read_count"] = sum(
+                1
+                for row in read_rows
+                if row.last_read_message_id >= item.id
+            )
         if "mentions" in data:
             data["mentions"] = mentions.get(item.id, [])
         aggregate = reaction_map.get(item.id, {})
