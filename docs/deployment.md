@@ -26,9 +26,12 @@ docker compose down    # 停止并移除容器；SQLite 数据保留在命名卷
 - 本地 http 冒烟保持 `LICHAT_ENV=dev`；生产设 `LICHAT_ENV=prod` + ≥32 字符 `LICHAT_SESSION_SECRET`，且必须走 https（否则 Secure Cookie 不生效）。
 - 构建源可在 `.env` 覆盖 `PYPI_INDEX_URL` / `APT_MIRROR`（默认中科大镜像）。基础镜像加速用 `BASE_IMAGE_REGISTRY`（已实测 `docker.m.daocloud.io/library/`，只作用于 python/redis 拉取）；`IMAGE_REGISTRY` 只作应用镜像标签前缀（推私有仓库时用），**不要把带 `/library/` 的加速前缀填给 `IMAGE_REGISTRY`**。
 
-构建提速（BuildKit 缓存挂载）：Dockerfile 用 `# syntax=docker/dockerfile:1`，并把 pip / uv /
-apt 的缓存挂到 BuildKit cache——首次构建仍需下载全部依赖；之后只要 `pyproject.toml` /
-`uv.lock` 不变，依赖层直接复用缓存秒过，锁文件变更时也只下载增量 wheel。若首次构建明显
+构建提速（BuildKit 缓存挂载）：Dockerfile 把 pip / uv / apt 的缓存挂到 BuildKit cache——
+首次构建仍需下载全部依赖；之后只要 `pyproject.toml` / `uv.lock` 不变，依赖层直接复用缓存
+秒过，锁文件变更时也只下载增量 wheel。**不要给 Dockerfile 加 `# syntax=docker/dockerfile:1`
+指令**：它会让 BuildKit 去 Docker Hub 拉前端镜像，在国内网络会卡在
+`resolve image config for docker-image://docker.io/docker/dockerfile:1`（Compose v2 自带
+前端已支持 `RUN --mount`，无需该指令）。若首次构建明显
 偏慢，多为镜像源抖动，可在 `.env` 把 `PYPI_INDEX_URL` 切到
 `https://mirrors.aliyun.com/pypi/simple` 或 `https://pypi.tuna.tsinghua.edu.cn/simple` 重试；
 旧版 Docker 需显式 `DOCKER_BUILDKIT=1 docker compose build`（Compose v2 默认已启用）。

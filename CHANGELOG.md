@@ -203,9 +203,10 @@
 
 ### 运维工具
 
-- Docker 构建提速：Dockerfile 启用 BuildKit（`# syntax=docker/dockerfile:1`）并把 pip/uv/apt
-  缓存挂载为 BuildKit cache，移除 `uv sync --no-cache`——`pyproject.toml`/`uv.lock` 未变时
-  依赖层秒级复用，锁文件变更时只下载增量 wheel；部署指南补充镜像源切换与 BuildKit 说明
+- Docker 构建提速：Dockerfile 把 pip/uv/apt 缓存挂载为 BuildKit cache，移除 `uv sync
+  --no-cache`——`pyproject.toml`/`uv.lock` 未变时依赖层秒级复用，锁文件变更时只下载增量
+  wheel；不用 `# syntax` 指令（避免去 Docker Hub 拉前端镜像卡住）；部署指南补充镜像源切换
+  与 BuildKit 说明
 - 容器化部署：Dockerfile（python:3.12-slim + uv、非 root、构建期导入冒烟）与 docker-compose.yaml（单服务、命名卷持久化 SQLite、healthcheck、127.0.0.1 端口绑定）
 - compose 新增编排内 redis（7-alpine、AOF、maxmemory 192mb、健康检查、口令可覆盖），chat 默认连接，支持外部 Redis 覆盖
 
