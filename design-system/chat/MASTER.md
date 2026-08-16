@@ -56,4 +56,8 @@ ambient.js 暴露 `LiChatAmbient.setDensity(n)`；浓度：登录 10、登录后
 紧凑密度回归（2026-08-16）：桌面按钮 30–36px、图标钮 34px、头像 30px、气泡 14.7px、
 头部 53px；移动端保留 44px 热区、气泡 15.2px；页面不滚/内滚/无横向溢出复验通过。
 
+页面锁定复验（2026-08-16）：对 `window.scrollTo(0,99999)`、`documentElement/body.scrollTop`
+强推滚动后 `scrollY/html/body scrollTop` 均为 0，`html/body overflow:hidden`；消息列表内滚
+正常（`scrollTop` 可推进）；桌面与移动均无横向溢出。
+
 Pre-Delivery Checklist 全部通过（2026-08-16）：无 emoji 图标、可点击元素 cursor-pointer、hover 150–300ms、正文对比度 ≥4.5:1、focus-visible 2px 主色描边、reduced-motion 单帧、375/1440 无横向滚动、令牌与文案无硬编码、明暗切换无闪烁（首帧内联脚本 + 像素抽样验证：浅 `#F8FAFC` / 深 `#0B1220`）。视觉基线见 [preview/](./preview/)。
