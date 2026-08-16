@@ -351,3 +351,10 @@ async def test_v63_batched_rendering(api_client: httpx.AsyncClient) -> None:
     text = await _app_js(api_client)
     assert "RENDER_CHUNK_SIZE" in text
     assert "requestAnimationFrame" in text
+
+
+async def test_v69_mobile_compatibility(api_client: httpx.AsyncClient) -> None:
+    css = await _style_css(api_client)
+    assert "tap-highlight-color" in css
+    assert "font-size: 16px" in css
+    assert "env(safe-area-inset-bottom)" in css

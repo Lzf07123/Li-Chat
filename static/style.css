@@ -58,6 +58,13 @@
   box-sizing: border-box;
 }
 
+button,
+a,
+.btn,
+.icon-btn {
+  -webkit-tap-highlight-color: transparent;
+}
+
 html {
   height: 100%;
   overflow: hidden;
@@ -1583,6 +1590,16 @@ a {
 @media (max-width: 767px) {
   .app-shell {
     touch-action: none;
+  }
+
+  /* iOS：输入字号 ≥16px 避免聚焦自动放大 */
+  .input,
+  .composer textarea {
+    font-size: 16px;
+  }
+
+  .modal-card {
+    padding-bottom: calc(18px + env(safe-area-inset-bottom));
   }
 
   .app-main-chat {
