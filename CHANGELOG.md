@@ -89,6 +89,8 @@
 
 ### 行为变更
 
+- 移动端进入聊天时保留个人状态顶栏，聊天框全出血占满其下剩余全屏（面板顶=顶栏底、输入框
+  贴视口底），页面不可滚动、仅组件内滚动
 - 页面滚动彻底锁定：`html/body` 均 `overflow:hidden` + `overscroll-behavior:none`，聊天页
   任何位置滚动都不会带动页面；消息列表/侧栏/弹层等内滚容器加 `overscroll-behavior:contain`
   与 `touch-action:pan-y`，防滚动穿透与移动端橡皮筋回弹

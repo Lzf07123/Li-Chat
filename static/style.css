@@ -1553,6 +1553,22 @@ a {
     display: flex;
   }
 
+  /* 进入聊天：保留个人状态顶栏，聊天框占满其下剩余全屏，外部不可滚动 */
+  .app-shell.chat-open .app-main-chat {
+    padding: 0;
+  }
+
+  .app-shell.chat-open .chat-panel {
+    height: 100%;
+    border: none;
+    border-radius: 0;
+  }
+
+  .app-shell.chat-open .chat-header {
+    padding-left: calc(12px + env(safe-area-inset-left));
+    padding-right: calc(12px + env(safe-area-inset-right));
+  }
+
   .chat-back {
     display: inline-flex;
   }
