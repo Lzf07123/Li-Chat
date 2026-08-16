@@ -25,8 +25,12 @@ destructive `#FDEEEE`/`#7F1D1D`）；带文字的软底组件经 fallback 引用
 
 | 类名 | 用途 |
 | --- | --- |
-| .btn-* | primary/secondary/ghost/danger/link/sm；主按钮半透明单色着色 + 细描边 + `::after` 扫光（4s，disabled 关闭）；按压 scale(0.97)、hover 上移 1px、disabled opacity-50 |
+| .btn-* | primary/secondary/ghost/danger/link/sm；主按钮半透明单色着色 + 细描边 + `::after` 扫光（4s，disabled 关闭）+ 点击涟漪（`.btn-ripple` 500ms，animationend 移除）；按压 scale(0.97)、hover 上移 1px、disabled opacity-50 |
 | .card / .card-interactive | 16px 圆角表面 + 弥散阴影；interactive hover 上移 |
+| .card-signature | 认证卡流色渐变签名描边（mask 环 + `--chat-flow-gradient`，9s 无缝循环，替换静态边框） |
+| .flow-line | 顶栏底部流光线（5s、200% 背景位无缝循环） |
+| .blur-unit | 文字浮现：词级 blur+位移入场（450ms、35ms 错峰，`--blur-index` 驱动；reduced-motion 直达终态） |
+| .input-sm | 紧凑输入框（36px/7px 圆角/0.85rem） |
 | .auth-halo / .auth-brand::before | 认证卡与 Logo 呼吸辉光（4.5s，reduced-motion 静止） |
 | .badge-* | 语义状态徽章（success/warning/danger/muted/primary） |
 | .label / .input | 表单（预留，里程碑二使用） |
@@ -90,6 +94,12 @@ spinner，无成对按钮双转圈。每个新增 `animation` 均已定义对应
 0.55）；移动端 375 下光束/光点 `display:none`、网格动画 `none`、极光 52s 慢速。光效层
 只动 `transform/opacity/background-position`，辉光用 radial-gradient、无 filter/box-shadow
 动画，`aria-hidden` + `pointer-events:none`，位于内容层（z-1）之下。
+
+全量采纳回归（2026-08-17，CDP）：认证卡 `::after` 签名描边动画 `chat-signature-border`、
+顶栏 `.flow-line` 动画 `chat-flow-line`、h1/品牌名词级 `.blur-unit` 拆分、按钮点击产生
+`.btn-ripple`、输入框聚焦/失焦切换 `body.is-typing`（氛围周期 ×2），逐项断言通过；
+`countUp` 三次缓动接未读/申请/归档徽章。氛围层新增滚动联动（scroll wind 0.5x–1.5x、
+向 1 衰减）与聚焦联动，均只改速度不触发布局。
 
 布局回归（2026-08-16，微信式布局）：桌面 1440×900 与移动 390×844 经无头浏览器程序化验收——
 页面 `scrollY=0`、`body overflow:hidden`、无横向溢出、聊天框内部滚动（可见高度 < 内容高度）、
