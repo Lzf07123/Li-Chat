@@ -2186,3 +2186,59 @@ a {
   outline: 2px dashed var(--chat-primary);
   outline-offset: -6px;
 }
+
+/* 上传进度条 */
+.upload-progress {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 92px);
+  transform: translateX(-50%);
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(90vw, 420px);
+  padding: 10px 12px;
+  background: var(--chat-surface);
+  border: 1px solid var(--chat-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+}
+
+.upload-progress-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--chat-surface-2);
+  overflow: hidden;
+}
+
+.upload-progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--chat-primary);
+  transition: width 120ms linear;
+}
+
+.upload-progress-text {
+  flex: none;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  color: var(--chat-muted);
+}
+
+.upload-progress-cancel {
+  flex: none;
+  width: 28px;
+  height: 28px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .upload-progress-fill {
+    transition: none;
+  }
+}

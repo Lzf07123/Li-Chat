@@ -33,6 +33,7 @@ const state = {
   wsRetry: 0,
   wsReconnectTimer: null,
   wsReconnecting: false,
+  uploadCancel: null,
   groups: [],
   activeGroupId: null,
   activeGroup: null,
@@ -1397,12 +1398,10 @@ async function sendFiles(files, isGroup) {
   const list = Array.from(files || []).filter((file) => file instanceof File);
   if (list.length === 0) return;
   let sent = 0;
+  showUploadProgress();
   for (const file of list) {
-    const form = new FormData();
-    form.append("file", file);
-    const uploadResponse = await api("/api/uploads", { method: "POST", body: form });
-    if (!uploadResponse.ok) continue;
-    const upload = await uploadResponse.json();
+    const upload = await uploadWithProgress(file);
+    if (!upload) continue;
     const content_type = upload.mime.startsWith("image/") ? "image" : "file";
     const url = isGroup
       ? `/api/groups/${state.activeGroupId}/messages`
@@ -1417,9 +1416,97 @@ async function sendFiles(files, isGroup) {
     });
     if (messageResponse.ok) sent += 1;
   }
+  hideUploadProgress();
   if (sent > 0) {
     toast(sent === 1 ? "附件已发送" : `已发送 ${sent} 个附件`, "success");
   }
+}
+
+function showUploadProgress() {
+  let region = document.getElementById("upload-progress");
+  if (!region) {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<div class="upload-progress" id="upload-progress" hidden>
+        <div class="upload-progress-bar">
+          <div class="upload-progress-fill" id="upload-progress-fill"></div>
+        </div>
+        <span class="upload-progress-text" id="upload-progress-text"></span>
+        <button class="icon-btn upload-progress-cancel" id="upload-progress-cancel"
+          type="button" aria-label="取消上传">×</button>
+      </div>`
+    );
+    region = document.getElementById("upload-progress");
+    document.getElementById("upload-progress-cancel").addEventListener("click", () => {
+      if (state.uploadCancel) state.uploadCancel();
+    });
+  }
+  region.hidden = false;
+  renderUploadProgress("", 0);
+}
+
+function renderUploadProgress(name, ratio) {
+  const fill = document.getElementById("upload-progress-fill");
+  const text = document.getElementById("upload-progress-text");
+  if (!fill || !text) return;
+  const percent = Math.max(0, Math.min(100, Math.round(ratio * 100)));
+  fill.style.width = `${percent}%`;
+  text.textContent = name ? `正在上传 ${name}（${percent}%）` : "准备上传…";
+}
+
+function hideUploadProgress() {
+  const region = document.getElementById("upload-progress");
+  if (region) region.hidden = true;
+  state.uploadCancel = null;
+}
+
+function uploadWithProgress(file) {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    state.uploadCancel = () => xhr.abort();
+    xhr.open("POST", "/api/uploads");
+    if (state.me) xhr.setRequestHeader("X-CSRF-Token", state.me.csrf_token);
+    xhr.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable) {
+        renderUploadProgress(file.name, event.loaded / event.total);
+      }
+    });
+    xhr.onload = () => {
+      if (xhr.status === 401) {
+        window.location.href = "/";
+        resolve(null);
+        return;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText));
+        } catch {
+          resolve(null);
+        }
+        return;
+      }
+      let detail = "";
+      try {
+        const body = JSON.parse(xhr.responseText);
+        detail = body && typeof body.detail === "string" ? body.detail : "";
+      } catch {
+        /* 非 JSON 错误体 */
+      }
+      toast(friendlyError(xhr.status, detail), "error");
+      resolve(null);
+    };
+    xhr.onerror = () => {
+      toast("网络错误，请检查连接后重试", "error");
+      resolve(null);
+    };
+    xhr.onabort = () => {
+      toast("已取消上传", "info");
+      resolve(null);
+    };
+    const form = new FormData();
+    form.append("file", file);
+    xhr.send(form);
+  });
 }
 
 function onAttachSelected(event, isGroup) {

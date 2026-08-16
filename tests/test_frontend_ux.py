@@ -76,3 +76,15 @@ async def test_v25_paste_drop_and_multi_upload(api_client: httpx.AsyncClient) ->
     assert '"drop"' in text
     assert "dataTransfer" in text
     assert "multiple" in text
+
+
+async def test_v26_upload_progress(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "XMLHttpRequest" in text
+    assert "xhr.upload" in text
+    assert '"progress"' in text
+    assert "upload-progress" in text
+    assert "uploadCancel" in text
+    css = await _style_css(api_client)
+    assert ".upload-progress" in css
+    assert ".upload-progress-fill" in css
