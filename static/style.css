@@ -2328,3 +2328,12 @@ a {
     animation: none;
   }
 }
+
+/* 通知设置 */
+.notify-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+  cursor: pointer;
+}

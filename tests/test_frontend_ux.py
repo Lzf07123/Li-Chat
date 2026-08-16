@@ -110,3 +110,12 @@ async def test_v28_conversation_filter_and_skeleton(api_client: httpx.AsyncClien
     css = await _style_css(api_client)
     assert ".skeleton" in css
     assert "shimmer" in css
+
+
+async def test_v29_title_badge_and_desktop_notifications(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function updateTitleBadge(" in text
+    assert "document.title" in text
+    assert "Notification" in text
+    assert "lichat-desktop-notify" in text
+    assert "open-notify-settings" in text

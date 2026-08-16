@@ -321,6 +321,9 @@ function headerHtml() {
           <button id="open-calls" class="profile-menu-item" role="menuitem" type="button">
             通话记录
           </button>
+          <button id="open-notify-settings" class="profile-menu-item" role="menuitem" type="button">
+            通知设置
+          </button>
           <button id="logout" class="profile-menu-item" role="menuitem" type="button">
             退出登录
           </button>
@@ -442,6 +445,9 @@ function renderLoggedIn() {
   document.getElementById("open-stars").addEventListener("click", openStarsModal);
   document.getElementById("open-sessions").addEventListener("click", openSessionsModal);
   document.getElementById("open-calls").addEventListener("click", openCallsModal);
+  document
+    .getElementById("open-notify-settings")
+    .addEventListener("click", openNotifySettingsModal);
   document.getElementById("search-form").addEventListener("submit", onSearch);
   document.getElementById("search-form").addEventListener("click", onSearchModeClick);
   document.getElementById("search-results").addEventListener("click", onSearchResultClick);
@@ -688,6 +694,90 @@ async function openCallsModal() {
   });
 }
 
+function openNotifySettingsModal() {
+  setProfileMenu(false);
+  const enabled = localStorage.getItem("lichat-desktop-notify") !== "off";
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="notify-modal" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <h3 class="modal-title">通知设置</h3>
+        <label class="notify-row">
+          <input type="checkbox" id="notify-toggle" ${enabled ? "checked" : ""} />
+          <span>桌面通知（新消息提醒）</span>
+        </label>
+        <p class="muted">仅在页面处于后台时提醒；首次开启需要浏览器授权。</p>
+        <div class="modal-actions">
+          <button class="btn btn-primary" type="button" data-action="close-notify">完成</button>
+        </div>
+      </div>
+    </div>`
+  );
+  const modal = document.getElementById("notify-modal");
+  document.getElementById("notify-toggle").addEventListener("change", async (event) => {
+    if (event.target.checked) {
+      if (window.Notification && Notification.permission === "default") {
+        try {
+          await Notification.requestPermission();
+        } catch {
+          /* 拒绝授权仅不弹通知 */
+        }
+      }
+      localStorage.setItem("lichat-desktop-notify", "on");
+    } else {
+      localStorage.setItem("lichat-desktop-notify", "off");
+    }
+  });
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal || event.target.closest("[data-action='close-notify']")) {
+      modal.remove();
+    }
+  });
+}
+
+function updateTitleBadge() {
+  const total = state.conversations.reduce(
+    (sum, conversation) => sum + (conversation.unread_count || 0),
+    0
+  );
+  document.title = total > 0 ? `(${total}) Li&Chat` : "Li&Chat";
+}
+
+function desktopNotify(title, body) {
+  try {
+    if (
+      document.hidden &&
+      window.Notification &&
+      Notification.permission === "granted" &&
+      localStorage.getItem("lichat-desktop-notify") !== "off"
+    ) {
+      new Notification(title, {
+        body,
+        tag: "lichat",
+        icon: "/favicon.svg",
+      });
+    }
+  } catch {
+    /* 通知失败不影响聊天 */
+  }
+}
+
+function notifyMessage(message) {
+  if (!document.hidden || message.sender_sub === state.me.sub) return;
+  let title = "Li&Chat";
+  if (message.group_id != null) {
+    const group = state.groups.find((item) => item.id === message.group_id);
+    if (group) title = group.name;
+  } else {
+    const peer = state.friends.find((item) => item.sub === message.sender_sub);
+    if (peer) title = displayName(peer);
+  }
+  let body = message.deleted ? "消息已撤回" : message.content || "";
+  if (!body && message.content_type === "image") body = "[图片]";
+  if (!body && message.content_type === "file") body = "[文件]";
+  desktopNotify(title, body);
+}
+
 async function onProfileSubmit(event) {
   event.preventDefault();
   const nickname = document.getElementById("profile-nickname").value.trim();
@@ -877,6 +967,7 @@ function renderSidebar() {
     : visibleGroups
         .map((group) => groupHtml(group, groupSummaries.get(group.id)))
         .join("");
+  updateTitleBadge();
 }
 
 function requestIncomingHtml(item) {
@@ -2478,6 +2569,7 @@ function autoGrowInput(input) {
 function handleServerMessage(data) {
   if (data.type === "message" && data.message) {
     const message = data.message;
+    if (message.sender_sub !== state.me.sub) notifyMessage(message);
     const inActiveGroup =
       state.activeGroupId !== null && message.group_id === state.activeGroupId;
     const inActiveDm =
