@@ -39,7 +39,7 @@ docker compose up -d --build   # 默认附带编排内 redis（jti 防重放/跨
 ## 质量门禁
 
 ```bash
-uv run pytest -q      # 126 个测试
+uv run pytest -q      # 172 个测试
 uv run ruff check .
 uv run mypy app
 ```
@@ -59,7 +59,7 @@ app/
 ├── friends/       # 好友业务：搜索、关系状态、申请生命周期
 └── messages/      # 消息业务：发送、历史分页、校验
 static/            # 同源前端（index.html + app/brand/theme/ambient.js + style.css 令牌）
-tests/             # 126 个测试 + 本地模拟 IdP
+tests/             # 172 个测试 + 本地模拟 IdP
 design-system/     # 品牌设计（chat/ 项目方案 + template/ Li-Design 子模块）
 Dockerfile         # 容器镜像（python:3.12-slim + uv，非 root 运行）
 docker-compose.yaml # 容器编排（单服务 + SQLite 命名卷）
