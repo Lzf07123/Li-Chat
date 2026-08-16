@@ -37,6 +37,7 @@
 | 群已读明细 | 仅成员可查；消息须属该群且未撤回；只回传成员资料清单与计数，不泄露游标数值以外的信息 | `app/messages/service.py`、`app/api/groups.py` |
 | 通知中心边界 | 通知只发给目标用户（事件产生时定向落账 + WS 定向推送）；列表仅能查自己；payload 只存展示快照（群名/消息 id/角色），不存敏感内容；全部已读走 CSRF | `app/notifications/service.py`、`app/api/notifications.py` |
 | 仅自己删除边界 | 删除前校验消息归属（单聊 pair / 群成员）；隐藏只作用于本人视角（历史/摘要过滤），对方/群成员视角不变；幂等 | `app/messages/service.py` |
+| 数据导出边界 | 仅登录用户可导出；内容限定自己可见范围（好友列表、加入的群、参与会话消息、自己的收藏），附 `Content-Disposition` 下载；每会话分页上限防资源滥用 | `app/api/users.py` |
 | 附件安全 | 内容嗅探白名单（jpeg/png/gif/webp/pdf/txt/audio webm/mp4，魔数校验），拒绝 SVG/HTML 与伪造类型；大小 ≤20MB；随机文件名防遍历；回源会话鉴权（上传者或引用该附件的会话参与者）+ nosniff；附件/语音消息归属校验 | `app/uploads/`、`app/messages/service.py` |
 | 转发边界 | 源消息必须自己可见（单聊双方/群成员）且未撤回；目标好友/群成员校验；不得转发给自己 | `app/messages/service.py` |
 | 提及防护 | 单聊仅可提及对方、群仅可提及成员；≤50 去重；非法提及 422 | `app/messages/service.py` |

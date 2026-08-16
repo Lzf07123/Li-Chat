@@ -270,3 +270,9 @@ async def test_v48_emoji_picker(api_client: httpx.AsyncClient) -> None:
     assert "emoji-panel" in text
     assert "function insertEmoji(" in text
     assert "emoji-option" in text
+
+
+async def test_v49_data_export_entry(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "export-data" in text
+    assert "/api/me/export" in text

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,13 +12,41 @@ from app.api.search import ConversationRefOut
 from app.auth.deps import get_current_user, require_csrf
 from app.db import get_db
 from app.friends import service as friends_service
+from app.groups import service as groups_service
 from app.messages import service as messages_service
 from app.models import CallLog, Session, User
-from app.timeutil import iso_utc
+from app.timeutil import iso_utc, utcnow
 from app.uploads.service import get_upload
 from app.ws.manager import ConnectionManager
 
 router = APIRouter(prefix="/api", tags=["users"])
+
+
+async def _collect_history(
+    db: AsyncSession,
+    me_sub: str,
+    *,
+    friend_sub: str | None = None,
+    group_id: int | None = None,
+    max_pages: int = 20,
+) -> list[dict[str, object]]:
+    items: list[dict[str, object]] = []
+    before: int | None = None
+    for _ in range(max_pages):
+        if friend_sub is not None:
+            rows, next_before = await messages_service.history(
+                db, me_sub, friend_sub, before=before, limit=100
+            )
+        else:
+            assert group_id is not None
+            rows, next_before = await messages_service.group_history(
+                db, me_sub, group_id, before=before, limit=100
+            )
+        items.extend(messages_service.message_payload(row) for row in rows)
+        if next_before is None:
+            break
+        before = next_before
+    return items
 
 
 class MeOut(BaseModel):
@@ -346,6 +375,47 @@ async def calls_list(
         )
     next_before = page[-1].id if has_more and page else None
     return CallsOut(calls=items, next_before=next_before)
+
+
+@router.get("/me/export")
+async def export_my_data(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> JSONResponse:
+    friends = await friends_service.list_friends(db, user.sub)
+    groups = await groups_service.list_groups(db, user.sub)
+    dm_messages: dict[str, list[dict[str, object]]] = {}
+    for friend in friends:
+        sub = friend.get("sub")
+        if isinstance(sub, str):
+            dm_messages[sub] = await _collect_history(db, user.sub, friend_sub=sub)
+    group_messages: dict[str, list[dict[str, object]]] = {}
+    for group in groups:
+        group_messages[str(group["id"])] = await _collect_history(
+            db, user.sub, group_id=group["id"]
+        )
+    stars, _ = await messages_service.starred_messages(db, user.sub, limit=50)
+    data = {
+        "exported_at": iso_utc(utcnow()),
+        "profile": {
+            "sub": user.sub,
+            "nickname": user.nickname,
+            "name": user.name,
+            "picture": user.picture,
+            "email": user.email,
+            "bio": user.bio,
+        },
+        "friends": friends,
+        "groups": groups,
+        "dm_messages": dm_messages,
+        "group_messages": group_messages,
+        "stars": stars,
+    }
+    filename = f"lichat-export-{utcnow().strftime('%Y%m%d')}.json"
+    return JSONResponse(
+        content=data,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/users/search", response_model=SearchOut)

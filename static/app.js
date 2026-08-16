@@ -391,6 +391,9 @@ function headerHtml() {
           <button id="open-notify-settings" class="profile-menu-item" role="menuitem" type="button">
             通知设置
           </button>
+          <button id="export-data" class="profile-menu-item" role="menuitem" type="button">
+            导出数据
+          </button>
           <button id="open-shortcuts" class="profile-menu-item" role="menuitem" type="button">
             快捷键
           </button>
@@ -541,6 +544,10 @@ function renderLoggedIn() {
     .addEventListener("click", openNotifySettingsModal);
   document.getElementById("open-shortcuts").addEventListener("click", openShortcutsModal);
   document.getElementById("notify-bell").addEventListener("click", openNotificationsModal);
+  document.getElementById("export-data").addEventListener("click", () => {
+    setProfileMenu(false);
+    window.location.href = "/api/me/export";
+  });
   document.addEventListener("keydown", onGlobalKeydown);
   document.getElementById("search-form").addEventListener("submit", onSearch);
   document.getElementById("search-form").addEventListener("click", onSearchModeClick);

@@ -24,6 +24,7 @@
 | GET | `/api/me/calls?cursor=&limit=` | 会话 | 通话记录（倒序游标 ≤50，附对端资料）；`{"calls":[{id,kind,status,started_at,ended_at,peer}],"next_before"}` |
 | GET | `/api/me/notifications?cursor=&limit=` | 会话 | 站内通知（倒序游标 ≤50）；`{"notifications":[{id,type,actor,group,payload,read,created_at}],"next_cursor","unread_count"}` |
 | POST | `/api/me/notifications/read` | 会话 + CSRF | 全部通知标记已读；`{"status":"ok"}` |
+| GET | `/api/me/export` | 会话 | 导出我的数据（JSON 附件下载）：资料/好友/群/单聊与群消息（仅自己可见范围，每会话上限 20×100 条）/收藏 |
 | GET | `/api/users/search?q=` | 会话 | 昵称/邮箱关键词搜索（1–64 字符，≤20 条）；返回 `sub/nickname/name/picture/friend_status`，不回传邮箱 |
 | GET | `/api/search?kind=messages&q=&limit=&before=` | 会话 | 消息全文搜索（仅自己可见范围：单聊双方/群成员；LIKE 不区分大小写、倒序游标、命中片段）；`{"messages":[{id,sender_sub,conversation:{type,peer_sub,peer_name,group_id,group_name},snippet,created_at}],"next_before"}` |
 | GET | `/api/search?kind=contacts&q=` | 会话 | 联系人搜索（语义同 `/api/users/search`）；`{"contacts":[{sub,nickname,name,picture,friend_status}]}` |
