@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+import httpx
 from starlette.testclient import TestClient
 
 from app.ws.calls import CallManager, handle_call
@@ -235,3 +236,14 @@ def _receive_type(ws: Any, expected: str) -> dict[str, Any]:
         if event.get("type") == expected:
             return event
     raise AssertionError(f"expected ws event type {expected!r}")
+
+
+async def test_call_frontend_contract(api_client: httpx.AsyncClient) -> None:
+    """前端必须缓冲 ICE 候选、按 kind 采集媒体并接线 ICE 服务器。"""
+    response = await api_client.get("/app.js")
+    assert response.status_code == 200
+    text = response.text
+    assert "pendingIce" in text
+    assert "function flushPendingIce(" in text
+    assert "iceServers" in text
+    assert 'data.kind === "video"' in text
