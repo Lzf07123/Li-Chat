@@ -276,3 +276,10 @@ async def test_v49_data_export_entry(api_client: httpx.AsyncClient) -> None:
     text = await _app_js(api_client)
     assert "export-data" in text
     assert "/api/me/export" in text
+
+
+async def test_v50_help_and_about(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function openAboutModal(" in text
+    assert "app_version" in text
+    assert "open-about" in text

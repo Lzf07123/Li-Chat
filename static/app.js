@@ -397,6 +397,9 @@ function headerHtml() {
           <button id="open-shortcuts" class="profile-menu-item" role="menuitem" type="button">
             快捷键
           </button>
+          <button id="open-about" class="profile-menu-item" role="menuitem" type="button">
+            关于
+          </button>
           <button id="logout" class="profile-menu-item" role="menuitem" type="button">
             退出登录
           </button>
@@ -543,6 +546,7 @@ function renderLoggedIn() {
     .getElementById("open-notify-settings")
     .addEventListener("click", openNotifySettingsModal);
   document.getElementById("open-shortcuts").addEventListener("click", openShortcutsModal);
+  document.getElementById("open-about").addEventListener("click", openAboutModal);
   document.getElementById("notify-bell").addEventListener("click", openNotificationsModal);
   document.getElementById("export-data").addEventListener("click", () => {
     setProfileMenu(false);
@@ -1022,6 +1026,41 @@ function openShortcutsModal() {
   const modal = document.getElementById("shortcuts-modal");
   modal.addEventListener("click", (event) => {
     if (event.target === modal || event.target.closest("[data-action='close-shortcuts']")) {
+      modal.remove();
+    }
+  });
+}
+
+async function openAboutModal() {
+  setProfileMenu(false);
+  let appVersion = "0.1.0";
+  try {
+    const response = await fetch("/api/version", { credentials: "same-origin" });
+    if (response.ok) {
+      const body = await response.json();
+      if (body.app_version) appVersion = body.app_version;
+    }
+  } catch {
+    /* 版本获取失败使用默认值 */
+  }
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="about-modal" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <h3 class="modal-title">关于 Li&Chat</h3>
+        <p class="about-line">${escapeHtml(BRAND.name)} · ${escapeHtml(BRAND.slogan)}</p>
+        <p class="muted">应用版本 ${escapeHtml(appVersion)} · 前端 ${escapeHtml(FRONTEND_VERSION)}</p>
+        <p class="muted">统一 Li&Pass 登录；消息、群聊、投票、语音、通话等能力持续迭代。</p>
+        <p class="muted">快捷键：Ctrl/Cmd+K 搜索 · ? 帮助 · Ctrl/Cmd+Enter 发送</p>
+        <div class="modal-actions">
+          <button class="btn btn-primary" type="button" data-action="close-about">关闭</button>
+        </div>
+      </div>
+    </div>`
+  );
+  const modal = document.getElementById("about-modal");
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal || event.target.closest("[data-action='close-about']")) {
       modal.remove();
     }
   });

@@ -45,6 +45,7 @@ logger = get_logger(__name__)
 
 # 前端构建版本：升级 static/ 资源时同步修改此处与 static/app.js 的 FRONTEND_VERSION
 FRONTEND_VERSION = "0.3.0"
+APP_VERSION = "0.1.0"
 
 _STATIC_PATHS = {
     "/",
@@ -377,7 +378,10 @@ def create_app(
 
     @app.get("/api/version")
     async def api_version() -> dict[str, str]:
-        return {"frontend_version": FRONTEND_VERSION}
+        return {
+            "frontend_version": FRONTEND_VERSION,
+            "app_version": APP_VERSION,
+        }
 
     app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="static")
     return app

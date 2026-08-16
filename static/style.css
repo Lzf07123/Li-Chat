@@ -2684,3 +2684,8 @@ a {
 .emoji-option:hover {
   background: var(--chat-surface-2);
 }
+
+.about-line {
+  font-weight: 600;
+  margin: 6px 0 2px;
+}
