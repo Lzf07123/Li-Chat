@@ -20,8 +20,10 @@
   SSO）；退出登录弹窗提供「仅退出本网站 / 退出 SSO」两个选项，对齐 Li&Pass 指南 §8.1
 - 设计系统同步 Li-Design 模板 V1.2：主按钮改半透明单色着色 + 细描边 + `::after` 扫光
   （4s，disabled 关闭），认证卡与 Logo 呼吸辉光（4.5s，reduced-motion 静止）；槽位表
-  20 → 22，不采用项（科技光效层/雾灰深色/六强调色板）与理由记录于 BRAND.md；预览基线
-  六张全部重拍
+  20 → 22；预览基线六张全部重拍
+- 全量采纳 Li-Design V1.2 海玻璃配色方案：浅色全淡色（bg `#F6FBF9`、主色 `#25786D`、
+  雾面中性色）+ 深色 D1 雾灰中间调（bg `#3A3F45`、主色 `#7FD4C6`）+ secondary 与六强调
+  色板（ice/aqua/lilac/sage/mint/sand 明暗两套）+ 水绿 tint 阴影；品牌位/首帧主题同步
 
 ### 安全加固
 
@@ -29,12 +31,17 @@
   缺失/不符即拒绝登录），补齐 Li&Pass V2 接入验收清单「id_token 校验完整」
 - token 端点 403 黑名单按 RFC 6749 新格式 `error=access_denied` 映射封禁提示，不再
   误报「登录凭证已失效」
+- 账号绑定规则文档化并补回归测试：`sub`（openid 主体标识）是唯一可信标识、`email` 为
+  可变属性；本地仅按 `sub` upsert、每次登录刷新 email，「换邮箱不新建账号」
 
 ### 行为变更
 
 - ICE 限频默认最小间隔由 50ms 放宽至 10ms（仍为每对呼叫粒度的滥用防护）
 - Li&Pass 发现文档 issuer 与五个端点已收敛为 https 字面值；本端 http→https 升级逻辑
   保留为防御性兜底（当前为 no-op），`iss` 仍按发现文档原文严格校验
+- 海玻璃落地按模板附录 E 做 RGB 调校：muted/success/warning/destructive 四处同色相加深
+  至 ≥4.5:1；深色带文字的软底改用实色粉彩底 + 深字（新增 `*-soft-solid/-soft-fg` 令牌），
+  消息新到闪动改用 `primary-hover` 保证明暗两套可读
 
 ## v1.0.0 — 2026-08-16
 
