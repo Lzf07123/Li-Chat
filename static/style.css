@@ -1513,6 +1513,12 @@ a {
   font: inherit;
 }
 
+.composer textarea::placeholder {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .composer .btn {
   flex-shrink: 0;
   min-height: 44px;

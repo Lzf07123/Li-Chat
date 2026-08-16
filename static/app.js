@@ -298,7 +298,7 @@ function mainHtml() {
           </div>
           <label class="sr-only" for="message-input">消息内容</label>
           <textarea id="message-input" class="input" rows="1" maxlength="2000"
-            placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+            placeholder="输入消息"></textarea>
           <button class="btn btn-primary" type="submit">发送</button>
         </form>
       </div>
@@ -1134,7 +1134,7 @@ function groupPanelHtml(group) {
         </div>
         <label class="sr-only" for="group-message-input">消息内容</label>
         <textarea id="group-message-input" class="input" rows="1" maxlength="2000"
-          placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+          placeholder="输入消息"></textarea>
         <button class="btn btn-primary" type="submit">发送</button>
       </form>
     </div>
@@ -1706,7 +1706,7 @@ async function onGroupComposerSubmit(event) {
   if (response.ok) {
     clearReply();
     state.editingId = null;
-    input.placeholder = "输入消息，Enter 发送，Shift+Enter 换行";
+    input.placeholder = "输入消息";
     state.mentionSubs = [];
     state.mentionOpen = false;
     const mentionList = document.getElementById("group-mention-list");
@@ -1856,7 +1856,7 @@ async function onComposerSubmit(event) {
     clearReply();
     input.value = "";
     autoGrowInput(input);
-    input.placeholder = "输入消息，Enter 发送，Shift+Enter 换行";
+    input.placeholder = "输入消息";
     input.focus();
   }
 }
@@ -1927,7 +1927,7 @@ async function onMessagesClick(event) {
       ? document.getElementById("group-message-input")
       : document.getElementById("message-input");
     input.value = message.content;
-    input.placeholder = "正在编辑消息，Enter 保存，Esc 取消";
+    input.placeholder = "正在编辑，Enter 保存";
     input.focus();
     return;
   }
@@ -2016,7 +2016,7 @@ function cancelEditing() {
     : document.getElementById("message-input");
   input.value = "";
   autoGrowInput(input);
-  input.placeholder = "输入消息，Enter 发送，Shift+Enter 换行";
+  input.placeholder = "输入消息";
 }
 
 function onComposerInput() {
