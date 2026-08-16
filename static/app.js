@@ -17,6 +17,8 @@ const state = {
   searchKind: "contacts",
   searchNextBefore: null,
   searchQuery: "",
+  convFilter: "",
+  sidebarLoading: true,
   conversations: [],
   readUpTo: {},
   typingTimer: null,
@@ -344,6 +346,9 @@ function mainHtml() {
         <button class="btn btn-primary btn-sm" type="submit">搜索</button>
       </form>
       <ul id="search-results" class="contact-list search-results" hidden></ul>
+      <label class="sr-only" for="conv-filter">筛选会话</label>
+      <input id="conv-filter" class="input conv-filter" type="search"
+        placeholder="筛选会话" autocomplete="off" />
       <section class="sidebar-section">
         <h2 class="sidebar-title">好友申请
           <span id="requests-badge" class="badge badge-primary" hidden>0</span>
@@ -440,6 +445,10 @@ function renderLoggedIn() {
   document.getElementById("search-form").addEventListener("submit", onSearch);
   document.getElementById("search-form").addEventListener("click", onSearchModeClick);
   document.getElementById("search-results").addEventListener("click", onSearchResultClick);
+  document.getElementById("conv-filter").addEventListener("input", (event) => {
+    state.convFilter = event.target.value;
+    renderSidebar();
+  });
   document.getElementById("requests-list").addEventListener("click", onRequestListClick);
   document.getElementById("recommend-list").addEventListener("click", onRecommendListClick);
   document.getElementById("recommend-refresh").addEventListener("click", loadRecommendations);
@@ -756,6 +765,11 @@ function onProfileKeydown(event) {
 }
 
 async function refreshSidebar() {
+  const firstLoad = state.friends.length === 0 && state.groups.length === 0;
+  if (firstLoad) {
+    state.sidebarLoading = true;
+    renderSidebar();
+  }
   try {
     const [friendsRes, requestsRes, recommendRes, conversationsRes, groupsRes] = await Promise.all([
       api("/api/friends"),
@@ -773,10 +787,35 @@ async function refreshSidebar() {
       state.conversations = (await conversationsRes.json()).conversations;
     }
     if (groupsRes.ok) state.groups = (await groupsRes.json()).groups;
-    renderSidebar();
   } catch {
     /* 登录失效已由 api() 统一跳转 */
+  } finally {
+    state.sidebarLoading = false;
+    renderSidebar();
   }
+}
+
+function summaryPreview(summary) {
+  const last = summary && summary.last_message;
+  if (!last) return "";
+  if (last.deleted) return "消息已撤回";
+  if (last.content_type === "image") return "[图片]";
+  if (last.content_type === "file") return "[文件]";
+  if (last.content_type === "audio") return "[语音]";
+  return last.content || "";
+}
+
+function sidebarSkeletonHtml(count) {
+  return Array.from(
+    { length: count },
+    () => `<li class="contact-item skeleton-item">
+      <div class="skeleton skeleton-avatar"></div>
+      <div class="skeleton-lines">
+        <div class="skeleton skeleton-line"></div>
+        <div class="skeleton skeleton-line skeleton-line-short"></div>
+      </div>
+    </li>`
+  ).join("");
 }
 
 function renderSidebar() {
@@ -793,28 +832,51 @@ function renderSidebar() {
   document.getElementById("recommend-list").innerHTML = state.recommendations
     .map(recommendHtml)
     .join("");
-  const summaries = new Map(state.conversations.map((item) => [item.peer.sub, item]));
+  const summaries = new Map(
+    state.conversations
+      .filter((item) => item.peer)
+      .map((item) => [item.peer.sub, item])
+  );
   const friendsById = new Map(state.friends.map((friend) => [friend.sub, friend]));
   const orderedSubs = [
-    ...state.conversations.map((item) => item.peer.sub),
+    ...state.conversations
+      .map((item) => (item.peer ? item.peer.sub : null))
+      .filter((sub) => typeof sub === "string"),
     ...state.friends.map((friend) => friend.sub),
   ];
   const friends = [...new Set(orderedSubs)]
     .map((sub) => friendsById.get(sub))
     .filter(Boolean);
-  document.getElementById("friends-empty").hidden = friends.length > 0;
-  document.getElementById("friends-list").innerHTML = friends
-    .map((friend) => friendHtml(friend, summaries.get(friend.sub)))
-    .join("");
-  document.getElementById("groups-empty").hidden = state.groups.length > 0;
+  const filterText = state.convFilter.trim().toLowerCase();
+  const matchesConv = (name, preview) =>
+    !filterText || `${name} ${preview || ""}`.toLowerCase().includes(filterText);
+  const visibleFriends = friends.filter((friend) =>
+    matchesConv(displayName(friend), summaryPreview(summaries.get(friend.sub)))
+  );
+  const friendsLoading = state.sidebarLoading && friends.length === 0;
+  document.getElementById("friends-empty").hidden =
+    friendsLoading || visibleFriends.length > 0;
+  document.getElementById("friends-list").innerHTML = friendsLoading
+    ? sidebarSkeletonHtml(5)
+    : visibleFriends
+        .map((friend) => friendHtml(friend, summaries.get(friend.sub)))
+        .join("");
   const groupSummaries = new Map(
     state.conversations
       .filter((item) => item.group)
       .map((item) => [item.group.id, item])
   );
-  document.getElementById("groups-list").innerHTML = state.groups
-    .map((group) => groupHtml(group, groupSummaries.get(group.id)))
-    .join("");
+  const visibleGroups = state.groups.filter((group) =>
+    matchesConv(group.name, summaryPreview(groupSummaries.get(group.id)))
+  );
+  const groupsLoading = state.sidebarLoading && state.groups.length === 0;
+  document.getElementById("groups-empty").hidden =
+    groupsLoading || visibleGroups.length > 0;
+  document.getElementById("groups-list").innerHTML = groupsLoading
+    ? sidebarSkeletonHtml(3)
+    : visibleGroups
+        .map((group) => groupHtml(group, groupSummaries.get(group.id)))
+        .join("");
 }
 
 function requestIncomingHtml(item) {

@@ -99,3 +99,14 @@ async def test_v27_search_hit_locate_and_highlight(api_client: httpx.AsyncClient
     assert "data-message=" in text
     css = await _style_css(api_client)
     assert ".message-flash" in css
+
+
+async def test_v28_conversation_filter_and_skeleton(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "conv-filter" in text
+    assert "convFilter" in text
+    assert "skeleton" in text
+    assert "sidebarLoading" in text
+    css = await _style_css(api_client)
+    assert ".skeleton" in css
+    assert "shimmer" in css
