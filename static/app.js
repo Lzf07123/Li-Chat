@@ -4,6 +4,7 @@ const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 // 与 app/main.py 的 FRONTEND_VERSION 保持一致；落后即清缓存强制刷新
 const FRONTEND_VERSION = "0.3.0";
 let draftTimer = null;
+let localSeq = 0;
 
 const state = {
   me: null,
@@ -158,6 +159,27 @@ function dayLabel(iso) {
     return `${month}月${day}日`;
   }
   return `${date.getFullYear()}年${month}月${day}日`;
+}
+
+function localMessage(content) {
+  localSeq += 1;
+  return {
+    id: `local-${localSeq}`,
+    sender_sub: state.me.sub,
+    recipient_sub:
+      state.activeGroupId !== null ? `group:${state.activeGroupId}` : state.activeSub,
+    group_id: state.activeGroupId,
+    conversation_type: state.activeGroupId !== null ? "group" : "dm",
+    content,
+    content_type: "text",
+    created_at: new Date().toISOString(),
+    status: "sending",
+  };
+}
+
+function removeLocal(local) {
+  state.messages = state.messages.filter((message) => message.id !== local.id);
+  renderMessages();
 }
 
 function groupMemberMap() {
@@ -2621,6 +2643,8 @@ function closeChat() {
 
 function messageHtml(message, previous) {
   const own = message.sender_sub === state.me.sub;
+  const sending = message.status === "sending";
+  const failed = message.status === "failed";
   const mentioned = (message.mentions || []).includes(state.me.sub);
   const readByPeer = state.readUpTo[state.activeSub];
   const read = own && typeof readByPeer === "number" && message.id <= readByPeer;
@@ -2695,17 +2719,26 @@ function messageHtml(message, previous) {
         : ""}
     </div>`;
   } else {
-    body = `<div class="message-bubble">${replyPreview}${escapeHtml(message.content)}</div>`;
+    body = `<div class="message-bubble${sending ? " message-sending" : ""}${
+      failed ? " message-failed" : ""
+    }">${sending ? '<span class="message-spinner" aria-label="发送中"></span>' : ""}${
+      replyPreview
+    }${escapeHtml(message.content)}</div>`;
   }
   const editActions =
-    own
+    own && !sending && !failed
       ? `<button class="message-action" type="button"
           data-action="edit" data-id="${message.id}">编辑</button>
          <button class="message-action" type="button"
           data-action="withdraw" data-id="${message.id}">撤回</button>`
       : "";
+  const retryAction = failed
+    ? `<button class="message-action" type="button"
+        data-action="retry-send" data-id="${message.id}">重试</button>`
+    : "";
   const actions = !message.deleted
     ? `<span class="message-actions">${editActions}
+        ${retryAction}
         <button class="message-action" type="button"
           data-action="forward" data-id="${message.id}">转发</button>
         <button class="message-action${message.starred ? " message-star-on" : ""}" type="button"
@@ -2721,6 +2754,11 @@ function messageHtml(message, previous) {
     ? '<span class="message-read">已转发</span>'
     : "";
   const mentionMark = mentioned ? '<span class="message-read">@我</span>' : "";
+  const statusText = sending
+    ? '<span class="message-read">发送中…</span>'
+    : failed
+      ? '<span class="message-read message-failed-text">发送失败</span>'
+      : "";
   const groupReadInfo =
     own && state.activeGroupId !== null
       ? `<button class="message-action" type="button"
@@ -2743,7 +2781,7 @@ function messageHtml(message, previous) {
     ${senderHeader}
     ${selectCheck}
     ${body}
-    <div class="message-meta">${escapeHtml(time)}${read
+    <div class="message-meta">${escapeHtml(time)}${statusText}${read
       ? '<span class="message-read">已读</span>'
       : ""}${editedMark}${forwardMark}${mentionMark}${groupReadInfo}${actions}</div>
     ${reactions}
@@ -2853,7 +2891,11 @@ function renderMessages() {
   const container = messagesContainer();
   if (!container) return;
   container.classList.toggle("select-active", state.selectMode);
-  const sorted = state.messages.slice().sort((a, b) => a.id - b.id);
+  const sortKey = (message) =>
+    typeof message.id === "number" ? message.id : Number.MAX_SAFE_INTEGER;
+  const sorted = state.messages
+    .slice()
+    .sort((a, b) => sortKey(a) - sortKey(b));
   container.innerHTML = sorted
     .map((message, index) => messageHtml(message, sorted[index - 1]))
     .join("");
@@ -2994,6 +3036,14 @@ async function onGroupComposerSubmit(event) {
   const content = input.value.trim();
   if (!content || !state.activeGroupId) return;
   const editingId = state.editingId;
+  let local = null;
+  if (!editingId) {
+    local = localMessage(content);
+    state.messages.push(local);
+    renderMessages();
+    const container = messagesContainer();
+    if (container) container.scrollTop = container.scrollHeight;
+  }
   const url = editingId
     ? `/api/groups/${state.activeGroupId}/messages/${editingId}`
     : `/api/groups/${state.activeGroupId}/messages`;
@@ -3005,6 +3055,7 @@ async function onGroupComposerSubmit(event) {
     body: JSON.stringify(body),
   });
   if (response.ok) {
+    if (local) removeLocal(local);
     clearReply();
     state.editingId = null;
     input.placeholder = "输入消息";
@@ -3016,6 +3067,9 @@ async function onGroupComposerSubmit(event) {
     saveDraft("");
     autoGrowInput(input);
     input.focus();
+  } else if (local) {
+    local.status = "failed";
+    renderMessages();
   }
 }
 
@@ -3144,6 +3198,14 @@ async function onComposerSubmit(event) {
   const content = input.value.trim();
   if (!content || !state.activeSub) return;
   const editingId = state.editingId;
+  let local = null;
+  if (!editingId) {
+    local = localMessage(content);
+    state.messages.push(local);
+    renderMessages();
+    const container = messagesContainer();
+    if (container) container.scrollTop = container.scrollHeight;
+  }
   const url = editingId
     ? `/api/conversations/${encodeURIComponent(state.activeSub)}/messages/${editingId}`
     : `/api/conversations/${encodeURIComponent(state.activeSub)}/messages`;
@@ -3154,6 +3216,7 @@ async function onComposerSubmit(event) {
     body: JSON.stringify(body),
   });
   if (response.ok) {
+    if (local) removeLocal(local);
     state.editingId = null;
     clearReply();
     input.value = "";
@@ -3161,6 +3224,9 @@ async function onComposerSubmit(event) {
     autoGrowInput(input);
     input.placeholder = "输入消息";
     input.focus();
+  } else if (local) {
+    local.status = "failed";
+    renderMessages();
   }
 }
 
@@ -3286,6 +3352,27 @@ async function onMessagesClick(event) {
   }
   if (button.dataset.action === "show-reads") {
     await openReadsModal(Number(messageId));
+    return;
+  }
+  if (button.dataset.action === "retry-send") {
+    const local = state.messages.find((item) => item.id === button.dataset.id);
+    if (!local || (!state.activeSub && state.activeGroupId === null)) return;
+    local.status = "sending";
+    renderMessages();
+    const url =
+      state.activeGroupId !== null
+        ? `/api/groups/${state.activeGroupId}/messages`
+        : `/api/conversations/${encodeURIComponent(state.activeSub)}/messages`;
+    const response = await api(url, {
+      method: "POST",
+      body: JSON.stringify({ content: local.content }),
+    });
+    if (response.ok) {
+      removeLocal(local);
+    } else {
+      local.status = "failed";
+      renderMessages();
+    }
     return;
   }
   if (button.dataset.action !== "edit" && button.dataset.action !== "withdraw") return;

@@ -216,3 +216,13 @@ async def test_v41_conversation_drafts(api_client: httpx.AsyncClient) -> None:
     assert "function saveDraft(" in text
     assert "function loadDraft(" in text
     assert "saveDraftDebounced" in text
+
+
+async def test_v42_send_status_and_retry(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "message-sending" in text
+    assert "message-failed" in text
+    assert "retry-send" in text
+    assert "function localMessage(" in text
+    css = await _style_css(api_client)
+    assert ".message-failed" in css

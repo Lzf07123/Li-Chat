@@ -2582,3 +2582,41 @@ a {
 .notification-unread .contact-name {
   font-weight: 600;
 }
+
+/* 发送状态与重试 */
+.message-sending {
+  opacity: 0.65;
+}
+
+.message-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  vertical-align: -1px;
+  animation: spinner-rotate 0.8s linear infinite;
+}
+
+.message-failed {
+  border: 1px solid var(--chat-destructive);
+  background: var(--chat-destructive-soft);
+}
+
+.message-failed-text {
+  color: var(--chat-destructive);
+}
+
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message-spinner {
+    animation-duration: 2s;
+  }
+}
