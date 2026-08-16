@@ -26,6 +26,7 @@ const EMOJI_SETS = {
 };
 // 与 app/main.py 的 FRONTEND_VERSION 保持一致；落后即清缓存强制刷新
 const FRONTEND_VERSION = "0.3.0";
+const RENDER_CHUNK_SIZE = 40;
 let draftTimer = null;
 let localSeq = 0;
 
@@ -3380,11 +3381,34 @@ function renderMessages() {
   const sorted = state.messages
     .slice()
     .sort((a, b) => sortKey(a) - sortKey(b));
-  container.innerHTML = sorted.length
-    ? sorted
-        .map((message, index) => messageHtml(message, sorted[index - 1]))
-        .join("")
-    : '<div class="messages-empty">还没有消息，打个招呼吧</div>';
+  if (sorted.length === 0) {
+    container.innerHTML = '<div class="messages-empty">还没有消息，打个招呼吧</div>';
+    return;
+  }
+  if (sorted.length <= RENDER_CHUNK_SIZE) {
+    container.innerHTML = sorted
+      .map((message, index) => messageHtml(message, sorted[index - 1]))
+      .join("");
+    return;
+  }
+  container.innerHTML = "";
+  let index = 0;
+  const renderChunk = () => {
+    const chunk = sorted.slice(index, index + RENDER_CHUNK_SIZE);
+    if (chunk.length === 0) {
+      container.scrollTop = container.scrollHeight;
+      return;
+    }
+    const html = chunk
+      .map((message, offset) =>
+        messageHtml(message, sorted[index + offset - 1])
+      )
+      .join("");
+    container.insertAdjacentHTML("beforeend", html);
+    index += chunk.length;
+    requestAnimationFrame(renderChunk);
+  };
+  renderChunk();
 }
 
 function appendMessage(message) {

@@ -345,3 +345,9 @@ async def test_v61_accessibility_focus_management(api_client: httpx.AsyncClient)
     assert "MutationObserver" in text
     assert "lastFocusElement" in text
     assert 'aria-modal="true"' in text
+
+
+async def test_v63_batched_rendering(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "RENDER_CHUNK_SIZE" in text
+    assert "requestAnimationFrame" in text
