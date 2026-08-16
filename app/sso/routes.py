@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import secrets
+from pathlib import Path
 from typing import Annotated, cast
 from urllib.parse import quote, urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +39,9 @@ from app.ws.manager import ConnectionManager
 
 router = APIRouter(prefix="/oidc", tags=["sso"])
 logger = get_logger(__name__)
+
+_STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
+_ERROR_PAGE = _STATIC_DIR / "oidc-error.html"
 
 
 def _check_login_rate(request: Request) -> None:
@@ -206,8 +210,13 @@ async def callback(
 
 
 @router.get("/error")
-async def error(message: str = "登录未完成") -> JSONResponse:
-    return JSONResponse({"message": message})
+async def error() -> FileResponse:
+    """登录失败回落页：页面 JS 读取 ?message= 并以 textContent 渲染（不拼 HTML）。"""
+    return FileResponse(
+        _ERROR_PAGE,
+        media_type="text/html",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 async def _clear_local_session(request: Request, db: AsyncSession) -> str | None:

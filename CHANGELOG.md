@@ -10,6 +10,9 @@
 - 呼叫 ICE 限频不再给发送方回 `invalid`：超限静默丢弃（修复 trickle ICE 连发候选触发
   「呼叫失败」并自挂断）
 - 修复 `--chat-surface-1` 未定义导致弹层卡片背景透明（统一回退到 `--chat-surface`）
+- 授权确认页点击「拒绝」/账号被封禁的回落页：`/oidc/error` 由裸 JSON 改为品牌化 HTML
+  页面（与登录外壳同风格，提供「重新登录 / 返回首页」），`message` 经 `textContent`
+  渲染、服务端不拼接 HTML，页面 `Cache-Control: no-store`
 
 ### 功能
 

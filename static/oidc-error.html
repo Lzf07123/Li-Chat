@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>登录未完成 · Li&Chat</title>
+    <meta name="description" content="Li&Chat——一次登录，直连你的小圈子" />
+    <meta name="theme-color" content="#f6fbf9" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#3a3f45" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/style.css" />
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem("chat-theme");
+          var dark =
+            saved === "dark" ||
+            (saved !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.classList.toggle("dark", dark);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div class="aurora" aria-hidden="true">
+      <div class="aurora-blob"></div>
+      <div class="aurora-blob"></div>
+      <div class="aurora-blob"></div>
+      <div class="aurora-blob"></div>
+    </div>
+    <div class="tech-ambience" aria-hidden="true">
+      <div class="tech-grid"></div>
+      <div class="tech-beam"></div>
+      <div class="tech-beam"></div>
+      <div class="tech-beam"></div>
+      <div class="tech-dot"></div>
+      <div class="tech-dot"></div>
+      <div class="tech-dot"></div>
+      <div class="tech-dot"></div>
+      <div class="tech-dot"></div>
+      <div class="tech-dot"></div>
+      <div class="tech-dot"></div>
+      <div class="tech-dot"></div>
+    </div>
+    <main id="app" class="auth-shell" aria-live="polite">
+      <noscript>Li&Chat 需要启用 JavaScript。</noscript>
+      <button id="theme-toggle" class="icon-btn theme-toggle" type="button" aria-label="切换主题">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+        </svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+      <div class="auth-brand">
+        <span id="brand-logo" class="brand-logo"></span>
+        <span class="brand-name" id="brand-name">Li&Chat</span>
+      </div>
+      <p class="slogan" id="brand-slogan">一次登录，直连你的小圈子</p>
+      <section class="card card-interactive auth-card card-signature page-enter">
+        <div class="auth-halo" aria-hidden="true"></div>
+        <h1 id="error-title">登录未完成</h1>
+        <p class="muted" id="error-message">登录未完成，请重新尝试。</p>
+        <div class="auth-actions">
+          <a class="btn btn-primary" href="/oidc/login">重新登录</a>
+          <a class="btn btn-secondary" href="/">返回首页</a>
+        </div>
+      </section>
+      <footer class="site-footer" id="brand-footer">Li&Chat · 一次登录，直连你的小圈子</footer>
+    </main>
+    <script src="/brand.js" defer></script>
+    <script src="/theme.js" defer></script>
+    <script src="/ambient.js" defer></script>
+    <script>
+      window.addEventListener("DOMContentLoaded", function () {
+        var message = new URLSearchParams(window.location.search).get("message");
+        var messageEl = document.getElementById("error-message");
+        var titleEl = document.getElementById("error-title");
+        if (message && messageEl) {
+          messageEl.textContent = message;
+        }
+        if (message && message.indexOf("限制访问") !== -1 && titleEl) {
+          titleEl.textContent = "无法登录";
+        }
+        if (window.BRAND) {
+          document.getElementById("brand-logo").innerHTML = window.BRAND.logo;
+          document.getElementById("brand-name").textContent = window.BRAND.name;
+          document.getElementById("brand-slogan").textContent = window.BRAND.slogan;
+          document.getElementById("brand-footer").textContent = window.BRAND.footer();
+          document.title = "登录未完成 · " + window.BRAND.name;
+        }
+      });
+    </script>
+  </body>
+</html>

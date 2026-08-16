@@ -153,6 +153,19 @@ async def test_static_assets_force_revalidation(api_client: httpx.AsyncClient) -
         assert response.headers.get("cache-control") == "no-cache"
 
 
+async def test_oidc_error_page_brand_chrome(api_client: httpx.AsyncClient) -> None:
+    response = await api_client.get("/oidc-error.html")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    text = response.text
+    assert 'id="error-message"' in text
+    assert 'href="/oidc/login"' in text
+    assert 'href="/"' in text
+    assert 'src="/brand.js"' in text
+    assert "auth-card" in text
+    assert "card-signature" in text
+
+
 async def test_app_chat_contracts(api_client: httpx.AsyncClient) -> None:
     response = await api_client.get("/app.js")
     assert response.status_code == 200

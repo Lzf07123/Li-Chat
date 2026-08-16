@@ -20,6 +20,7 @@
 | jti 防重放（Redis） | 配置 `LICHAT_REDIS_URL` 后改用 `SET NX EX` 原子判重，多副本共享 | `app/sso/replay.py`、`app/redis.py` |
 | 跨副本登出广播 | 回程登出后经 `lichat:logout` 频道广播，各副本断开该用户 WS（4401） | `app/redis.py`、`app/main.py` |
 | 账号封禁 | 回调 `error_description=account_blocked`、token 403 `error=access_denied`、userinfo 403 均映射为友好提示，不泄露细节 | `app/sso/routes.py` |
+| 登录失败回落页 | `/oidc/error?message=` 只经前端 `textContent` 渲染（服务端不拼接 HTML、不反射原始参数），页面 `Cache-Control: no-store` | `static/oidc-error.html`、`app/sso/routes.py` |
 | 生产密钥强度 | prod 环境会话密钥不足 32 字符直接拒绝启动 | `app/config.py` |
 | 日志 | 结构化日志，仅记录错误码与 id，不落令牌 | `app/logging.py` |
 | 搜索信息泄露防护 | 匹配昵称/邮箱但只回传 sub/nickname/name/picture；查询 ≤64、结果 ≤20 | `app/friends/service.py` |

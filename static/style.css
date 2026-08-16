@@ -337,6 +337,12 @@ a {
   font-size: 1.375rem;
 }
 
+.auth-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
 .auth-card .muted {
   margin: 0 0 20px;
   color: var(--chat-muted);

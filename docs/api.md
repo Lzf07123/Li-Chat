@@ -8,7 +8,7 @@
 | GET | `/api/version` | 无 | 前端版本 `{"frontend_version":"1.0.0","app_version":"1.0.0"}`（`no-store`；前端据此检测落后并强制刷新） |
 | GET | `/oidc/login?redirect_after=/` | 无 | 生成 PKCE 并 302 到授权页；`redirect_after` 仅接受站内相对路径 |
 | GET | `/oidc/callback` | 无 | 授权回调（code/state/error/error_description），成功 302 回 `redirect_after` 并种会话 Cookie |
-| GET | `/oidc/error?message=` | 无 | 登录错误页，返回 `{"message": ...}` |
+| GET | `/oidc/error?message=` | 无 | 登录失败回落页（HTML）：展示友好提示并提供「重新登录 / 返回首页」；`message` 仅经前端 `textContent` 渲染，服务端不拼接 HTML |
 | POST | `/oidc/logout` | CSRF | 清本地会话后 302 到 IdP `end-session`（**登出 SSO**：门户确认后联邦退出全部已授权网站） |
 | POST | `/oidc/logout-local` | CSRF | **仅登出本网站**：清本地会话并断 WS，302 首页，不调 `end-session` |
 | GET | `/oidc/post-logout?state=` | 无 | 门户登出回跳（浏览器 GET 带签名 `state`）：验签后 302 首页，无效 400 |
