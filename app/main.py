@@ -80,6 +80,16 @@ def _ensure_message_columns(conn: Connection) -> None:
         conn.exec_driver_sql("ALTER TABLE messages ADD COLUMN edited_at DATETIME")
     if "deleted_at" not in names:
         conn.exec_driver_sql("ALTER TABLE messages ADD COLUMN deleted_at DATETIME")
+    if "conversation_type" not in names:
+        conn.exec_driver_sql(
+            "ALTER TABLE messages ADD COLUMN conversation_type VARCHAR(8) "
+            "NOT NULL DEFAULT 'dm'"
+        )
+    if "group_id" not in names:
+        conn.exec_driver_sql(
+            "ALTER TABLE messages ADD COLUMN group_id INTEGER "
+            "REFERENCES groups(id) ON DELETE CASCADE"
+        )
 
 
 async def _friend_subs(db: AsyncSession, sub: str) -> list[str]:

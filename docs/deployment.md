@@ -73,3 +73,11 @@ compose 插值变量（应用忽略）：`LICHAT_PORT`（宿主机端口）、`R
 ## Issuer 注意事项
 
 发现文档声明的 `issuer` 与五个端点为 `http://account.lizf.cn`（http 字面值），但传输层实际走 https。本实现自 2026-08-16 起把五个传输端点统一升级为 https（`issuer` 保留原文用于严格校验）；建议推动 Li&Pass 侧将 issuer 改为 https，修改后无需改代码（发现文档启动时拉取并按 TTL 缓存）。
+
+## 数据库结构演进（SQLite 开发库）
+
+应用启动时 `Base.metadata.create_all` 建表，并对既有 SQLite 库做增量补列（`sessions.id_token`、
+`users.last_seen_at`、`messages.edited_at/deleted_at/conversation_type/group_id`）。群消息
+引入后，`messages.recipient_sub` 与 `participant_lo/hi` 对群消息以 `group:{id}` 哨兵占位，
+旧库无需重建即可写入群消息；数据迁移到 PostgreSQL 时需用 Alembic 重建等价语义（届时再收敛
+哨兵设计）。

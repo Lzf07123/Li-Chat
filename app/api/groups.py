@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal, cast
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.messages import MessageIn, MessageOut, MessagePageOut, ReadIn, ReadOut
 from app.auth.deps import get_current_user, require_csrf
 from app.db import get_db
 from app.groups import service
+from app.messages import service as messages_service
 from app.models import User
 from app.timeutil import iso_utc, utcnow
 from app.ws.manager import ConnectionManager
@@ -237,3 +239,75 @@ async def transfer_ownership(
     group = await service.get_group(db, user.sub, group_id)
     await _broadcast(request, db, group_id, "owner_changed", group, user.sub)
     return StatusOut(status="transferred")
+
+
+@router.post("/{group_id}/messages", response_model=MessageOut, status_code=201)
+async def send_group_message(
+    request: Request,
+    group_id: int,
+    body: MessageIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> MessageOut:
+    message = await messages_service.send_group_message(
+        db, user.sub, group_id, body.content
+    )
+    payload = messages_service.message_payload(message)
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    event = {"type": "message", "message": payload}
+    for sub in await service.member_subs(db, group_id):
+        await manager.send_to(sub, event)
+    return MessageOut(**payload)
+
+
+@router.get("/{group_id}/messages", response_model=MessagePageOut)
+async def group_history(
+    group_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    before: Annotated[int | None, Query(ge=1)] = None,
+    limit: Annotated[int, Query(ge=1, le=messages_service.HISTORY_MAX_LIMIT)] = (
+        messages_service.HISTORY_DEFAULT_LIMIT
+    ),
+) -> MessagePageOut:
+    rows, next_before = await messages_service.group_history(
+        db, user.sub, group_id, before=before, limit=limit
+    )
+    reaction_map = await messages_service.reactions_for(
+        db, [item.id for item in rows], user.sub
+    )
+    messages: list[MessageOut] = []
+    for item in rows:
+        data = messages_service.message_payload(item)
+        aggregate = reaction_map.get(item.id, {})
+        messages.append(
+            MessageOut(
+                **data,
+                reactions=aggregate.get("reactions", []),
+                my_reactions=aggregate.get("my_reactions", []),
+            )
+        )
+    return MessagePageOut(messages=messages, next_before=next_before)
+
+
+@router.post("/{group_id}/read", response_model=ReadOut)
+async def mark_group_read(
+    request: Request,
+    group_id: int,
+    body: ReadIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> ReadOut:
+    await messages_service.mark_group_read(db, user.sub, group_id, body.last_read_id)
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    event = {
+        "type": "read_receipt",
+        "by_sub": user.sub,
+        "group_id": group_id,
+        "last_read_id": body.last_read_id,
+    }
+    for sub in await service.member_subs(db, group_id):
+        await manager.send_to(sub, event)
+    return ReadOut(status="ok", last_read_id=body.last_read_id)

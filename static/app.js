@@ -347,8 +347,13 @@ function renderSidebar() {
     .map((friend) => friendHtml(friend, summaries.get(friend.sub)))
     .join("");
   document.getElementById("groups-empty").hidden = state.groups.length > 0;
+  const groupSummaries = new Map(
+    state.conversations
+      .filter((item) => item.group)
+      .map((item) => [item.group.id, item])
+  );
   document.getElementById("groups-list").innerHTML = state.groups
-    .map(groupHtml)
+    .map((group) => groupHtml(group, groupSummaries.get(group.id)))
     .join("");
 }
 
@@ -415,16 +420,25 @@ function friendHtml(friend, summary) {
   </li>`;
 }
 
-function groupHtml(group) {
+function groupHtml(group, summary) {
   const count = group.members ? group.members.length : 0;
+  const unread = summary ? summary.unread_count : 0;
+  const preview = summary && summary.last_message
+    ? summary.last_message.deleted
+      ? "消息已撤回"
+      : summary.last_message.content
+    : "";
   return `<li class="contact-item">
     <button class="contact-button" type="button"
       data-action="open-group" data-id="${group.id}">
       <div class="avatar avatar-placeholder group-avatar" aria-hidden="true">#</div>
       <span class="contact-main">
         <span class="contact-name">${escapeHtml(group.name)}</span>
-        <span class="contact-preview">${count} 位成员</span>
+        <span class="contact-preview">${preview || `${count} 位成员`}</span>
       </span>
+      ${unread > 0
+        ? `<span class="badge badge-unread" data-role="unread" data-id="${group.id}">${unread}</span>`
+        : ""}
     </button>
   </li>`;
 }
@@ -538,16 +552,24 @@ async function openGroup(groupId) {
   state.activeGroup = await response.json();
   state.activeSub = null;
   state.activePeer = null;
+  state.editingId = null;
+  state.pickerMessageId = null;
+  state.messages = [];
+  state.nextBefore = null;
   document.getElementById("chat-empty").hidden = true;
   document.getElementById("chat-active").hidden = true;
   document.getElementById("group-panel").hidden = false;
   renderGroupPanel();
   document.getElementById("app").classList.add("chat-open");
+  await loadGroupHistory();
+  await markGroupRead();
 }
 
 function closeGroupPanel() {
   state.activeGroupId = null;
   state.activeGroup = null;
+  state.messages = [];
+  state.nextBefore = null;
   document.getElementById("chat-empty").hidden = false;
   document.getElementById("group-panel").hidden = true;
   document.getElementById("app").classList.remove("chat-open");
@@ -617,6 +639,18 @@ function groupPanelHtml(group) {
         </span>
       </div>
     </header>
+    <div class="group-chat">
+      <button id="group-load-older" class="btn btn-ghost btn-sm load-older" type="button"
+        hidden>加载更早消息</button>
+      <div id="group-messages" class="messages" role="log" aria-live="polite"
+        aria-label="群聊记录"></div>
+      <form id="group-composer" class="composer">
+        <label class="sr-only" for="group-message-input">消息内容</label>
+        <textarea id="group-message-input" class="input" rows="1" maxlength="2000"
+          placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+        <button class="btn btn-primary" type="submit">发送</button>
+      </form>
+    </div>
     <div class="group-panel-body">
       <section class="group-section">
         <h3 class="group-section-title">成员</h3>
@@ -653,6 +687,18 @@ function renderGroupPanel() {
   panel.innerHTML = groupPanelHtml(state.activeGroup);
   const back = document.getElementById("group-back");
   if (back) back.addEventListener("click", closeGroupPanel);
+  const loadOlder = document.getElementById("group-load-older");
+  if (loadOlder) {
+    loadOlder.addEventListener("click", () => loadGroupHistory(state.nextBefore));
+  }
+  const composer = document.getElementById("group-composer");
+  if (composer) {
+    composer.addEventListener("submit", onGroupComposerSubmit);
+    document.getElementById("group-message-input").addEventListener(
+      "keydown",
+      onGroupComposerKeydown
+    );
+  }
 }
 
 async function refreshGroups() {
@@ -879,7 +925,7 @@ function messageHtml(message) {
   const body = message.deleted
     ? '<div class="message-bubble message-bubble-deleted">消息已撤回</div>'
     : `<div class="message-bubble">${escapeHtml(message.content)}</div>`;
-  const actions = own && !message.deleted
+  const actions = own && !message.deleted && !state.activeGroupId
     ? `<span class="message-actions">
         <button class="message-action" type="button"
           data-action="edit" data-id="${message.id}">编辑</button>
@@ -890,7 +936,7 @@ function messageHtml(message) {
   const editedMark = !message.deleted && message.edited_at
     ? '<span class="message-read">已编辑</span>'
     : "";
-  const reactions = message.deleted ? "" : reactionsHtml(message);
+  const reactions = message.deleted || state.activeGroupId ? "" : reactionsHtml(message);
   return `<div class="message ${own ? "message-own" : "message-other"}">
     ${body}
     <div class="message-meta">${escapeHtml(time)}${read
@@ -923,7 +969,8 @@ function reactionsHtml(message) {
 }
 
 function renderMessages() {
-  const container = document.getElementById("messages");
+  const container = messagesContainer();
+  if (!container) return;
   container.innerHTML = state.messages
     .slice()
     .sort((a, b) => a.id - b.id)
@@ -934,9 +981,85 @@ function renderMessages() {
 function appendMessage(message) {
   if (state.messages.some((item) => item.id === message.id)) return;
   state.messages.push(message);
-  const container = document.getElementById("messages");
+  const container = messagesContainer();
+  if (!container) return;
   container.insertAdjacentHTML("beforeend", messageHtml(message));
   container.scrollTop = container.scrollHeight;
+}
+
+function messagesContainer() {
+  return document.getElementById(
+    state.activeGroupId ? "group-messages" : "messages"
+  );
+}
+
+async function loadGroupHistory(before) {
+  if (state.loadingHistory || state.activeGroupId === null) return;
+  state.loadingHistory = true;
+  let url = `/api/groups/${state.activeGroupId}/messages?limit=50`;
+  if (before) url += `&before=${before}`;
+  try {
+    const response = await api(url);
+    if (!response.ok) return;
+    const page = await response.json();
+    state.nextBefore = page.next_before;
+    if (before) {
+      state.messages = page.messages.slice().reverse().concat(state.messages);
+      renderMessages();
+    } else {
+      state.messages = page.messages.slice().reverse();
+      renderMessages();
+      const container = messagesContainer();
+      if (container) container.scrollTop = container.scrollHeight;
+    }
+    const loadOlder = document.getElementById("group-load-older");
+    if (loadOlder) loadOlder.hidden = !page.next_before;
+  } finally {
+    state.loadingHistory = false;
+  }
+}
+
+async function markGroupRead() {
+  if (!state.activeGroupId || state.messages.length === 0) return;
+  const last = state.messages[state.messages.length - 1];
+  const response = await api(`/api/groups/${state.activeGroupId}/read`, {
+    method: "POST",
+    body: JSON.stringify({ last_read_id: last.id }),
+  });
+  if (response.ok) clearGroupUnread(state.activeGroupId, last.id);
+}
+
+function clearGroupUnread(groupId, lastReadId) {
+  const item = state.conversations.find(
+    (conversation) => conversation.group && conversation.group.id === groupId
+  );
+  if (item) {
+    item.unread_count = 0;
+    item.last_read_id = lastReadId;
+  }
+  renderSidebar();
+}
+
+async function onGroupComposerSubmit(event) {
+  event.preventDefault();
+  const input = document.getElementById("group-message-input");
+  const content = input.value.trim();
+  if (!content || !state.activeGroupId) return;
+  const response = await api(`/api/groups/${state.activeGroupId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ content }),
+  });
+  if (response.ok) {
+    input.value = "";
+    input.focus();
+  }
+}
+
+function onGroupComposerKeydown(event) {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    document.getElementById("group-composer").requestSubmit();
+  }
 }
 
 function updatePeerStatus(sub, online) {
@@ -1077,12 +1200,27 @@ function onComposerBlur() {
 function handleServerMessage(data) {
   if (data.type === "message" && data.message) {
     const message = data.message;
-    const inActive =
-      state.activeSub &&
+    const inActiveGroup =
+      state.activeGroupId !== null && message.group_id === state.activeGroupId;
+    const inActiveDm =
+      Boolean(state.activeSub) &&
       (message.sender_sub === state.activeSub || message.recipient_sub === state.activeSub);
-    if (inActive) {
+    if (inActiveGroup) {
+      appendMessage(message);
+      if (message.sender_sub !== state.me.sub) markGroupRead();
+    } else if (inActiveDm) {
       appendMessage(message);
       if (message.sender_sub !== state.me.sub) markReadActive();
+    } else if (message.group_id != null) {
+      const item = state.conversations.find(
+        (conversation) =>
+          conversation.group && conversation.group.id === message.group_id
+      );
+      if (item) {
+        item.last_message = message;
+        if (message.sender_sub !== state.me.sub) item.unread_count += 1;
+        renderSidebar();
+      }
     } else {
       const peer =
         message.sender_sub === state.me.sub ? message.recipient_sub : message.sender_sub;

@@ -29,13 +29,16 @@
 | PATCH | `/api/groups/{id}/members/{sub}` | 会话 + CSRF | 调整角色 `{"role":"admin|member"}`（仅 owner，不可改 owner 自身） |
 | POST | `/api/groups/{id}/leave` | 会话 + CSRF | 退出（owner 须先转让，409） |
 | POST | `/api/groups/{id}/transfer` | 会话 + CSRF | 转让 `{"new_owner_sub"}`（仅 owner，目标须为成员） |
+| POST | `/api/groups/{id}/messages` | 会话 + CSRF | 群发消息 `{"content"}`（仅成员）；201 返回消息（附 `group_id`）；WS 推全成员 |
+| GET | `/api/groups/{id}/messages?limit=&before=` | 会话 | 群历史倒序分页（仅成员；参数语义同单聊） |
+| POST | `/api/groups/{id}/read` | 会话 + CSRF | 群已读 `{"last_read_id"}`（仅成员、消息须属该群、游标只前进）；WS 推全成员 |
 | POST | `/api/conversations/{sub}/messages` | 会话 + CSRF | 发纯文本 `{"content":"..."}`（1–2000，strip 校验）；201 返回完整消息；400 自聊 / 403 非好友 / 404 未知 |
 | GET | `/api/conversations/{sub}/messages?limit=&before=` | 会话 | 历史倒序分页（limit 默认 50、1–100；before 为上一页最小 id 不含）；`{"messages":[...],"next_before":int|null}` |
 | PATCH | `/api/conversations/{sub}/messages/{id}` | 会话 + CSRF | 编辑 `{"content"}`；仅发送者、未撤回、5 分钟内；403 非发送者 / 404 不存在 / 409 已撤回或超窗 |
 | DELETE | `/api/conversations/{sub}/messages/{id}` | 会话 + CSRF | 撤回；同上鉴权；返回墓碑 `{id,sender_sub,recipient_sub,deleted:true,created_at}`（不含原文） |
 | PUT | `/api/conversations/{sub}/messages/{id}/reactions` | 会话 + CSRF | 回应 `{"emoji"}`（1–8 字符，禁空白/控制符；幂等）；404 非参与者 / 409 已撤回；`{"message_id","emoji","action":"added","count"}` |
 | DELETE | `/api/conversations/{sub}/messages/{id}/reactions?emoji=` | 会话 + CSRF | 移除回应（幂等）；`{"message_id","emoji","action":"removed","count"}` |
-| GET | `/api/conversations` | 会话 | 好友会话摘要，按最后消息倒序；`{"conversations":[{peer:Profile,last_message:Message|null,unread_count:int,last_read_id:int}]}` |
+| GET | `/api/conversations` | 会话 | 单聊 + 群聊摘要合并，按最后消息倒序；每项 `{peer:Profile|null,group:{id,name,owner_sub,member_count}|null,last_message:Message|null,unread_count:int,last_read_id:int}`（peer/group 二选一出现） |
 | POST | `/api/conversations/{sub}/read` | 会话 + CSRF | 标记已读 `{"last_read_id":int>=1}`；403 非好友 / 404 消息不属于该会话；游标只前进；`{"status":"ok","last_read_id":n}` |
 | GET | `/` | 无 | 同源前端页面 |
 

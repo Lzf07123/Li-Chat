@@ -94,6 +94,11 @@ class Message(Base):
     participant_lo: Mapped[str] = mapped_column(String(64))
     participant_hi: Mapped[str] = mapped_column(String(64))
     content: Mapped[str] = mapped_column(Text)
+    conversation_type: Mapped[str] = mapped_column(String(8), default="dm")
+    group_id: Mapped[int | None] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("groups.id", ondelete="CASCADE"),
+    )
     edited_at: Mapped[datetime | None] = mapped_column(DateTime)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -102,6 +107,7 @@ class Message(Base):
         CheckConstraint("sender_sub != recipient_sub", name="ck_messages_no_self"),
         CheckConstraint("participant_lo < participant_hi", name="ck_messages_participant_order"),
         Index("ix_messages_conversation", "participant_lo", "participant_hi", "id"),
+        Index("ix_messages_group", "group_id", "id"),
     )
 
 
@@ -173,3 +179,20 @@ class GroupMember(Base):
             "role IN ('owner', 'admin', 'member')", name="ck_group_members_role"
         ),
     )
+
+
+class GroupRead(Base):
+    __tablename__ = "group_reads"
+
+    user_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), primary_key=True
+    )
+    group_id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("groups.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    last_read_message_id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), default=0
+    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

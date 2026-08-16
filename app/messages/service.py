@@ -9,7 +9,8 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.friends.service import are_friends, list_friends
-from app.models import DmRead, Message, Reaction, User
+from app.groups.service import membership as group_membership
+from app.models import DmRead, Group, GroupMember, GroupRead, Message, Reaction, User
 from app.timeutil import iso_utc, utcnow
 
 MAX_MESSAGE_LENGTH = 2000
@@ -17,6 +18,7 @@ HISTORY_DEFAULT_LIMIT = 50
 HISTORY_MAX_LIMIT = 100
 EDIT_WINDOW_SECONDS = 300
 EMOJI_MAX_LENGTH = 8
+GROUP_RECIPIENT_PREFIX = "group:"
 
 
 def pair_key(a: str, b: str) -> tuple[str, str]:
@@ -28,8 +30,11 @@ def message_payload(message: Message) -> dict[str, Any]:
         "id": message.id,
         "sender_sub": message.sender_sub,
         "recipient_sub": message.recipient_sub,
+        "conversation_type": message.conversation_type,
         "created_at": iso_utc(message.created_at),
     }
+    if message.conversation_type == "group":
+        payload["group_id"] = message.group_id
     if message.deleted_at is not None:
         payload["deleted"] = True
     else:
@@ -107,6 +112,21 @@ async def history(
 
 
 async def conversation_summaries(db: AsyncSession, me_sub: str) -> list[dict[str, Any]]:
+    dm_summaries = await _dm_conversation_summaries(db, me_sub)
+    group_summaries = await _group_conversation_summaries(db, me_sub)
+    summaries = [*dm_summaries, *group_summaries]
+    summaries.sort(
+        key=lambda item: (
+            item["last_message"]["id"] if item["last_message"] is not None else -1
+        ),
+        reverse=True,
+    )
+    return summaries
+
+
+async def _dm_conversation_summaries(
+    db: AsyncSession, me_sub: str
+) -> list[dict[str, Any]]:
     friends = await list_friends(db, me_sub)
     subs = [friend["sub"] for friend in friends if friend["sub"] is not None]
     reads: dict[str, DmRead] = {}
@@ -173,6 +193,7 @@ async def conversation_summaries(db: AsyncSession, me_sub: str) -> list[dict[str
         summaries.append(
             {
                 "peer": friend,
+                "group": None,
                 "last_message": message_payload(last) if last is not None else None,
                 "unread_count": (
                     unread_by_peer.get(friend_sub, 0) if friend_sub is not None else 0
@@ -180,13 +201,158 @@ async def conversation_summaries(db: AsyncSession, me_sub: str) -> list[dict[str
                 "last_read_id": cursor.last_read_message_id if cursor is not None else 0,
             }
         )
-    summaries.sort(
-        key=lambda item: (
-            item["last_message"]["id"] if item["last_message"] is not None else -1
-        ),
-        reverse=True,
-    )
     return summaries
+
+
+async def _group_conversation_summaries(
+    db: AsyncSession, me_sub: str
+) -> list[dict[str, Any]]:
+    group_ids = (
+        await db.execute(
+            select(GroupMember.group_id).where(GroupMember.user_sub == me_sub)
+        )
+    ).scalars().all()
+    if not group_ids:
+        return []
+    groups = (
+        await db.execute(select(Group).where(Group.id.in_(list(group_ids))))
+    ).scalars().all()
+    read_rows = (
+        await db.execute(
+            select(GroupRead).where(
+                GroupRead.user_sub == me_sub, GroupRead.group_id.in_(list(group_ids))
+            )
+        )
+    ).scalars().all()
+    cursors = {row.group_id: row.last_read_message_id for row in read_rows}
+    messages = (
+        await db.execute(
+            select(Message)
+            .where(
+                Message.conversation_type == "group",
+                Message.group_id.in_(list(group_ids)),
+            )
+            .order_by(Message.id.desc())
+        )
+    ).scalars().all()
+    last_by_group: dict[int, Message] = {}
+    unread_by_group: dict[int, int] = {}
+    for message in messages:
+        group_id = message.group_id
+        if group_id is None:
+            continue
+        last_by_group.setdefault(group_id, message)
+        if message.sender_sub != me_sub and message.id > cursors.get(group_id, 0):
+            unread_by_group[group_id] = unread_by_group.get(group_id, 0) + 1
+    summaries: list[dict[str, Any]] = []
+    for group in groups:
+        last = last_by_group.get(group.id)
+        summaries.append(
+            {
+                "peer": None,
+                "group": {
+                    "id": group.id,
+                    "name": group.name,
+                    "owner_sub": group.owner_sub,
+                    "member_count": await _group_member_count(db, group.id),
+                },
+                "last_message": message_payload(last) if last is not None else None,
+                "unread_count": unread_by_group.get(group.id, 0),
+                "last_read_id": cursors.get(group.id, 0),
+            }
+        )
+    return summaries
+
+
+async def _group_member_count(db: AsyncSession, group_id: int) -> int:
+    result = await db.execute(
+        select(func.count()).select_from(GroupMember).where(GroupMember.group_id == group_id)
+    )
+    return int(result.scalar_one())
+
+
+async def send_group_message(
+    db: AsyncSession, sender_sub: str, group_id: int, content: str
+) -> Message:
+    member_row = await group_membership(db, group_id, sender_sub)
+    if member_row is None:
+        raise HTTPException(status_code=403, detail="not a group member")
+    group = await db.get(Group, group_id)
+    if group is None:
+        raise HTTPException(status_code=404, detail="group not found")
+    marker = f"{GROUP_RECIPIENT_PREFIX}{group_id}"
+    message = Message(
+        sender_sub=sender_sub,
+        recipient_sub=marker,
+        participant_lo=marker,
+        participant_hi=f"{marker}:end",
+        content=content,
+        conversation_type="group",
+        group_id=group_id,
+    )
+    db.add(message)
+    await db.flush()
+    await _advance_group_read(db, sender_sub, group_id, message.id)
+    await db.commit()
+    await db.refresh(message)
+    return message
+
+
+async def _advance_group_read(
+    db: AsyncSession, user_sub: str, group_id: int, message_id: int
+) -> None:
+    row = await db.get(GroupRead, (user_sub, group_id))
+    if row is None:
+        db.add(
+            GroupRead(
+                user_sub=user_sub, group_id=group_id, last_read_message_id=message_id
+            )
+        )
+    elif message_id > row.last_read_message_id:
+        row.last_read_message_id = message_id
+
+
+async def group_history(
+    db: AsyncSession,
+    me_sub: str,
+    group_id: int,
+    *,
+    before: int | None = None,
+    limit: int = HISTORY_DEFAULT_LIMIT,
+) -> tuple[list[Message], int | None]:
+    member_row = await group_membership(db, group_id, me_sub)
+    if member_row is None:
+        raise HTTPException(status_code=404, detail="group not found")
+    stmt = (
+        select(Message)
+        .where(Message.conversation_type == "group", Message.group_id == group_id)
+        .order_by(Message.id.desc())
+        .limit(limit + 1)
+    )
+    if before is not None:
+        stmt = stmt.where(Message.id < before)
+    rows = (await db.execute(stmt)).scalars().all()
+    has_more = len(rows) > limit
+    page = list(rows[:limit])
+    next_before = page[-1].id if has_more and page else None
+    return page, next_before
+
+
+async def mark_group_read(
+    db: AsyncSession, me_sub: str, group_id: int, last_read_id: int
+) -> None:
+    member_row = await group_membership(db, group_id, me_sub)
+    if member_row is None:
+        raise HTTPException(status_code=404, detail="group not found")
+    message = await db.get(Message, last_read_id)
+    if (
+        message is None
+        or message.conversation_type != "group"
+        or message.group_id != group_id
+    ):
+        raise HTTPException(status_code=404, detail="message not found in group")
+    await _advance_group_read(db, me_sub, group_id, last_read_id)
+    await db.commit()
 
 
 async def mark_read(

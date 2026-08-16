@@ -41,6 +41,8 @@ class MessageOut(BaseModel):
     id: int
     sender_sub: str
     recipient_sub: str
+    conversation_type: str = "dm"
+    group_id: int | None = None
     content: str | None = None
     deleted: bool = False
     edited_at: str | None = None
@@ -81,10 +83,18 @@ class PeerOut(BaseModel):
 
 
 class ConversationSummaryOut(BaseModel):
-    peer: PeerOut
+    peer: PeerOut | None = None
+    group: GroupSummaryOut | None = None
     last_message: MessageOut | None
     unread_count: int
     last_read_id: int
+
+
+class GroupSummaryOut(BaseModel):
+    id: int
+    name: str
+    owner_sub: str
+    member_count: int
 
 
 class ConversationsOut(BaseModel):

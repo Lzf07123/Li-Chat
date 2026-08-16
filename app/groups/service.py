@@ -40,7 +40,7 @@ async def member_subs(db: AsyncSession, group_id: int) -> list[str]:
     return list(rows)
 
 
-async def _membership(
+async def membership(
     db: AsyncSession, group_id: int, user_sub: str
 ) -> GroupMember | None:
     return await db.get(GroupMember, (group_id, user_sub))
@@ -49,12 +49,12 @@ async def _membership(
 async def _require_role(
     db: AsyncSession, group_id: int, user_sub: str, roles: set[str]
 ) -> GroupMember:
-    membership = await _membership(db, group_id, user_sub)
-    if membership is None:
+    member_row = await membership(db, group_id, user_sub)
+    if member_row is None:
         raise HTTPException(status_code=404, detail="group not found")
-    if membership.role not in roles:
+    if member_row.role not in roles:
         raise HTTPException(status_code=403, detail="insufficient permissions")
-    return membership
+    return member_row
 
 
 async def group_payload(db: AsyncSession, group: Group) -> dict[str, Any]:
@@ -180,7 +180,7 @@ async def remove_member(
     db: AsyncSession, actor_sub: str, group_id: int, target_sub: str
 ) -> None:
     actor = await _require_role(db, group_id, actor_sub, {"owner", "admin"})
-    target = await _membership(db, group_id, target_sub)
+    target = await membership(db, group_id, target_sub)
     if target is None:
         raise HTTPException(status_code=404, detail="member not found")
     if target.role == "owner":
@@ -201,7 +201,7 @@ async def set_member_role(
         raise HTTPException(status_code=400, detail="cannot change your own role")
     if actor.role != "owner":
         raise HTTPException(status_code=403, detail="only the owner can change roles")
-    target = await _membership(db, group_id, target_sub)
+    target = await membership(db, group_id, target_sub)
     if target is None:
         raise HTTPException(status_code=404, detail="member not found")
     if target.role == "owner":
@@ -211,12 +211,12 @@ async def set_member_role(
 
 
 async def leave_group(db: AsyncSession, me_sub: str, group_id: int) -> None:
-    membership = await _membership(db, group_id, me_sub)
-    if membership is None:
+    member_row = await membership(db, group_id, me_sub)
+    if member_row is None:
         raise HTTPException(status_code=404, detail="group not found")
-    if membership.role == "owner":
+    if member_row.role == "owner":
         raise HTTPException(status_code=409, detail="owner must transfer before leaving")
-    await db.delete(membership)
+    await db.delete(member_row)
     await db.commit()
 
 
@@ -224,13 +224,13 @@ async def transfer_ownership(
     db: AsyncSession, me_sub: str, group_id: int, new_owner_sub: str
 ) -> None:
     await _require_role(db, group_id, me_sub, {"owner"})
-    target = await _membership(db, group_id, new_owner_sub)
+    target = await membership(db, group_id, new_owner_sub)
     if target is None:
         raise HTTPException(status_code=404, detail="member not found")
     group = await db.get(Group, group_id)
     if group is None:
         raise HTTPException(status_code=404, detail="group not found")
-    actor = await _membership(db, group_id, me_sub)
+    actor = await membership(db, group_id, me_sub)
     if actor is not None:
         actor.role = "member"
     target.role = "owner"

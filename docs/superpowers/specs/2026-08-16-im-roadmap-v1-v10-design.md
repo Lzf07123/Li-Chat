@@ -192,10 +192,10 @@ admin/owner）、转让/退出、非成员不可见、全绿。
 
 `messages` 增 `conversation_type`（`dm|group`，默认 dm）与 `group_id`（可空 FK）。DM 行为
 保持既有 `sender_sub/recipient_sub/participant_lo/hi`；群消息 `sender_sub` 为发送者、
-`group_id` 指向群、`recipient_sub` 置空由约束允许（改造原非空/自环约束，DM 校验移到
-service 层）。SQLite 走 `_ensure_message_columns` 兼容迁移；PostgreSQL 未来 Alembic。
-`conversation_reads` 泛化：`user_sub + conversation_type + conversation_id`（dm 用
-`participant_lo:hi` 字符串键、group 用 group_id）+ `last_read_message_id`。
+`group_id` 指向群，`recipient_sub`/`participant_lo/hi` 以 `group:{id}` 哨兵占位，兼容旧库
+非空与 `lo < hi` 约束，无需重建表（SQLite 走 `_ensure_message_columns` 自动补列；PostgreSQL
+未来 Alembic）。群已读游标独立表 `group_reads`（`user_sub + group_id + last_read_message_id`，
+只前进），单聊游标沿用 `dm_reads`。
 
 ### 接口
 

@@ -4,6 +4,11 @@
 
 ### 功能
 
+- 群消息与群已读（里程碑三核心）：`messages` 会话抽象（`conversation_type dm|group` +
+  `group_id`，SQLite 兼容迁移自动补列、旧 DM 数据不动；群消息以 `group:{id}` 哨兵占位
+  recipient/participant 满足旧库约束）、`group_reads` 已读游标（只前进）、群发送/历史
+  分页/标记已读（仅成员）、`GET /api/conversations` 合并群摘要（peer/group 二选一）、WS
+  群消息与群已读回执广播全成员；前端群聊天区、群未读徽标、打开即已读
 - 群聊管理（里程碑三）：建群（初始成员必须为创建者好友、单请求 ≤20、容量 200）、群列表/
   详情、改名（owner/admin）、邀请（owner/admin，好友闸）、移除（admin 不得移除 owner 或
   admin，owner 可移除 admin）、角色调整（owner 专属）、退出（owner 需先转让）、转让群主；
