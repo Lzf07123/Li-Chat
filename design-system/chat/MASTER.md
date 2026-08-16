@@ -26,7 +26,14 @@
 
 ## 页面模式
 
-AuthShell（未登录）：居中 max-w-md 卡片（右上角主题切换 + 品牌标识 + slogan + 登录卡 + 底部备案）；AppShell（已登录）：sticky 顶栏（品牌 + 主题切换 + 退出）+ max-w-5xl 内容卡（头像/昵称/连接状态 aria-live）+ 底部备案。
+AuthShell（未登录）：居中 max-w-md 卡片（右上角主题切换 + 品牌标识 + slogan + 登录卡 + 底部
+备案），登录外壳本身可内滚。
+
+AppShell（已登录，微信式全高双栏）：`100dvh` 应用外壳、页面不滚动——顶部品牌栏（品牌 +
+连接状态 + 个人菜单 + 主题切换）+ 双栏主区（会话列表栏 300px 内滚 + 聊天面板全高，消息列表
+与输入框内部滚动，输入框固定在面板底部）+ 底部备案。整体 `max-width: 1200px` 居中，消息/
+输入内容列 `max-width: 880px` 居中；移动端 <768px 单栏切换（列表 ↔ 聊天，返回按钮）、顶栏
+与输入框适配 `env(safe-area-inset-*)`、隐藏页脚。品牌令牌（信使蓝、中性色、圆角/阴影）不变。
 
 ## 品牌单点
 
@@ -37,5 +44,9 @@ brand.js 暴露 `BRAND.{name,slug,slogan,description,icp,police,logo,footer()}`�
 ambient.js 暴露 `LiChatAmbient.setDensity(n)`；浓度：登录 10、登录后 8、移动端（<768px）≤6；四类符号（直线穿行/方块钟摆/Z 形穿行/光斑公转）；颜色读 CSS 令牌；页面隐藏时暂停；reduced-motion 单帧。
 
 ## 验收状态
+
+布局回归（2026-08-16，微信式布局）：桌面 1440×900 与移动 390×844 经无头浏览器程序化验收——
+页面 `scrollY=0`、`body overflow:hidden`、无横向溢出、聊天框内部滚动（可见高度 < 内容高度）、
+桌面主区 ≤1200px / 内容列 ≤880px、移动端列表↔聊天切换正常、输入框未越出视口。
 
 Pre-Delivery Checklist 全部通过（2026-08-16）：无 emoji 图标、可点击元素 cursor-pointer、hover 150–300ms、正文对比度 ≥4.5:1、focus-visible 2px 主色描边、reduced-motion 单帧、375/1440 无横向滚动、令牌与文案无硬编码、明暗切换无闪烁（首帧内联脚本 + 像素抽样验证：浅 `#F8FAFC` / 深 `#0B1220`）。视觉基线见 [preview/](./preview/)。
