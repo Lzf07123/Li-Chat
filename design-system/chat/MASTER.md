@@ -64,4 +64,7 @@ ambient.js 暴露 `LiChatAmbient.setDensity(n)`；浓度：登录 10、登录后
 移动端聊天全屏复验（2026-08-16，390×844）：保留状态顶栏（69px），聊天面板顶=69、高 775
 （占满顶栏下剩余视口），输入框底=844 贴边；页面 `scrollY=0`，仅消息列表内滚。
 
+移动端硬锁与输入框复验（2026-08-16）：`body` 固定定位 + `touch-action:none` 后强推滚动仍
+为 0；输入框单行 44px → 三行 86px 自动增高（桌面 36 → 74px），发送/取消后复位。
+
 Pre-Delivery Checklist 全部通过（2026-08-16）：无 emoji 图标、可点击元素 cursor-pointer、hover 150–300ms、正文对比度 ≥4.5:1、focus-visible 2px 主色描边、reduced-motion 单帧、375/1440 无横向滚动、令牌与文案无硬编码、明暗切换无闪烁（首帧内联脚本 + 像素抽样验证：浅 `#F8FAFC` / 深 `#0B1220`）。视觉基线见 [preview/](./preview/)。

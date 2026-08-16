@@ -1216,6 +1216,9 @@ function renderGroupPanel() {
       "keydown",
       onGroupComposerKeydown
     );
+    document.getElementById("group-message-input").addEventListener("input", (event) => {
+      autoGrowInput(event.target);
+    });
     document.getElementById("group-attach-btn").addEventListener("click", () => {
       document.getElementById("group-attach-input").click();
     });
@@ -1444,6 +1447,7 @@ async function openChat(sub) {
     <span id="typing-hint" class="typing-hint" hidden>正在输入…</span>`;
   clearTypingHint();
   document.getElementById("message-input").value = "";
+  autoGrowInput(document.getElementById("message-input"));
   document.getElementById("load-older").hidden = true;
   renderMessages();
   document.getElementById("app").classList.add("chat-open");
@@ -1708,6 +1712,7 @@ async function onGroupComposerSubmit(event) {
     const mentionList = document.getElementById("group-mention-list");
     if (mentionList) mentionList.hidden = true;
     input.value = "";
+    autoGrowInput(input);
     input.focus();
   }
 }
@@ -1850,6 +1855,7 @@ async function onComposerSubmit(event) {
     state.editingId = null;
     clearReply();
     input.value = "";
+    autoGrowInput(input);
     input.placeholder = "输入消息，Enter 发送，Shift+Enter 换行";
     input.focus();
   }
@@ -2009,15 +2015,23 @@ function cancelEditing() {
     ? document.getElementById("group-message-input")
     : document.getElementById("message-input");
   input.value = "";
+  autoGrowInput(input);
   input.placeholder = "输入消息，Enter 发送，Shift+Enter 换行";
 }
 
 function onComposerInput() {
   sendTyping("start");
+  autoGrowInput(document.getElementById("message-input"));
 }
 
 function onComposerBlur() {
   sendTyping("stop");
+}
+
+function autoGrowInput(input) {
+  if (!input) return;
+  input.style.height = "auto";
+  input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
 }
 
 function handleServerMessage(data) {
