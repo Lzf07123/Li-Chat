@@ -142,6 +142,7 @@ async def test_v12_full_adoption_contracts(api_client: httpx.AsyncClient) -> Non
         'class="flow-line"',
         "card-signature",
         "btn-ripple",
+        "auth-main",
     ]:
         assert marker in app
 
