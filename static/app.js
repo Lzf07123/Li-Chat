@@ -2926,6 +2926,35 @@ function loadOlder() {
   loadHistory(state.nextBefore);
 }
 
+async function reconcileMessages() {
+  let url;
+  if (state.activeGroupId !== null) {
+    url = `/api/groups/${state.activeGroupId}/messages?limit=50`;
+  } else if (state.activeSub) {
+    url = `/api/conversations/${encodeURIComponent(state.activeSub)}/messages?limit=50`;
+  } else {
+    return;
+  }
+  const response = await api(url);
+  if (!response.ok) return;
+  const page = await response.json();
+  const existing = new Map(state.messages.map((message) => [message.id, message]));
+  let changed = false;
+  for (const fresh of page.messages) {
+    const current = existing.get(fresh.id);
+    if (current) {
+      if (JSON.stringify(current) !== JSON.stringify(fresh)) {
+        existing.set(fresh.id, fresh);
+        changed = true;
+      }
+    } else {
+      state.messages.push(fresh);
+      changed = true;
+    }
+  }
+  if (changed) renderMessages();
+}
+
 function closeChat() {
   if (state.recording.active) stopVoice();
   exitSelectMode();
@@ -4395,8 +4424,7 @@ function connectWebSocket() {
       state.wsReconnecting = false;
       toast("已重新连接", "success");
       refreshSidebar();
-      if (state.activeSub) loadHistory();
-      else if (state.activeGroupId !== null) loadGroupHistory();
+      reconcileMessages();
     }
     setStatus("connected", "已连接");
   });

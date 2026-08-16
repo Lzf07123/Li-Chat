@@ -283,3 +283,9 @@ async def test_v50_help_and_about(api_client: httpx.AsyncClient) -> None:
     assert "function openAboutModal(" in text
     assert "app_version" in text
     assert "open-about" in text
+
+
+async def test_v51_reconnect_reconcile(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function reconcileMessages(" in text
+    assert "reconcileMessages()" in text
