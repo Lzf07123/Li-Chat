@@ -2408,3 +2408,64 @@ a {
     animation: none;
   }
 }
+
+/* 消息多选 */
+.message-check {
+  position: absolute;
+  left: -34px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--chat-border);
+  border-radius: 50%;
+  background: var(--chat-surface);
+  color: transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+}
+
+.message {
+  position: relative;
+}
+
+.message-own .message-check {
+  left: auto;
+  right: -34px;
+}
+
+.message-check-on {
+  border-color: var(--chat-primary);
+  background: var(--chat-primary);
+  color: var(--chat-primary-fg);
+}
+
+.select-bar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  transform: translateX(-50%);
+  z-index: 950;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--chat-surface);
+  border: 1px solid var(--chat-border);
+  box-shadow: var(--shadow-lg);
+}
+
+.select-count {
+  font-size: 0.85rem;
+  color: var(--chat-fg);
+  white-space: nowrap;
+}
+
+.messages.select-active {
+  padding-left: 44px;
+  padding-right: 44px;
+}

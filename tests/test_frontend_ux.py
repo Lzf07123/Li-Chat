@@ -166,3 +166,12 @@ async def test_v35_group_files_panel(api_client: httpx.AsyncClient) -> None:
     assert "function loadGroupFiles(" in text
     assert "group-files-list" in text
     assert "group-files-more" in text
+
+
+async def test_v36_multi_select_batch_forward(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "selectMode" in text
+    assert 'data-action="select-message"' in text
+    assert "select-bar" in text
+    assert "forwardMessageIds" in text
+    assert "toggleSelectMode" in text

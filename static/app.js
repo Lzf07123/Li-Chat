@@ -29,7 +29,9 @@ const state = {
   editingId: null,
   pickerMessageId: null,
   replyTo: null,
-  forwardMessageId: null,
+  forwardMessageIds: [],
+  selectMode: false,
+  selectedIds: [],
   mentionSubs: [],
   mentionOpen: false,
   recording: { active: false, recorder: null, isGroup: false, seconds: 0, timer: null },
@@ -1437,6 +1439,7 @@ async function toggleConversationSetting(button) {
 
 async function openGroup(groupId, locateId = null) {
   if (state.recording.active) stopVoice();
+  exitSelectMode();
   const response = await api(`/api/groups/${groupId}`);
   if (!response.ok) return;
   state.activeGroupId = groupId;
@@ -1465,6 +1468,7 @@ async function openGroup(groupId, locateId = null) {
 
 function closeGroupPanel() {
   if (state.recording.active) stopVoice();
+  exitSelectMode();
   state.activeGroupId = null;
   state.activeGroup = null;
   state.replyTo = null;
@@ -1555,6 +1559,15 @@ function groupPanelHtml(group) {
           <span class="chat-peer-status">${group.members.length} 位成员</span>
         </span>
       </div>
+      <span class="chat-peer-actions">
+        <button class="icon-btn" type="button" data-action="toggle-select" aria-label="多选消息">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 11l3 3L22 4"/>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+          </svg>
+        </button>
+      </span>
     </header>
     <div class="group-chat">
       <button id="group-load-older" class="btn btn-ghost btn-sm load-older" type="button"
@@ -2105,6 +2118,10 @@ async function onGroupPanelClick(event) {
   const groupId = state.activeGroupId;
   if (groupId === null) return;
   const action = button.dataset.action;
+  if (action === "toggle-select") {
+    toggleSelectMode();
+    return;
+  }
   if (action === "group-files-more") {
     await loadGroupFiles(Number(button.dataset.before));
     return;
@@ -2188,6 +2205,7 @@ async function onGroupPanelClick(event) {
 
 async function openChat(sub, locateId = null) {
   if (state.recording.active) stopVoice();
+  exitSelectMode();
   const peer =
     state.friends.find((friend) => friend.sub === sub) ||
     state.searchResults.find((result) => result.sub === sub) ||
@@ -2235,6 +2253,13 @@ async function openChat(sub, locateId = null) {
           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M23 7l-7 5 7 5V7z"/>
           <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+        </svg>
+      </button>
+      <button class="icon-btn" type="button" data-action="toggle-select" aria-label="多选消息">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 11l3 3L22 4"/>
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
         </svg>
       </button>
     </span>
@@ -2301,6 +2326,7 @@ function loadOlder() {
 
 function closeChat() {
   if (state.recording.active) stopVoice();
+  exitSelectMode();
   sendTyping("stop");
   state.editingId = null;
   state.replyTo = null;
@@ -2414,11 +2440,19 @@ function messageHtml(message, previous) {
     : "";
   const mentionMark = mentioned ? '<span class="message-read">@我</span>' : "";
   const reactions = message.deleted ? "" : reactionsHtml(message);
+  const selectCheck =
+    state.selectMode && !message.deleted
+      ? `<button class="message-check${
+          state.selectedIds.includes(message.id) ? " message-check-on" : ""
+        }" type="button" data-action="select-message" data-id="${message.id}"
+          aria-label="选择消息">✓</button>`
+      : "";
   return `<div class="message ${own ? "message-own" : "message-other"}${
     mentioned ? " message-mentioned" : ""
   }${merged ? " message-merged" : ""}" data-message-id="${message.id}">
     ${dayDivider}
     ${senderHeader}
+    ${selectCheck}
     ${body}
     <div class="message-meta">${escapeHtml(time)}${read
       ? '<span class="message-read">已读</span>'
@@ -2488,6 +2522,7 @@ function openImageViewer(src) {
 function renderMessages() {
   const container = messagesContainer();
   if (!container) return;
+  container.classList.toggle("select-active", state.selectMode);
   const sorted = state.messages.slice().sort((a, b) => a.id - b.id);
   container.innerHTML = sorted
     .map((message, index) => messageHtml(message, sorted[index - 1]))
@@ -2582,6 +2617,45 @@ function scrollToMessage(messageId) {
   void element.offsetWidth;
   element.classList.add("message-flash");
   window.setTimeout(() => element.classList.remove("message-flash"), 1600);
+}
+
+function toggleSelectMode() {
+  state.selectMode = !state.selectMode;
+  state.selectedIds = [];
+  renderMessages();
+  renderSelectBar();
+}
+
+function exitSelectMode() {
+  if (state.selectMode) toggleSelectMode();
+}
+
+function renderSelectBar() {
+  let bar = document.getElementById("select-bar");
+  if (!state.selectMode) {
+    if (bar) bar.remove();
+    return;
+  }
+  if (!bar) {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<div class="select-bar" id="select-bar">
+        <span id="select-count" class="select-count">已选 0 条</span>
+        <button class="btn btn-ghost btn-sm" type="button" id="select-cancel">取消</button>
+        <button class="btn btn-primary btn-sm" type="button" id="select-forward" disabled>转发</button>
+      </div>`
+    );
+    bar = document.getElementById("select-bar");
+    document.getElementById("select-cancel").addEventListener("click", toggleSelectMode);
+    document.getElementById("select-forward").addEventListener("click", () => {
+      const messages = state.messages.filter(
+        (message) => state.selectedIds.includes(message.id) && !message.deleted
+      );
+      if (messages.length) openForwardModal(messages);
+    });
+  }
+  document.getElementById("select-count").textContent = `已选 ${state.selectedIds.length} 条`;
+  document.getElementById("select-forward").disabled = state.selectedIds.length === 0;
 }
 
 async function onGroupComposerSubmit(event) {
@@ -2759,6 +2833,20 @@ async function onComposerSubmit(event) {
 }
 
 async function onMessagesClick(event) {
+  if (state.selectMode) {
+    const check = event.target.closest("[data-action='select-message']");
+    if (!check) return;
+    const id = Number(check.dataset.id);
+    const index = state.selectedIds.indexOf(id);
+    if (index >= 0) {
+      state.selectedIds.splice(index, 1);
+    } else {
+      state.selectedIds.push(id);
+    }
+    renderMessages();
+    renderSelectBar();
+    return;
+  }
   const image = event.target.closest(".attachment-image");
   if (image && image.src) {
     openImageViewer(image.src);
@@ -2844,8 +2932,9 @@ async function onMessagesClick(event) {
   }
 }
 
-function openForwardModal(message) {
-  state.forwardMessageId = message.id;
+function openForwardModal(messages) {
+  const list = Array.isArray(messages) ? messages : [messages];
+  state.forwardMessageIds = list.map((message) => message.id);
   const friends = state.friends
     .map(
       (friend) => `<li class="contact-item">
@@ -2888,13 +2977,18 @@ function openForwardModal(message) {
         target.dataset.kind === "group"
           ? `/api/groups/${target.dataset.target}/forward`
           : `/api/conversations/${encodeURIComponent(target.dataset.target)}/forward`;
-      const response = await api(url, {
-        method: "POST",
-        body: JSON.stringify({ message_id: state.forwardMessageId }),
-      });
-      if (response.ok) {
+      let done = 0;
+      for (const id of state.forwardMessageIds) {
+        const response = await api(url, {
+          method: "POST",
+          body: JSON.stringify({ message_id: id }),
+        });
+        if (response.ok) done += 1;
+      }
+      if (done > 0) {
         modal.remove();
-        toast("已转发", "success");
+        if (state.selectMode) toggleSelectMode();
+        toast(done === 1 ? "已转发" : `已转发 ${done} 条`, "success");
       }
       return;
     }
@@ -3046,6 +3140,11 @@ function onChatHeaderClick(event) {
   const remarkButton = event.target.closest("[data-action='friend-remark']");
   if (remarkButton) {
     openRemarkModal(state.activePeer);
+    return;
+  }
+  const selectButton = event.target.closest("[data-action='toggle-select']");
+  if (selectButton) {
+    toggleSelectMode();
     return;
   }
   const button = event.target.closest("[data-action^='call-']");
