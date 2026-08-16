@@ -25,6 +25,7 @@ const state = {
   editingId: null,
   pickerMessageId: null,
   replyTo: null,
+  forwardMessageId: null,
   groups: [],
   activeGroupId: null,
   activeGroup: null,
@@ -1238,18 +1239,23 @@ function messageHtml(message) {
   const actions = !message.deleted
     ? `<span class="message-actions">${editActions}
         <button class="message-action" type="button"
+          data-action="forward" data-id="${message.id}">转发</button>
+        <button class="message-action" type="button"
           data-action="reply" data-id="${message.id}">回复</button>
       </span>`
     : "";
   const editedMark = !message.deleted && message.edited_at
     ? '<span class="message-read">已编辑</span>'
     : "";
+  const forwardMark = message.forwarded
+    ? '<span class="message-read">已转发</span>'
+    : "";
   const reactions = message.deleted || state.activeGroupId ? "" : reactionsHtml(message);
   return `<div class="message ${own ? "message-own" : "message-other"}">
     ${body}
     <div class="message-meta">${escapeHtml(time)}${read
       ? '<span class="message-read">已读</span>'
-      : ""}${editedMark}${actions}</div>
+      : ""}${editedMark}${forwardMark}${actions}</div>
     ${reactions}
   </div>`;
 }
@@ -1485,6 +1491,11 @@ async function onMessagesClick(event) {
     }
     return;
   }
+  if (button.dataset.action === "forward") {
+    const message = state.messages.find((item) => String(item.id) === messageId);
+    if (message && !message.deleted) openForwardModal(message);
+    return;
+  }
   const sub = state.activeSub;
   if (!sub) return;
   if (button.dataset.action === "react-picker") {
@@ -1524,6 +1535,63 @@ async function onMessagesClick(event) {
   if (!response.ok && response.status === 409) {
     await loadHistory();
   }
+}
+
+function openForwardModal(message) {
+  state.forwardMessageId = message.id;
+  const friends = state.friends
+    .map(
+      (friend) => `<li class="contact-item">
+        <button class="forward-target contact-button" type="button"
+          data-kind="dm" data-target="${escapeHtml(friend.sub)}">
+          ${avatarHtml(friend)}
+          <span class="contact-name">${escapeHtml(displayName(friend))}</span>
+        </button>
+      </li>`
+    )
+    .join("");
+  const groups = state.groups
+    .map(
+      (group) => `<li class="contact-item">
+        <button class="forward-target contact-button" type="button"
+          data-kind="group" data-target="${group.id}">
+          <div class="avatar avatar-placeholder group-avatar" aria-hidden="true">#</div>
+          <span class="contact-name">群：${escapeHtml(group.name)}</span>
+        </button>
+      </li>`
+    )
+    .join("");
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="forward-modal" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <h3 class="modal-title">转发给</h3>
+        <ul class="contact-list forward-list">${friends}${groups}</ul>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" data-action="close-forward">取消</button>
+        </div>
+      </div>
+    </div>`
+  );
+  const modal = document.getElementById("forward-modal");
+  modal.addEventListener("click", async (event) => {
+    const target = event.target.closest(".forward-target");
+    if (target) {
+      const url =
+        target.dataset.kind === "group"
+          ? `/api/groups/${target.dataset.target}/forward`
+          : `/api/conversations/${encodeURIComponent(target.dataset.target)}/forward`;
+      const response = await api(url, {
+        method: "POST",
+        body: JSON.stringify({ message_id: state.forwardMessageId }),
+      });
+      if (response.ok) modal.remove();
+      return;
+    }
+    if (event.target === modal || event.target.closest("[data-action='close-forward']")) {
+      modal.remove();
+    }
+  });
 }
 
 function onComposerKeydown(event) {

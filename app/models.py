@@ -105,6 +105,7 @@ class Message(Base):
         ForeignKey("messages.id", ondelete="SET NULL"),
     )
     content_type: Mapped[str] = mapped_column(String(16), default="text")
+    forwarded: Mapped[bool] = mapped_column(Boolean, default=False)
     attachment_name: Mapped[str | None] = mapped_column(String(255))
     attachment_size: Mapped[int | None] = mapped_column(Integer)
     attachment_mime: Mapped[str | None] = mapped_column(String(64))

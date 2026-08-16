@@ -42,6 +42,7 @@ def message_payload(message: Message, reply: Message | None = None) -> dict[str,
         payload["deleted"] = False
         payload["content"] = message.content
         payload["content_type"] = message.content_type
+        payload["forwarded"] = message.forwarded
         if message.attachment_name is not None:
             payload["attachment"] = {
                 "name": message.attachment_name,
@@ -460,6 +461,84 @@ async def mark_group_read(
         raise HTTPException(status_code=404, detail="message not found in group")
     await _advance_group_read(db, me_sub, group_id, last_read_id)
     await db.commit()
+
+
+async def _can_view(db: AsyncSession, me_sub: str, message: Message) -> bool:
+    if message.conversation_type == "dm":
+        return me_sub in (message.participant_lo, message.participant_hi)
+    return message.group_id is not None and (
+        await group_membership(db, message.group_id, me_sub) is not None
+    )
+
+
+async def forward_message(
+    db: AsyncSession,
+    me_sub: str,
+    message_id: int,
+    *,
+    to_sub: str | None = None,
+    group_id: int | None = None,
+) -> Message:
+    source = await db.get(Message, message_id)
+    if source is None or not await _can_view(db, me_sub, source):
+        raise HTTPException(status_code=404, detail="message not found")
+    if source.deleted_at is not None:
+        raise HTTPException(status_code=409, detail="cannot forward deleted message")
+    attachment_fields: dict[str, Any] = {}
+    if source.attachment_url is not None:
+        attachment_fields = {
+            "attachment_name": source.attachment_name,
+            "attachment_size": source.attachment_size,
+            "attachment_mime": source.attachment_mime,
+            "attachment_url": source.attachment_url,
+        }
+    if group_id is not None:
+        member_row = await group_membership(db, group_id, me_sub)
+        if member_row is None:
+            raise HTTPException(status_code=403, detail="not a group member")
+        marker = f"{GROUP_RECIPIENT_PREFIX}{group_id}"
+        message = Message(
+            sender_sub=me_sub,
+            recipient_sub=marker,
+            participant_lo=marker,
+            participant_hi=f"{marker}:end",
+            content=source.content,
+            conversation_type="group",
+            group_id=group_id,
+            content_type=source.content_type,
+            forwarded=True,
+            **attachment_fields,
+        )
+        db.add(message)
+        await db.flush()
+        await _advance_group_read(db, me_sub, group_id, message.id)
+        await db.commit()
+        await db.refresh(message)
+        return message
+    assert to_sub is not None
+    if me_sub == to_sub:
+        raise HTTPException(status_code=400, detail="cannot forward to yourself")
+    if await db.get(User, to_sub) is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    if not await are_friends(db, me_sub, to_sub):
+        raise HTTPException(status_code=403, detail="not friends")
+    lo, hi = pair_key(me_sub, to_sub)
+    message = Message(
+        sender_sub=me_sub,
+        recipient_sub=to_sub,
+        participant_lo=lo,
+        participant_hi=hi,
+        content=source.content,
+        content_type=source.content_type,
+        forwarded=True,
+        **attachment_fields,
+    )
+    db.add(message)
+    await db.flush()
+    await _advance_read(db, me_sub, lo, hi, message.id)
+    await db.commit()
+    await db.refresh(message)
+    return message
 
 
 async def mark_read(

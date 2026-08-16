@@ -1345,6 +1345,15 @@ a {
   max-width: 260px;
 }
 
+.forward-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.forward-target {
+  width: 100%;
+}
+
 .chat-peer-main {
   display: flex;
   flex-direction: column;

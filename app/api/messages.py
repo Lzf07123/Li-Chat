@@ -18,8 +18,8 @@ router = APIRouter(prefix="/api/conversations", tags=["messages"])
 
 
 class MessageIn(BaseModel):
-    content: str = ""
     content_type: Literal["text", "image", "file"] = "text"
+    content: str = ""
     attachment: AttachmentIn | None = None
     reply_to_id: int | None = Field(default=None, ge=1)
 
@@ -55,6 +55,10 @@ class ReplyToOut(BaseModel):
     content_type: str = "text"
 
 
+class ForwardIn(BaseModel):
+    message_id: int = Field(ge=1)
+
+
 class ReactionCountOut(BaseModel):
     emoji: str
     count: int
@@ -68,6 +72,7 @@ class MessageOut(BaseModel):
     group_id: int | None = None
     content: str | None = None
     content_type: str = "text"
+    forwarded: bool = False
     attachment: AttachmentOut | None = None
     reply_to: ReplyToOut | None = None
     deleted: bool = False
@@ -237,6 +242,26 @@ async def message_history(
         messages=messages,
         next_before=next_before,
     )
+
+
+@router.post("/{other_sub}/forward", response_model=MessageOut, status_code=201)
+async def forward_dm_message(
+    request: Request,
+    other_sub: str,
+    body: ForwardIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> MessageOut:
+    message = await service.forward_message(
+        db, user.sub, body.message_id, to_sub=other_sub
+    )
+    payload = service.message_payload(message)
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    event = {"type": "message", "message": payload}
+    await manager.send_to(message.sender_sub, event)
+    await manager.send_to(message.recipient_sub, event)
+    return MessageOut(**payload)
 
 
 @router.patch("/{other_sub}/messages/{message_id}", response_model=MessageOut)

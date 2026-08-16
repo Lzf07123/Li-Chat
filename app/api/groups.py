@@ -7,7 +7,14 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.messages import MessageIn, MessageOut, MessagePageOut, ReadIn, ReadOut
+from app.api.messages import (
+    ForwardIn,
+    MessageIn,
+    MessageOut,
+    MessagePageOut,
+    ReadIn,
+    ReadOut,
+)
 from app.auth.deps import get_current_user, require_csrf
 from app.db import get_db
 from app.groups import service
@@ -337,3 +344,23 @@ async def mark_group_read(
     for sub in await service.member_subs(db, group_id):
         await manager.send_to(sub, event)
     return ReadOut(status="ok", last_read_id=body.last_read_id)
+
+
+@router.post("/{group_id}/forward", response_model=MessageOut, status_code=201)
+async def forward_group_message(
+    request: Request,
+    group_id: int,
+    body: ForwardIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> MessageOut:
+    message = await messages_service.forward_message(
+        db, user.sub, body.message_id, group_id=group_id
+    )
+    payload = messages_service.message_payload(message)
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    event = {"type": "message", "message": payload}
+    for sub in await service.member_subs(db, group_id):
+        await manager.send_to(sub, event)
+    return MessageOut(**payload)

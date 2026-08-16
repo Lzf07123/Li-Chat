@@ -6,11 +6,11 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.models import Upload
+from app.models import GroupMember, Message, Upload
 from app.timeutil import utcnow
 
 EXT_BY_MIME = {
@@ -102,3 +102,29 @@ async def get_upload(db: AsyncSession, filename: str) -> Upload:
     if upload is None:
         raise HTTPException(status_code=404, detail="upload not found")
     return upload
+
+
+async def referenced_for(db: AsyncSession, url: str, viewer_sub: str) -> bool:
+    """附件是否被「查看者可参与的会话」引用（用于回源授权）。"""
+    group_ids = select(GroupMember.group_id).where(GroupMember.user_sub == viewer_sub)
+    result = await db.execute(
+        select(Message.id)
+        .where(
+            Message.attachment_url == url,
+            or_(
+                and_(
+                    Message.conversation_type == "dm",
+                    or_(
+                        Message.participant_lo == viewer_sub,
+                        Message.participant_hi == viewer_sub,
+                    ),
+                ),
+                and_(
+                    Message.conversation_type == "group",
+                    Message.group_id.in_(group_ids),
+                ),
+            ),
+        )
+        .limit(1)
+    )
+    return result.first() is not None
