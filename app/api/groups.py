@@ -50,6 +50,7 @@ class GroupOut(BaseModel):
     name: str
     owner_sub: str
     announcement: str | None = None
+    announcement_updated_at: str | None = None
     avatar_url: str | None = None
     created_at: str
     members: list[MemberOut]

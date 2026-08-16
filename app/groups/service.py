@@ -20,7 +20,7 @@ from app.models import (
     UserConversationSetting,
     UserStar,
 )
-from app.timeutil import iso_utc
+from app.timeutil import iso_utc, utcnow
 from app.uploads.service import get_upload
 
 GROUP_NAME_MAX = 64
@@ -102,6 +102,11 @@ async def group_payload(db: AsyncSession, group: Group) -> dict[str, Any]:
         "name": group.name,
         "owner_sub": group.owner_sub,
         "announcement": group.announcement,
+        "announcement_updated_at": (
+            iso_utc(group.announcement_updated_at)
+            if group.announcement_updated_at
+            else None
+        ),
         "avatar_url": group.avatar_url,
         "created_at": iso_utc(group.created_at),
         "members": members,
@@ -278,6 +283,7 @@ async def set_announcement(
     if group is None:
         raise HTTPException(status_code=404, detail="group not found")
     group.announcement = text
+    group.announcement_updated_at = utcnow()
     await db.commit()
     return await group_payload(db, group)
 

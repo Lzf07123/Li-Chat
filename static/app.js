@@ -1935,7 +1935,19 @@ function groupPanelHtml(group) {
       <section class="group-section">
         <h3 class="group-section-title">公告</h3>
         <div class="group-announcement">
-          <p id="group-announcement-text">${escapeHtml(group.announcement || "暂无公告")}</p>
+          <p id="group-announcement-text" class="${
+            group.announcement ? "" : "group-announcement-empty"
+          }">${escapeHtml(group.announcement || "暂无公告，等待群主发布")}</p>
+          ${
+            group.announcement_updated_at
+              ? `<span class="muted announcement-time">发布于 ${new Date(
+                  group.announcement_updated_at
+                ).toLocaleString([], {
+                  dateStyle: "short",
+                  timeStyle: "short",
+                })}</span>`
+              : ""
+          }
           ${manager
             ? `<div class="group-rename-row">
                 <textarea id="group-announcement-input" class="input" rows="2"

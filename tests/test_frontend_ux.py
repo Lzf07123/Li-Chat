@@ -247,3 +247,10 @@ async def test_v45_high_risk_confirms(api_client: httpx.AsyncClient) -> None:
     assert "friend-delete" in text
     assert "撤回后对方将无法看到此消息" in text
     assert "确定要退出当前账号吗" in text
+
+
+async def test_v46_announcement_time_and_empty_state(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "announcement_updated_at" in text
+    assert "announcement-time" in text
+    assert "暂无公告，等待群主发布" in text

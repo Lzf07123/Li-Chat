@@ -2561,6 +2561,17 @@ a {
   margin-bottom: 8px;
 }
 
+.group-announcement-empty {
+  color: var(--chat-muted);
+  font-style: italic;
+}
+
+.announcement-time {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+}
+
 /* 通知中心 */
 .notify-bell {
   position: relative;

@@ -149,6 +149,10 @@ def _ensure_group_columns(conn: Connection) -> None:
         conn.exec_driver_sql("ALTER TABLE groups ADD COLUMN announcement TEXT")
     if "avatar_url" not in names:
         conn.exec_driver_sql("ALTER TABLE groups ADD COLUMN avatar_url VARCHAR(255)")
+    if "announcement_updated_at" not in names:
+        conn.exec_driver_sql(
+            "ALTER TABLE groups ADD COLUMN announcement_updated_at DATETIME"
+        )
 
 
 def _ensure_group_member_columns(conn: Connection) -> None:
