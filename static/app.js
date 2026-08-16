@@ -4145,6 +4145,28 @@ function handleServerMessage(data) {
       if (state.activeGroupId === data.group_id) closeGroupPanel();
       toast("群聊已解散", "info");
       renderSidebar();
+    } else if (
+      (data.event === "member_removed" || data.event === "member_left") &&
+      data.group &&
+      Array.isArray(data.group.members)
+    ) {
+      const stillMember = data.group.members.some(
+        (member) => member.user.sub === state.me.sub
+      );
+      if (!stillMember) {
+        state.groups = state.groups.filter((group) => group.id !== data.group_id);
+        if (state.activeGroupId === data.group_id) closeGroupPanel();
+        toast("你已不在该群聊中", "info");
+        renderSidebar();
+      } else {
+        refreshGroups();
+      }
+    } else if (data.event === "role_changed" && data.group) {
+      const myRow = data.group.members.find(
+        (member) => member.user.sub === state.me.sub
+      );
+      if (myRow) toast(`你的角色已变更为 ${roleLabel(myRow.role)}`, "info");
+      refreshGroups();
     } else {
       refreshGroups();
     }

@@ -331,3 +331,9 @@ async def test_v57_multi_tab_coordination(api_client: httpx.AsyncClient) -> None
 async def test_v58_request_race_guard(api_client: httpx.AsyncClient) -> None:
     text = await _app_js(api_client)
     assert "conversationEpoch" in text
+
+
+async def test_v59_group_event_convergence(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "你已不在该群聊中" in text
+    assert "你的角色已变更为" in text
