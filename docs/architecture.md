@@ -69,6 +69,8 @@ flowchart LR
 
 **RP 登出**：删本地会话 → 带 HMAC 签名 state 跳 `end-session` → 门户回跳 `/oidc/post-logout` 验签回首页。
 
+**仅登出本网站**：`POST /oidc/logout-local`（CSRF）删本地会话并断 WS，302 首页，不调 `end-session`（前端退出弹窗与「登出 SSO」并列）。
+
 **回程登出**：门户 POST `logout_token` → 验 iss/aud/120 秒窗/jti/events → 清 `(sub, sid)` 会话并主动断开该用户 WS。
 
 **实时通道**：`/ws` 握手校验同源 Cookie，无效以 4401 关闭；心跳 ping/pong；回程登出触发服务端断开。除心跳外，服务端按需推送 `message`（新消息：单聊双方 / 群全体）、`message_edited`/`message_deleted`（编辑/撤回：单聊双方 / 群全体）、`message_reaction`（回应增删：单聊双方 / 群全体）、`read_receipt`（已读回执：单聊会话另一方 / 群全体）、`presence`（好友上线/下线）、`group_event`（建群/成员/角色变更，群全体）、`call`（音视频呼叫信令，对端，offer 附带 kind）与 `friend_event`（申请/接受/拒绝/解除，相关方）；客户端可发 `typing` 与 `call` 信令，服务端校验好友关系并限频后中继。
