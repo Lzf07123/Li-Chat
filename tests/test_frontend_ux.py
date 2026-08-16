@@ -240,3 +240,10 @@ async def test_v44_hide_message_for_self_ui(api_client: httpx.AsyncClient) -> No
     text = await _app_js(api_client)
     assert "hide-message" in text
     assert "/me" in text
+
+
+async def test_v45_high_risk_confirms(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "friend-delete" in text
+    assert "撤回后对方将无法看到此消息" in text
+    assert "确定要退出当前账号吗" in text

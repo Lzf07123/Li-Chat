@@ -2546,10 +2546,14 @@ async function onGroupPanelClick(event) {
     });
     if (response.ok) toast("公告已发布", "success");
   } else if (action === "group-remove") {
-    const response = await api(`/api/groups/${groupId}/members/${encodeURIComponent(button.dataset.sub)}`, {
-      method: "DELETE",
-    });
-    if (response.ok) toast("已移除成员", "success");
+    confirmModal("移除成员", "移除后该成员将无法再查看群消息。", async () => {
+      const response = await api(`/api/groups/${groupId}/members/${encodeURIComponent(button.dataset.sub)}`, {
+        method: "DELETE",
+      });
+      if (response.ok) toast("已移除成员", "success");
+      await refreshGroups();
+    }, "移除");
+    return;
   } else if (action === "group-toggle-admin") {
     const response = await api(`/api/groups/${groupId}/members/${encodeURIComponent(button.dataset.sub)}`, {
       method: "PATCH",
@@ -2573,13 +2577,15 @@ async function onGroupPanelClick(event) {
     });
     if (response.ok) toast("群主已转让", "success");
   } else if (action === "group-leave") {
-    const response = await api(`/api/groups/${groupId}/leave`, { method: "POST" });
-    if (response.ok) {
-      closeGroupPanel();
-      await refreshGroups();
-      toast("已退出群聊", "success");
-      return;
-    }
+    confirmModal("退出群聊", "退出后将无法查看该群消息。", async () => {
+      const response = await api(`/api/groups/${groupId}/leave`, { method: "POST" });
+      if (response.ok) {
+        closeGroupPanel();
+        await refreshGroups();
+        toast("已退出群聊", "success");
+      }
+    }, "退出");
+    return;
   } else if (action === "group-dissolve") {
     confirmModal(
       "解散群聊",
@@ -2634,6 +2640,15 @@ async function openChat(sub, locateId = null) {
           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+        </svg>
+      </button>
+      <button class="icon-btn" type="button" data-action="friend-delete"
+        aria-label="删除好友">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 6h18"/>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
         </svg>
       </button>
       <button class="icon-btn" type="button" data-action="call-audio"
@@ -3517,11 +3532,13 @@ async function onMessagesClick(event) {
   const url = groupId
     ? `/api/groups/${groupId}/messages/${messageId}`
     : `/api/conversations/${encodeURIComponent(sub)}/messages/${messageId}`;
-  const response = await api(url, { method: "DELETE" });
-  if (!response.ok && response.status === 409) {
-    if (groupId) await loadGroupHistory();
-    else await loadHistory();
-  }
+  confirmModal("撤回消息", "撤回后对方将无法看到此消息。", async () => {
+    const response = await api(url, { method: "DELETE" });
+    if (!response.ok && response.status === 409) {
+      if (groupId) await loadGroupHistory();
+      else await loadHistory();
+    }
+  }, "撤回");
 }
 
 function openForwardModal(messages) {
@@ -3840,6 +3857,26 @@ function onChatHeaderClick(event) {
     openRemarkModal(state.activePeer);
     return;
   }
+  const deleteButton = event.target.closest("[data-action='friend-delete']");
+  if (deleteButton && state.activeSub) {
+    confirmModal(
+      "删除好友",
+      "删除后将解除好友关系，聊天记录会保留。",
+      async () => {
+        const response = await api(
+          `/api/friends/${encodeURIComponent(state.activeSub)}`,
+          { method: "DELETE" }
+        );
+        if (response.ok) {
+          closeChat();
+          await refreshSidebar();
+          toast("已删除好友", "success");
+        }
+      },
+      "删除"
+    );
+    return;
+  }
   const selectButton = event.target.closest("[data-action='toggle-select']");
   if (selectButton) {
     toggleSelectMode();
@@ -4114,21 +4151,23 @@ function replaceMessage(message) {
 }
 
 function logout() {
-  state.loggingOut = true;
-  if (state.wsReconnectTimer) {
-    window.clearTimeout(state.wsReconnectTimer);
-    state.wsReconnectTimer = null;
-  }
-  const form = document.createElement("form");
-  form.method = "POST";
-  form.action = "/oidc/logout";
-  const input = document.createElement("input");
-  input.type = "hidden";
-  input.name = "csrf_token";
-  input.value = state.me.csrf_token;
-  form.appendChild(input);
-  document.body.appendChild(form);
-  form.submit();
+  confirmModal("退出登录", "确定要退出当前账号吗？", () => {
+    state.loggingOut = true;
+    if (state.wsReconnectTimer) {
+      window.clearTimeout(state.wsReconnectTimer);
+      state.wsReconnectTimer = null;
+    }
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = "/oidc/logout";
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "csrf_token";
+    input.value = state.me.csrf_token;
+    form.appendChild(input);
+    document.body.appendChild(form);
+    form.submit();
+  }, "退出");
 }
 
 function scheduleReconnect() {
