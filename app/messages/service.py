@@ -495,6 +495,8 @@ async def send_group_message(
     member_row = await group_membership(db, group_id, sender_sub)
     if member_row is None:
         raise HTTPException(status_code=403, detail="not a group member")
+    if member_row.muted:
+        raise HTTPException(status_code=403, detail="you are muted")
     group = await db.get(Group, group_id)
     if group is None:
         raise HTTPException(status_code=404, detail="group not found")

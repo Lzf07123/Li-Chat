@@ -1437,6 +1437,8 @@ function roleLabel(role) {
 function groupPanelHtml(group) {
   const me = state.me.sub;
   const myRole = (group.members.find((member) => member.user.sub === me) || {}).role;
+  const myMuted =
+    (group.members.find((member) => member.user.sub === me) || {}).muted === true;
   const members = group.members
     .map((member) => {
       const isMe = member.user.sub === me;
@@ -1457,13 +1459,24 @@ function groupPanelHtml(group) {
         ? `<button class="btn btn-ghost btn-sm" type="button"
             data-action="group-remove" data-sub="${escapeHtml(member.user.sub)}">移除</button>`
         : "";
+      const canMute =
+        (myRole === "owner" || myRole === "admin") &&
+        member.role === "member" &&
+        !isMe;
+      const mute = canMute
+        ? `<button class="btn btn-ghost btn-sm" type="button"
+            data-action="group-mute" data-sub="${escapeHtml(member.user.sub)}"
+            data-muted="${member.muted}">${member.muted ? "解除禁言" : "禁言"}</button>`
+        : "";
       return `<li class="contact-item group-member">
         ${avatarHtml(member.user)}
         <span class="contact-main">
           <span class="contact-name">${escapeHtml(displayName(member.user))}</span>
-          <span class="contact-preview">${roleLabel(member.role)}${isMe ? "（我）" : ""}</span>
+          <span class="contact-preview">${roleLabel(member.role)}${isMe ? "（我）" : ""}${
+            member.muted ? " · 已禁言" : ""
+          }</span>
         </span>
-        <span class="contact-actions">${ownerActions}${remove}</span>
+        <span class="contact-actions">${ownerActions}${mute}${remove}</span>
       </li>`;
     })
     .join("");
@@ -1502,8 +1515,9 @@ function groupPanelHtml(group) {
       <form id="group-composer" class="composer">
         <div id="group-mention-list" class="mention-list" hidden></div>
         <button id="group-mention-btn" class="icon-btn" type="button"
-          aria-label="提及成员">@</button>
-        <button id="group-attach-btn" class="icon-btn" type="button" aria-label="发送附件">
+          aria-label="提及成员" ${myMuted ? "disabled" : ""}>@</button>
+        <button id="group-attach-btn" class="icon-btn" type="button" aria-label="发送附件"
+          ${myMuted ? "disabled" : ""}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
@@ -1518,8 +1532,8 @@ function groupPanelHtml(group) {
         </div>
         <label class="sr-only" for="group-message-input">消息内容</label>
         <textarea id="group-message-input" class="input" rows="1" maxlength="2000"
-          placeholder="输入消息"></textarea>
-        <button class="btn btn-primary" type="submit">发送</button>
+          placeholder="${myMuted ? "你已被禁言" : "输入消息"}" ${myMuted ? "disabled" : ""}></textarea>
+        <button class="btn btn-primary" type="submit" ${myMuted ? "disabled" : ""}>发送</button>
       </form>
     </div>
     <div class="group-panel-body">
@@ -1905,6 +1919,16 @@ async function onGroupPanelClick(event) {
       body: JSON.stringify({ role: button.dataset.role === "admin" ? "member" : "admin" }),
     });
     if (response.ok) toast("角色已更新", "success");
+  } else if (action === "group-mute") {
+    const muted = button.dataset.muted === "true";
+    const response = await api(
+      `/api/groups/${groupId}/members/${encodeURIComponent(button.dataset.sub)}/mute`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ muted: !muted }),
+      }
+    );
+    if (response.ok) toast(muted ? "已解除禁言" : "已禁言该成员", "success");
   } else if (action === "group-transfer") {
     const response = await api(`/api/groups/${groupId}/transfer`, {
       method: "POST",

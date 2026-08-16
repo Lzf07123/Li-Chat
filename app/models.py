@@ -247,6 +247,7 @@ class GroupMember(Base):
         ForeignKey("users.sub", ondelete="CASCADE"), primary_key=True, index=True
     )
     role: Mapped[str] = mapped_column(String(16), default="member")
+    muted: Mapped[bool] = mapped_column(Boolean, default=False)
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     __table_args__ = (

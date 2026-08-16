@@ -4,6 +4,10 @@
 
 ### 功能
 
+- 群成员禁言（v32）：`group_members.muted`，`PATCH /api/groups/{id}/members/{sub}/mute`
+  （owner/admin；不得禁言 owner/admin 与自己）；被禁言成员发群消息 403 `you are muted`，
+  WS `group_event(member_muted)` 全成员广播；前端成员行禁言开关、被禁言者输入框/附件/提及
+  按钮禁用并提示「你已被禁言」
 - 好友备注名（v31）：`friendships.remark`（≤32、空串清除、仅本人可见），
   `PATCH /api/friends/{sub}/remark`；好友列表回传 remark，前端展示优先备注名，聊天头部新增
   「设置备注」入口（保存后立即刷新头部与列表）

@@ -137,3 +137,9 @@ async def test_v31_friend_remark(api_client: httpx.AsyncClient) -> None:
     assert "friend-remark" in text
     assert "/remark" in text
     assert "user.remark" in text
+
+
+async def test_v32_group_mute_ui(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "group-mute" in text
+    assert "你已被禁言" in text

@@ -38,6 +38,7 @@ class UserOut(BaseModel):
 class MemberOut(BaseModel):
     user: UserOut
     role: str
+    muted: bool = False
     joined_at: str
 
 
@@ -122,6 +123,10 @@ class MembersIn(BaseModel):
 
 class RoleIn(BaseModel):
     role: Literal["admin", "member"]
+
+
+class MuteIn(BaseModel):
+    muted: bool
 
 
 class TransferIn(BaseModel):
@@ -240,6 +245,22 @@ async def set_member_role(
     group = await service.get_group(db, user.sub, group_id)
     await _broadcast(request, db, group_id, "role_changed", group, user.sub)
     return StatusOut(status=body.role)
+
+
+@router.patch("/{group_id}/members/{target_sub}/mute", response_model=StatusOut)
+async def set_member_mute(
+    request: Request,
+    group_id: int,
+    target_sub: str,
+    body: MuteIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> StatusOut:
+    await service.set_member_mute(db, user.sub, group_id, target_sub, body.muted)
+    group = await service.get_group(db, user.sub, group_id)
+    await _broadcast(request, db, group_id, "member_muted", group, user.sub)
+    return StatusOut(status="muted" if body.muted else "unmuted")
 
 
 @router.post("/{group_id}/leave", response_model=StatusOut)

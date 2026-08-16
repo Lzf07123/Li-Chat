@@ -145,6 +145,20 @@ def _ensure_group_columns(conn: Connection) -> None:
         conn.exec_driver_sql("ALTER TABLE groups ADD COLUMN avatar_url VARCHAR(255)")
 
 
+def _ensure_group_member_columns(conn: Connection) -> None:
+    """SQLite 兼容迁移：为既有库补齐 group_members.muted（PostgreSQL 走 Alembic）。"""
+    if conn.dialect.name != "sqlite":
+        return
+    names = {
+        row[1]
+        for row in conn.exec_driver_sql("PRAGMA table_info(group_members)").fetchall()
+    }
+    if "muted" not in names:
+        conn.exec_driver_sql(
+            "ALTER TABLE group_members ADD COLUMN muted BOOLEAN NOT NULL DEFAULT 0"
+        )
+
+
 async def _friend_subs(db: AsyncSession, sub: str) -> list[str]:
     friends = await list_friends(db, sub)
     return [friend["sub"] for friend in friends if friend["sub"] is not None]
@@ -200,6 +214,7 @@ def create_app(
             await conn.run_sync(_ensure_friendship_columns)
             await conn.run_sync(_ensure_message_columns)
             await conn.run_sync(_ensure_group_columns)
+            await conn.run_sync(_ensure_group_member_columns)
         subscriber: asyncio.Task[None] | None = None
         if redis_client is not None:
             await redis_client.ping()

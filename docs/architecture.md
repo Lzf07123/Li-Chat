@@ -51,7 +51,7 @@ flowchart LR
 | `user_conversation_settings` | `user_sub+kind+key`(复合 PK)、pinned、muted | 会话置顶/免打扰；key：单聊 pair 排序键 / 群 id |
 | `call_logs` | `id`、caller_sub、callee_sub、kind、status、started_at、ended_at | 呼叫落账：missed/accepted/rejected |
 | `groups` | `id`、name、owner_sub、announcement、avatar_url、created_at、updated_at | 群元数据；公告/头像由 owner/admin 维护，owner 变更随转让同步 |
-| `group_members` | `group_id+user_sub`(复合 PK)、role(owner/admin/member)、joined_at | 角色约束 + 权限矩阵在 service 层强校验 |
+| `group_members` | `group_id+user_sub`(复合 PK)、role(owner/admin/member)、muted、joined_at | 角色约束 + 权限矩阵在 service 层强校验；muted 由 owner/admin 维护，禁言成员发消息 403 |
 | `group_reads` | `user_sub+group_id`(复合 PK)、last_read_message_id、updated_at | 群已读游标，只前进；未读 = 群消息 id 大于游标且非本人发送 |
 | `uploads` | `id`、owner_sub、filename(唯一)、original_name、mime、size、created_at | 随机文件名防遍历；仅上传者可回源 |
 

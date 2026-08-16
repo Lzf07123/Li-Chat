@@ -81,6 +81,7 @@ async def group_payload(db: AsyncSession, group: Group) -> dict[str, Any]:
             {
                 "user": profile(user),
                 "role": row.role,
+                "muted": row.muted,
                 "joined_at": iso_utc(row.joined_at),
             }
         )
@@ -211,6 +212,21 @@ async def set_member_role(
     if target.role == "owner":
         raise HTTPException(status_code=403, detail="cannot change the owner's role")
     target.role = role
+    await db.commit()
+
+
+async def set_member_mute(
+    db: AsyncSession, actor_sub: str, group_id: int, target_sub: str, muted: bool
+) -> None:
+    await _require_role(db, group_id, actor_sub, {"owner", "admin"})
+    target = await membership(db, group_id, target_sub)
+    if target is None:
+        raise HTTPException(status_code=404, detail="member not found")
+    if target_sub == actor_sub:
+        raise HTTPException(status_code=400, detail="cannot mute yourself")
+    if target.role in {"owner", "admin"}:
+        raise HTTPException(status_code=403, detail="cannot mute owners or admins")
+    target.muted = muted
     await db.commit()
 
 
