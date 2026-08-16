@@ -75,6 +75,7 @@ const state = {
   groupFilesNext: null,
   groupReadBy: {},
   messages: [],
+  conversationEpoch: 0,
   notifications: [],
   notificationsUnread: 0,
   notificationsNext: null,
@@ -1924,6 +1925,7 @@ async function toggleConversationSetting(button) {
 async function openGroup(groupId, locateId = null) {
   if (state.recording.active) stopVoice();
   exitSelectMode();
+  state.conversationEpoch += 1;
   const response = await api(`/api/groups/${groupId}`);
   if (!response.ok) return;
   state.activeGroupId = groupId;
@@ -1955,6 +1957,7 @@ async function openGroup(groupId, locateId = null) {
 function closeGroupPanel() {
   if (state.recording.active) stopVoice();
   exitSelectMode();
+  state.conversationEpoch += 1;
   state.activeGroupId = null;
   state.activeGroup = null;
   state.replyTo = null;
@@ -2619,10 +2622,12 @@ function fileSizeLabel(size) {
 
 async function loadGroupFiles(before) {
   if (state.activeGroupId === null) return;
+  const epoch = state.conversationEpoch;
   let url = `/api/groups/${state.activeGroupId}/files?limit=30`;
   if (before) url += `&before=${before}`;
   const response = await api(url);
   if (!response.ok) return;
+  if (epoch !== state.conversationEpoch) return;
   const body = await response.json();
   if (before) {
     state.groupFiles = state.groupFiles.concat(body.files);
@@ -2892,6 +2897,7 @@ async function onGroupPanelClick(event) {
 async function openChat(sub, locateId = null) {
   if (state.recording.active) stopVoice();
   exitSelectMode();
+  state.conversationEpoch += 1;
   const peer =
     state.friends.find((friend) => friend.sub === sub) ||
     state.searchResults.find((result) => result.sub === sub) ||
@@ -2975,12 +2981,15 @@ async function openChat(sub, locateId = null) {
 
 async function markReadActive() {
   if (!state.activeSub || state.messages.length === 0) return;
+  const epoch = state.conversationEpoch;
   const last = state.messages[state.messages.length - 1];
   const response = await api(
     `/api/conversations/${encodeURIComponent(state.activeSub)}/read`,
     { method: "POST", body: JSON.stringify({ last_read_id: last.id }) }
   );
-  if (response.ok) clearUnread(state.activeSub, last.id);
+  if (response.ok && epoch === state.conversationEpoch) {
+    clearUnread(state.activeSub, last.id);
+  }
 }
 
 function clearUnread(sub, lastReadId) {
@@ -2995,11 +3004,13 @@ function clearUnread(sub, lastReadId) {
 async function loadHistory(before) {
   if (state.loadingHistory) return;
   state.loadingHistory = true;
+  const epoch = state.conversationEpoch;
   let url = `/api/conversations/${encodeURIComponent(state.activeSub)}/messages?limit=50`;
   if (before) url += `&before=${before}`;
   try {
     const response = await api(url);
     if (!response.ok) return;
+    if (epoch !== state.conversationEpoch) return;
     const page = await response.json();
     state.nextBefore = page.next_before;
     if (before) {
@@ -3053,6 +3064,7 @@ async function reconcileMessages() {
 function closeChat() {
   if (state.recording.active) stopVoice();
   exitSelectMode();
+  state.conversationEpoch += 1;
   sendTyping("stop");
   state.editingId = null;
   state.replyTo = null;
@@ -3351,11 +3363,13 @@ function messagesContainer() {
 async function loadGroupHistory(before) {
   if (state.loadingHistory || state.activeGroupId === null) return;
   state.loadingHistory = true;
+  const epoch = state.conversationEpoch;
   let url = `/api/groups/${state.activeGroupId}/messages?limit=50`;
   if (before) url += `&before=${before}`;
   try {
     const response = await api(url);
     if (!response.ok) return;
+    if (epoch !== state.conversationEpoch) return;
     const page = await response.json();
     state.nextBefore = page.next_before;
     if (before) {
@@ -3376,12 +3390,15 @@ async function loadGroupHistory(before) {
 
 async function markGroupRead() {
   if (!state.activeGroupId || state.messages.length === 0) return;
+  const epoch = state.conversationEpoch;
   const last = state.messages[state.messages.length - 1];
   const response = await api(`/api/groups/${state.activeGroupId}/read`, {
     method: "POST",
     body: JSON.stringify({ last_read_id: last.id }),
   });
-  if (response.ok) clearGroupUnread(state.activeGroupId, last.id);
+  if (response.ok && epoch === state.conversationEpoch) {
+    clearGroupUnread(state.activeGroupId, last.id);
+  }
 }
 
 function clearGroupUnread(groupId, lastReadId) {

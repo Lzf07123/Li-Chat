@@ -326,3 +326,8 @@ async def test_v57_multi_tab_coordination(api_client: httpx.AsyncClient) -> None
     assert "lichat-logout" in text
     assert "lichat-session-active" in text
     assert "LiChatTheme.initTheme" in text
+
+
+async def test_v58_request_race_guard(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "conversationEpoch" in text

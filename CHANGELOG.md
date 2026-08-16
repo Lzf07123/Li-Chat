@@ -222,6 +222,8 @@
 
 ### 缺陷修复
 
+- 请求竞态防护（v58）：会话切换时递增 epoch，历史/群文件/已读回执等异步响应返回后校验
+  epoch，过期响应直接丢弃，防止快速切换会话时旧数据覆盖新会话
 - 已读回执一致性（v53）：退群/被移除时显式清理该用户的群已读游标与群会话设置（此前外键
   级联未生效会残留孤儿行）；补充 DM 游标只前进的回归测试
 - OIDC 传输端点升级：经 https 拉取的发现文档，其 authorization/token/userinfo/jwks/end-session 端点统一升级为 https（issuer 保留原文校验）。修复真实登录首次回调 502「idp response missing tokens」——发现文档声明 http 端点，80 端口 301 不被 httpx 的带体 POST 跟随，导致令牌响应被当成空对象
