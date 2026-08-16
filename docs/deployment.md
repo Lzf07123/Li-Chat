@@ -60,6 +60,8 @@ compose 默认随 `chat` 启动一个编排内 redis（7-alpine、AOF、192mb、
 | `LICHAT_DISCOVERY_CACHE_TTL` | `300` | 发现文档缓存时长（秒） |
 | `LICHAT_UPLOAD_MAX_MB` | `10` | 单文件大小上限（MB，1–20） |
 | `LICHAT_UPLOAD_DIR` | `./data/uploads` | 附件存储目录；容器部署建议挂卷持久化 |
+| `LICHAT_LOGIN_RATE_LIMIT` | `10` | 登录限流：每 IP 窗口内允许次数（1–1000） |
+| `LICHAT_LOGIN_RATE_WINDOW` | `60` | 登录限流窗口秒数（≥1） |
 
 compose 插值变量（应用忽略）：`LICHAT_PORT`（宿主机端口）、`REDIS_PASSWORD` / `REDIS_APPENDONLY` / `REDIS_MAXMEMORY`（编排内 redis）、`TZ`、`PYPI_INDEX_URL` / `APT_MIRROR`（构建镜像源）、`BASE_IMAGE_REGISTRY`（基础镜像加速）与 `IMAGE_REGISTRY`（应用镜像前缀）。完整模板见 `.env.example`。
 

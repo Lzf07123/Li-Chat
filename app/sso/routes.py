@@ -30,6 +30,7 @@ from app.oidc.state import create_auth_state, pop_auth_state
 from app.oidc.tokens import TokenValidationError, TokenVerifier
 from app.oidc.user_sync import upsert_user
 from app.redis import publish_logout
+from app.sso.ratelimit import SlidingWindowRateLimiter
 from app.sso.replay import ReplayCache
 from app.sso.signing import sign_state, verify_state
 from app.timeutil import utcnow
@@ -37,6 +38,18 @@ from app.ws.manager import ConnectionManager
 
 router = APIRouter(prefix="/oidc", tags=["sso"])
 logger = get_logger(__name__)
+
+
+def _check_login_rate(request: Request) -> None:
+    limiter = cast(SlidingWindowRateLimiter, request.app.state.login_limiter)
+    ip = request.client.host if request.client else "unknown"
+    allowed, retry_after = limiter.check(f"auth:{ip}")
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="too many login attempts",
+            headers={"Retry-After": str(retry_after)},
+        )
 
 _AUTH_STATE_COOKIE = "lichat_auth"
 
@@ -78,6 +91,7 @@ async def login(
     db: Annotated[AsyncSession, Depends(get_db)],
     redirect_after: str = "/",
 ) -> RedirectResponse:
+    _check_login_rate(request)
     settings = _settings(request)
     existing_state = request.cookies.get(_AUTH_STATE_COOKIE)
     if existing_state:
@@ -117,6 +131,7 @@ async def callback(
     error: str | None = None,
     error_description: str | None = None,
 ) -> RedirectResponse:
+    _check_login_rate(request)
     if error is not None:
         message = (
             "该账号已被此网站限制访问"

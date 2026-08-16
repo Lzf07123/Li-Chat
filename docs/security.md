@@ -40,6 +40,7 @@
 | 搜索信息泄露防护 | 消息搜索限定自己可见范围（单聊双方 / 群成员）；排除已撤回；命中片段截断；q ≤64、limit ≤50 | `app/search/service.py` |
 | 资料与头像防护 | 昵称/简介长度校验；简介仅好友可见（搜索不回传）；头像必须为本人上传的图片；CSRF 保护 | `app/api/users.py`、`app/friends/service.py` |
 | 呼叫信令防护 | 仅好友间、载荷 ≤16KB、ICE 限频、状态机校验非法迁移；信令不落库、SDP 不记日志；媒体 P2P 不经服务端 | `app/ws/calls.py` |
+| 登录限流 | `/oidc/login` 与 `/oidc/callback` IP 粒度滑动窗口，超限 429 + Retry-After（进程内实现） | `app/sso/ratelimit.py`、`app/sso/routes.py` |
 | 消息长度与 XSS | 内容 1–2000 strip 校验；前端 `textContent`/escapeHtml 渲染不拼 HTML | `app/api/messages.py`、`static/app.js` |
 | 敏感接口禁缓存 | `/api/*` 响应统一 `Cache-Control: no-store`，防浏览器/代理缓存会话数据 | `app/main.py` |
 
@@ -47,6 +48,6 @@
 
 - 会话已存数据库；jti 防重放与跨副本 WS 断开在配置 `LICHAT_REDIS_URL` 后由 Redis 承担。**多副本上线仍依赖共享数据库**（当前 SQLite 是本地卷，只能单副本；切 PostgreSQL + Alembic 后才能多副本）。
 - Redis 未配置时进程内缓存与广播退化（仅单进程）；配置后启动 PING 失败即拒绝启动，避免静默降级。
-- 登录接口暂无频率限制，需在网关或应用层加限流。
+- 登录限流为进程内实现；多副本部署需在网关或共享存储层限流（当前已按 IP 滑动窗口缓解单进程暴力尝试）。
 - 数据库迁移尚未引入 Alembic。
 - 发现文档声明的 http 端点已在本端升级为 https 传输（2026-08-16 起，issuer 字面值仍按原文校验）；彻底收敛仍需 IdP 侧把 issuer 改为 https。注意 http→https 的 301 不会被 httpx 的带体 POST 跟随，端点必须用 https 字面值调用。

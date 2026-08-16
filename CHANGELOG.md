@@ -95,6 +95,9 @@
 
 ### 安全加固
 
+- 登录限流：`/oidc/login` 与 `/oidc/callback` 按客户端 IP 做进程内滑动窗口限流
+  （`LICHAT_LOGIN_RATE_LIMIT` 默认 10、`LICHAT_LOGIN_RATE_WINDOW` 默认 60 秒），超限
+  429 + `Retry-After`；多副本部署仍需网关或共享存储限流
 - 授权单飞：同一浏览器重复发起登录时复用未完成的 auth state（`lichat_auth` HttpOnly Cookie），授权完成后即删除状态并清 Cookie——其他仍在等待的授权确认页随之作废，不再并行放行出多个会话
 - 会话守护加强：RP 登出即断开该用户全部 WebSocket（配置 Redis 时跨副本广播），登出标签页不再继续收到实时消息；WS 心跳每次重新校验会话，会话被删除/过期立即以 4401 关闭
 

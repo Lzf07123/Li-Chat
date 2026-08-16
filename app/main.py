@@ -29,6 +29,7 @@ from app.logging import configure_logging, get_logger
 from app.models import User
 from app.oidc.discovery import DiscoveryStore
 from app.redis import build_redis, logout_subscriber
+from app.sso.ratelimit import SlidingWindowRateLimiter
 from app.sso.replay import MemoryReplayCache, RedisReplayCache, ReplayCache
 from app.sso.routes import router as sso_router
 from app.timeutil import iso_utc, utcnow
@@ -228,6 +229,9 @@ def create_app(
     app.state.ws_manager = ConnectionManager()
     app.state.call_manager = CallManager()
     app.state.replay_cache = replay_cache
+    app.state.login_limiter = SlidingWindowRateLimiter(
+        app_settings.login_rate_limit, app_settings.login_rate_window
+    )
 
     app.include_router(sso_router)
     app.include_router(users_router)
