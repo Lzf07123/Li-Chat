@@ -42,6 +42,7 @@ const state = {
   wsReconnectTimer: null,
   wsReconnecting: false,
   uploadCancel: null,
+  uploadRetry: null,
   groups: [],
   activeGroupId: null,
   activeGroup: null,
@@ -2081,7 +2082,7 @@ async function sendFiles(files, isGroup) {
   let sent = 0;
   showUploadProgress();
   for (const file of list) {
-    const upload = await uploadWithProgress(file);
+    const upload = await uploadWithProgress(file, isGroup);
     if (!upload) continue;
     const content_type = upload.mime.startsWith("image/")
       ? "image"
@@ -2101,7 +2102,7 @@ async function sendFiles(files, isGroup) {
     });
     if (messageResponse.ok) sent += 1;
   }
-  hideUploadProgress();
+  if (!state.uploadRetry) hideUploadProgress();
   if (sent > 0) {
     toast(sent === 1 ? "附件已发送" : `已发送 ${sent} 个附件`, "success");
   }
@@ -2117,6 +2118,7 @@ function showUploadProgress() {
           <div class="upload-progress-fill" id="upload-progress-fill"></div>
         </div>
         <span class="upload-progress-text" id="upload-progress-text"></span>
+        <button class="btn btn-ghost btn-sm" type="button" id="upload-retry" hidden>重试</button>
         <button class="icon-btn upload-progress-cancel" id="upload-progress-cancel"
           type="button" aria-label="取消上传">×</button>
       </div>`
@@ -2125,8 +2127,24 @@ function showUploadProgress() {
     document.getElementById("upload-progress-cancel").addEventListener("click", () => {
       if (state.uploadCancel) state.uploadCancel();
     });
+    document.getElementById("upload-retry").addEventListener("click", () => {
+      const retry = state.uploadRetry;
+      state.uploadRetry = null;
+      if (!retry) return;
+      document.getElementById("upload-retry").hidden = true;
+      const fill = document.getElementById("upload-progress-fill");
+      if (fill) {
+        fill.style.width = "0%";
+        fill.classList.remove("upload-progress-failed");
+      }
+      sendFiles([retry.file], retry.isGroup);
+    });
   }
   region.hidden = false;
+  document.getElementById("upload-retry").hidden = true;
+  document.getElementById("upload-progress-cancel").hidden = false;
+  const fill = document.getElementById("upload-progress-fill");
+  if (fill) fill.classList.remove("upload-progress-failed");
   renderUploadProgress("", 0);
 }
 
@@ -2143,9 +2161,25 @@ function hideUploadProgress() {
   const region = document.getElementById("upload-progress");
   if (region) region.hidden = true;
   state.uploadCancel = null;
+  state.uploadRetry = null;
 }
 
-function uploadWithProgress(file) {
+function showUploadError(name) {
+  const region = document.getElementById("upload-progress");
+  if (!region) return;
+  region.hidden = false;
+  const fill = document.getElementById("upload-progress-fill");
+  const text = document.getElementById("upload-progress-text");
+  if (fill) {
+    fill.style.width = "100%";
+    fill.classList.add("upload-progress-failed");
+  }
+  if (text) text.textContent = `上传失败：${name}`;
+  document.getElementById("upload-retry").hidden = false;
+  document.getElementById("upload-progress-cancel").hidden = true;
+}
+
+function uploadWithProgress(file, isGroup) {
   return new Promise((resolve) => {
     const xhr = new XMLHttpRequest();
     state.uploadCancel = () => xhr.abort();
@@ -2178,14 +2212,19 @@ function uploadWithProgress(file) {
         /* 非 JSON 错误体 */
       }
       toast(friendlyError(xhr.status, detail), "error");
+      state.uploadRetry = { file, isGroup };
+      showUploadError(file.name);
       resolve(null);
     };
     xhr.onerror = () => {
       toast("网络错误，请检查连接后重试", "error");
+      state.uploadRetry = { file, isGroup };
+      showUploadError(file.name);
       resolve(null);
     };
     xhr.onabort = () => {
       toast("已取消上传", "info");
+      state.uploadRetry = null;
       resolve(null);
     };
     const form = new FormData();

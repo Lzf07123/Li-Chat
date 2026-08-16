@@ -254,3 +254,11 @@ async def test_v46_announcement_time_and_empty_state(api_client: httpx.AsyncClie
     assert "announcement_updated_at" in text
     assert "announcement-time" in text
     assert "暂无公告，等待群主发布" in text
+
+
+async def test_v47_upload_failure_retry(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "upload-retry" in text
+    assert "uploadRetry" in text
+    css = await _style_css(api_client)
+    assert "upload-progress-failed" in css

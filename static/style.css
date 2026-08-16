@@ -2221,6 +2221,10 @@ a {
   transition: width 120ms linear;
 }
 
+.upload-progress-failed {
+  background: var(--chat-destructive);
+}
+
 .upload-progress-text {
   flex: none;
   max-width: 180px;
