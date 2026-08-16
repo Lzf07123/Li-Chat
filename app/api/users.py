@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.search import ConversationRefOut
 from app.auth.deps import get_current_user, require_csrf
+from app.config import Settings
 from app.db import get_db
 from app.friends import service as friends_service
 from app.groups import service as groups_service
@@ -57,6 +58,7 @@ class MeOut(BaseModel):
     email: str | None
     bio: str | None = None
     csrf_token: str
+    ice_servers: list[dict[str, object]] = []
 
 
 class ProfileIn(BaseModel):
@@ -157,7 +159,11 @@ class CallsOut(BaseModel):
     next_before: int | None
 
 
-def _me_payload(user: User, session: Session) -> MeOut:
+def _me_payload(
+    user: User,
+    session: Session,
+    ice_servers: list[dict[str, object]] | None = None,
+) -> MeOut:
     return MeOut(
         sub=user.sub,
         nickname=user.nickname,
@@ -166,6 +172,7 @@ def _me_payload(user: User, session: Session) -> MeOut:
         email=user.email,
         bio=user.bio,
         csrf_token=session.csrf_token,
+        ice_servers=ice_servers or [],
     )
 
 
@@ -175,7 +182,8 @@ async def me(
     user: Annotated[User, Depends(get_current_user)],
 ) -> MeOut:
     session = cast(Session, request.state.session)
-    return _me_payload(user, session)
+    settings = cast(Settings, request.app.state.settings)
+    return _me_payload(user, session, settings.rtc_ice_servers)
 
 
 @router.patch("/me", response_model=MeOut)
@@ -191,7 +199,10 @@ async def update_profile(
     if body.bio is not None:
         user.bio = body.bio
     await db.commit()
-    return _me_payload(user, cast(Session, request.state.session))
+    settings = cast(Settings, request.app.state.settings)
+    return _me_payload(
+        user, cast(Session, request.state.session), settings.rtc_ice_servers
+    )
 
 
 @router.post("/me/avatar", response_model=MeOut)
@@ -212,7 +223,10 @@ async def update_avatar(
         raise HTTPException(status_code=422, detail="avatar must be an image")
     user.picture = body.url
     await db.commit()
-    return _me_payload(user, cast(Session, request.state.session))
+    settings = cast(Settings, request.app.state.settings)
+    return _me_payload(
+        user, cast(Session, request.state.session), settings.rtc_ice_servers
+    )
 
 
 @router.put("/messages/{message_id}/star", response_model=StarOut)

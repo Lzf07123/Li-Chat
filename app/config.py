@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -29,6 +31,7 @@ class Settings(BaseSettings):
     discovery_cache_ttl: int = 300
     upload_max_mb: int = 10
     upload_dir: str = "./data/uploads"
+    rtc_ice_servers: list[dict[str, object]] = []
     login_rate_limit: int = 10
     login_rate_window: int = 60
     action_rate_limit: int = 60
@@ -55,6 +58,49 @@ class Settings(BaseSettings):
         if not 1 <= value <= 20:
             raise ValueError("upload_max_mb must be between 1 and 20")
         return value
+
+    @field_validator("rtc_ice_servers", mode="before")
+    @classmethod
+    def _validate_rtc_ice_servers(cls, value: object) -> object:
+        if isinstance(value, str):
+            if not value.strip():
+                return []
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError as exc:
+                raise ValueError("rtc_ice_servers must be a JSON array") from exc
+        if not isinstance(value, list):
+            raise ValueError("rtc_ice_servers must be a JSON array")
+        if len(value) > 8:
+            raise ValueError("rtc_ice_servers supports at most 8 servers")
+        servers: list[dict[str, object]] = []
+        for item in value:
+            if not isinstance(item, dict):
+                raise ValueError("each rtc ice server must be an object")
+            urls = item.get("urls")
+            if isinstance(urls, str):
+                urls_list = [urls]
+            elif isinstance(urls, list) and urls and all(
+                isinstance(url, str) for url in urls
+            ):
+                urls_list = urls
+            else:
+                raise ValueError(
+                    "ice server urls must be a non-empty string or list of strings"
+                )
+            for url in urls_list:
+                if not url.startswith(("stun:", "stuns:", "turn:", "turns:")):
+                    raise ValueError(f"unsupported ice server url scheme: {url}")
+            server: dict[str, object] = {"urls": urls}
+            for key in ("username", "credential"):
+                credential = item.get(key)
+                if credential is None:
+                    continue
+                if not isinstance(credential, str):
+                    raise ValueError(f"ice server {key} must be a string")
+                server[key] = credential
+            servers.append(server)
+        return servers
 
     @field_validator("login_rate_limit")
     @classmethod

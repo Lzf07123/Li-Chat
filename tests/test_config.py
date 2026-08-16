@@ -40,3 +40,43 @@ def test_redis_url_from_env(monkeypatch) -> None:
 def test_redis_url_defaults_to_none() -> None:
     settings = Settings(_env_file=None, session_secret="x" * 32)
     assert settings.redis_url is None
+
+
+def test_rtc_ice_servers_parsed_from_json() -> None:
+    settings = Settings(
+        _env_file=None,
+        rtc_ice_servers='[{"urls": "stun:stun.example.com:3478"}, '
+        '{"urls": ["turn:turn.example.com:3478", "turns:turn.example.com:5349"], '
+        '"username": "u", "credential": "p"}]',
+    )
+    assert settings.rtc_ice_servers == [
+        {"urls": "stun:stun.example.com:3478"},
+        {
+            "urls": ["turn:turn.example.com:3478", "turns:turn.example.com:5349"],
+            "username": "u",
+            "credential": "p",
+        },
+    ]
+
+
+def test_rtc_ice_servers_defaults_to_empty() -> None:
+    settings = Settings(_env_file=None)
+    assert settings.rtc_ice_servers == []
+
+
+def test_rtc_ice_servers_rejects_invalid_scheme() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None, rtc_ice_servers='[{"urls": "http://evil.example"}]'
+        )
+
+
+def test_rtc_ice_servers_rejects_bad_json() -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, rtc_ice_servers="not-json")
+
+
+def test_rtc_ice_servers_rejects_too_many() -> None:
+    many = [{"urls": f"stun:server-{i}.example.com"} for i in range(9)]
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, rtc_ice_servers=many)
