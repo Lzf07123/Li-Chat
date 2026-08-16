@@ -28,6 +28,7 @@ class User(Base):
     picture: Mapped[str | None] = mapped_column(Text)
     email: Mapped[str | None] = mapped_column(String(255))
     email_verified: Mapped[bool | None] = mapped_column(Boolean)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 

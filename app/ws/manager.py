@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any, Protocol
 
 
@@ -14,6 +15,30 @@ class ConnectionManager:
 
     def __init__(self) -> None:
         self._connections: dict[str, set[WSConnection]] = {}
+        self._typing_slots: dict[tuple[str, str], float] = {}
+
+    def has(self, sub: str) -> bool:
+        return bool(self._connections.get(sub))
+
+    def count(self, sub: str) -> int:
+        return len(self._connections.get(sub, set()))
+
+    def typing_allowed(
+        self, sender: str, target: str, min_interval: float = 2.0
+    ) -> bool:
+        key = (sender, target)
+        now = time.monotonic()
+        last = self._typing_slots.get(key)
+        if last is not None and now - last < min_interval:
+            return False
+        self._typing_slots[key] = now
+        if len(self._typing_slots) > 10_000:
+            self._typing_slots = {
+                slot: value
+                for slot, value in self._typing_slots.items()
+                if now - value < min_interval
+            }
+        return True
 
     async def connect(self, sub: str, ws: WSConnection) -> None:
         self._connections.setdefault(sub, set()).add(ws)

@@ -11,6 +11,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
 from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
@@ -20,12 +21,16 @@ from app.api.users import router as users_router
 from app.auth.session import get_session
 from app.config import Settings
 from app.db import Base, build_engine, build_sessionmaker
+from app.friends.service import list_friends
 from app.logging import configure_logging, get_logger
+from app.models import User
 from app.oidc.discovery import DiscoveryStore
 from app.redis import build_redis, logout_subscriber
 from app.sso.replay import MemoryReplayCache, RedisReplayCache, ReplayCache
 from app.sso.routes import router as sso_router
+from app.timeutil import iso_utc, utcnow
 from app.ws.manager import ConnectionManager
+from app.ws.relay import relay_typing
 
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 logger = get_logger(__name__)
@@ -50,6 +55,22 @@ def _ensure_session_columns(conn: Connection) -> None:
     }
     if "id_token" not in names:
         conn.exec_driver_sql("ALTER TABLE sessions ADD COLUMN id_token TEXT")
+
+
+def _ensure_user_columns(conn: Connection) -> None:
+    """SQLite 兼容迁移：为既有库补齐 users.last_seen_at（PostgreSQL 走 Alembic）。"""
+    if conn.dialect.name != "sqlite":
+        return
+    names = {
+        row[1] for row in conn.exec_driver_sql("PRAGMA table_info(users)").fetchall()
+    }
+    if "last_seen_at" not in names:
+        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN last_seen_at DATETIME")
+
+
+async def _friend_subs(db: AsyncSession, sub: str) -> list[str]:
+    friends = await list_friends(db, sub)
+    return [friend["sub"] for friend in friends if friend["sub"] is not None]
 
 
 def _sqlite_path(database_url: str) -> Path | None:
@@ -97,6 +118,7 @@ def create_app(
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             await conn.run_sync(_ensure_session_columns)
+            await conn.run_sync(_ensure_user_columns)
         subscriber: asyncio.Task[None] | None = None
         if redis_client is not None:
             await redis_client.ping()
@@ -163,8 +185,20 @@ def create_app(
             user_sub = session.user_sub
         manager = cast(ConnectionManager, app.state.ws_manager)
         await manager.connect(user_sub, websocket)
+        presence_peers: list[str] = []
         try:
             await websocket.send_json({"type": "hello", "sub": user_sub})
+            async with session_factory() as db:
+                user = await db.get(User, user_sub)
+                if user is not None:
+                    user.last_seen_at = utcnow()
+                    await db.commit()
+                presence_peers = await _friend_subs(db, user_sub)
+            for friend_sub in presence_peers:
+                await manager.send_to(
+                    friend_sub,
+                    {"type": "presence", "sub": user_sub, "online": True},
+                )
             while True:
                 try:
                     message = await websocket.receive_json()
@@ -178,11 +212,27 @@ def create_app(
                     if valid is None:
                         await websocket.close(code=4401)
                         return
+                    user = await db.get(User, user_sub)
+                    if user is not None:
+                        user.last_seen_at = utcnow()
+                        await db.commit()
                     await websocket.send_json({"type": "pong"})
+                elif message.get("type") == "typing":
+                    async with session_factory() as db:
+                        await relay_typing(db, manager, user_sub, message)
         except WebSocketDisconnect:
             pass
         finally:
             await manager.disconnect(user_sub, websocket)
+            if manager.count(user_sub) == 0:
+                offline = {
+                    "type": "presence",
+                    "sub": user_sub,
+                    "online": False,
+                    "last_seen_at": iso_utc(utcnow()),
+                }
+                for friend_sub in presence_peers:
+                    await manager.send_to(friend_sub, offline)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

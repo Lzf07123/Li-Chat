@@ -13,7 +13,7 @@
 | POST | `/oidc/backchannel-logout` | 无 | 门户服务器间调用，form 字段 `logout_token`，返回 `{"status":"ok"}` 或 `{"status":"ignored"}` |
 | GET | `/api/me` | 会话 | 当前用户 `{sub, nickname, name, picture, email, csrf_token}` |
 | GET | `/api/users/search?q=` | 会话 | 昵称/邮箱关键词搜索（1–64 字符，≤20 条）；返回 `sub/nickname/name/picture/friend_status`，不回传邮箱 |
-| GET | `/api/friends` | 会话 | 已接受好友列表 `{"friends":[Profile]}` |
+| GET | `/api/friends` | 会话 | 已接受好友列表 `{"friends":[{...Profile,online:bool,last_seen_at:str|null}]}` |
 | GET | `/api/friends/requests` | 会话 | `{"incoming":[{"requester":Profile,"created_at"}],"outgoing":[{"addressee":Profile,"created_at"}]}` |
 | GET | `/api/friends/recommendations?limit=` | 会话 | 随机推荐（默认 5、1–20）；排除自己、好友与双方待处理申请，返回 `{"friends":[Profile]}`，不回传邮箱 |
 | POST | `/api/friends/requests` | 会话 + CSRF | 发申请 `{"to_sub":"..."}`；201 返回申请对象；400 自加 / 404 未知 / 409 重复或已是好友 |
@@ -31,8 +31,10 @@
 - 握手携带同源 Cookie，会话无效在 accept 后以 **4401** 关闭。
 - 连接成功后服务端推送 `{"type":"hello","sub":"..."}`。
 - 客户端发 `{"type":"ping"}` 收到 `{"type":"pong"}`，前端每 25 秒心跳一次。
+- 客户端可发 `{"type":"typing","to":"<sub>","action":"start|stop"}`：仅双方为好友且满足
+  2 秒限频时，服务端原样中继为 `{"type":"typing","from":"<sub>","action":...}`；否则静默丢弃。
 - 回程登出会主动以 4401 断开该用户连接，前端据此跳转登录。
-- 服务端推送（只增不改，客户端写操作一律走 REST）：`{"type":"message","message":{id,sender_sub,recipient_sub,content,created_at}}` → 发送方与接收方；`{"type":"read_receipt","by_sub","peer_sub","last_read_id"}` → 会话另一方；`{"type":"friend_event","event":"request_received|request_accepted|request_rejected|friend_removed","by_sub":...,"at":...}` → 相关方（申请→被申请人；接受/拒绝→申请人；解除→关系另一方）。
+- 服务端推送（只增不改，客户端写操作一律走 REST）：`{"type":"message","message":{id,sender_sub,recipient_sub,content,created_at}}` → 发送方与接收方；`{"type":"read_receipt","by_sub","peer_sub","last_read_id"}` → 会话另一方；`{"type":"presence","sub","online":true}` / `{"type":"presence","sub","online":false,"last_seen_at"}` → 该用户全部好友（上线/全部连接释放时）；`{"type":"friend_event","event":"request_received|request_accepted|request_rejected|friend_removed","by_sub":...,"at":...}` → 相关方（申请→被申请人；接受/拒绝→申请人；解除→关系另一方）。
 
 ## CSRF 约定
 

@@ -686,9 +686,26 @@ a {
 }
 
 .contact-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.presence-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--chat-muted);
+  flex-shrink: 0;
+  opacity: 0.55;
+}
+
+.presence-online {
+  background: var(--chat-success);
+  opacity: 1;
 }
 
 .contact-main {
@@ -953,6 +970,25 @@ a {
 .message-read {
   margin-left: 6px;
   color: var(--chat-primary);
+}
+
+.chat-peer-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.chat-peer-status {
+  font-size: 0.75rem;
+  color: var(--chat-muted);
+}
+
+.typing-hint {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--chat-primary);
+  white-space: nowrap;
 }
 
 .composer {

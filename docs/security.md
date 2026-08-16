@@ -24,6 +24,8 @@
 | 好友申请生命周期鉴权 | 仅被申请人可 accept/reject；仅关系一方可解除；重复/自加 409/400 | `app/friends/service.py` |
 | 发消息关系校验 | 双方必须 accepted 好友；自聊 400、非好友 403 | `app/messages/service.py` |
 | 历史访问边界 | 会话键 `(participant_lo, participant_hi)` 天然限定参与者 | `app/messages/service.py` |
+| presence 信息泄露防护 | 上线/下线仅向好友广播；`GET /api/friends` 的 online/last_seen_at 仅对好友可见 | `app/main.py`、`app/api/friends.py` |
+| typing 信令防护 | 仅好友间中继、`start|stop` 白名单、按 (发送方,目标) 2 秒限频，非法请求静默丢弃 | `app/ws/relay.py`、`app/ws/manager.py` |
 | 消息长度与 XSS | 内容 1–2000 strip 校验；前端 `textContent`/escapeHtml 渲染不拼 HTML | `app/api/messages.py`、`static/app.js` |
 | 敏感接口禁缓存 | `/api/*` 响应统一 `Cache-Control: no-store`，防浏览器/代理缓存会话数据 | `app/main.py` |
 

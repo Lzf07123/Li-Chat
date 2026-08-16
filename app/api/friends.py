@@ -23,6 +23,15 @@ class ProfileOut(BaseModel):
     picture: str | None = None
 
 
+class FriendPresenceOut(ProfileOut):
+    online: bool
+    last_seen_at: str | None = None
+
+
+class FriendsPresenceOut(BaseModel):
+    friends: list[FriendPresenceOut]
+
+
 class FriendRequestIn(BaseModel):
     to_sub: str
 
@@ -106,12 +115,28 @@ async def create_request(
     )
 
 
-@router.get("", response_model=FriendsOut)
+@router.get("", response_model=FriendsPresenceOut)
 async def friends_list(
+    request: Request,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> FriendsOut:
-    return FriendsOut(friends=await service.list_friends(db, user.sub))
+) -> FriendsPresenceOut:
+    manager = _manager(request)
+    friends = await service.list_friends(db, user.sub)
+    items: list[FriendPresenceOut] = []
+    for friend in friends:
+        sub = cast(str, friend["sub"])
+        items.append(
+            FriendPresenceOut(
+                sub=sub,
+                nickname=friend["nickname"],
+                name=friend["name"],
+                picture=friend["picture"],
+                online=manager.has(sub),
+                last_seen_at=friend["last_seen_at"],
+            )
+        )
+    return FriendsPresenceOut(friends=items)
 
 
 @router.post("/requests/{from_sub}/accept", response_model=StatusOut)

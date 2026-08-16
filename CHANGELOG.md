@@ -4,6 +4,10 @@
 
 ### 功能
 
+- 在线状态与正在输入：好友上线/下线 presence 广播（仅好友可见）、`users.last_seen_at`
+  （连接与心跳写入）、`GET /api/friends` 附 `online`/`last_seen_at`；typing `start/stop`
+  定向中继（仅好友、2 秒限频、非法/非好友静默丢弃）；前端好友在线圆点、会话头部在线
+  状态与「正在输入…」提示
 - 未读计数与已读回执（里程碑三起点）：会话列表摘要（最后消息 + 未读数 + 已读游标）、
   `GET /api/conversations` 与 `POST /api/conversations/{sub}/read`（游标只前进、消息必须
   属于该会话、非好友 403）、WS `read_receipt` 定向回执、发送方发送后自动推进游标；前端
@@ -28,6 +32,8 @@
 
 ### 行为变更
 
+- SQLite 连接启用 `journal_mode=WAL` 与 `busy_timeout=5000`：缓解读写并发互锁与瞬时
+  锁竞争（生产同样受益；PostgreSQL 不受影响）
 - OIDC 授权 scope 默认加入 `email`：登录时向 Li&Pass 请求邮箱并同步到本地资料，支撑「按邮箱搜索好友」；未验证邮箱不阻塞登录（仅存储 `email_verified` 标记），授权同意页可能多一项邮箱授权
 - RP 登出携带 `id_token_hint`：登录时把 `id_token` 存进本地会话（仅作登出提示），网站内退出登录跳门户 `end-session` 时随 `client_id` 一起携带，门户据此展示「退出所有会话 / 仅退出当前网站」确认页，而不是打回授权确认
 - 移除 `/oidc/post-logout` 的兼容逻辑：该端点恢复标准形态（仅 GET 带签名 `state` 回跳，验签后 302 首页），POST/`logout_token` 一律 405；回程登出统一走 `/oidc/backchannel-logout`

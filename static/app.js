@@ -11,6 +11,9 @@ const state = {
   searchResults: [],
   conversations: [],
   readUpTo: {},
+  typingTimer: null,
+  typingSent: false,
+  lastTypingAt: 0,
   activeSub: null,
   activePeer: null,
   messages: [],
@@ -238,6 +241,8 @@ function renderLoggedIn() {
   document.getElementById("friends-list").addEventListener("click", onFriendListClick);
   document.getElementById("composer").addEventListener("submit", onComposerSubmit);
   document.getElementById("message-input").addEventListener("keydown", onComposerKeydown);
+  document.getElementById("message-input").addEventListener("input", onComposerInput);
+  document.getElementById("message-input").addEventListener("blur", onComposerBlur);
   document.getElementById("load-older").addEventListener("click", loadOlder);
   document.getElementById("chat-back").addEventListener("click", closeChat);
   refreshSidebar();
@@ -306,13 +311,15 @@ function renderSidebar() {
   document.getElementById("recommend-list").innerHTML = state.recommendations
     .map(recommendHtml)
     .join("");
-  const summaries = new Map(
-    state.conversations.map((item) => [item.peer.sub, item])
-  );
-  const friends = state.conversations.map((item) => item.peer);
-  for (const friend of state.friends) {
-    if (!friends.some((item) => item.sub === friend.sub)) friends.push(friend);
-  }
+  const summaries = new Map(state.conversations.map((item) => [item.peer.sub, item]));
+  const friendsById = new Map(state.friends.map((friend) => [friend.sub, friend]));
+  const orderedSubs = [
+    ...state.conversations.map((item) => item.peer.sub),
+    ...state.friends.map((friend) => friend.sub),
+  ];
+  const friends = [...new Set(orderedSubs)]
+    .map((sub) => friendsById.get(sub))
+    .filter(Boolean);
   document.getElementById("friends-empty").hidden = friends.length > 0;
   document.getElementById("friends-list").innerHTML = friends
     .map((friend) => friendHtml(friend, summaries.get(friend.sub)))
@@ -361,12 +368,16 @@ function friendHtml(friend, summary) {
   const preview = summary && summary.last_message
     ? summary.last_message.content
     : "";
+  const online = friend.online === true;
   return `<li class="contact-item">
     <button class="contact-button" type="button"
       data-action="open" data-sub="${escapeHtml(friend.sub)}">
       ${avatarHtml(friend)}
       <span class="contact-main">
-        <span class="contact-name">${escapeHtml(displayName(friend))}</span>
+        <span class="contact-name">
+          <span class="presence-dot${online ? " presence-online" : ""}" aria-hidden="true"></span>
+          ${escapeHtml(displayName(friend))}
+        </span>
         ${preview ? `<span class="contact-preview">${escapeHtml(preview)}</span>` : ""}
       </span>
       ${unread > 0
@@ -486,7 +497,14 @@ async function openChat(sub) {
   document.getElementById("chat-active").hidden = false;
   document.getElementById("chat-peer").innerHTML = `
     ${avatarHtml(peer)}
-    <span class="chat-peer-name">${escapeHtml(displayName(peer))}</span>`;
+    <span class="chat-peer-main">
+      <span class="chat-peer-name">${escapeHtml(displayName(peer))}</span>
+      <span class="chat-peer-status" id="chat-peer-status">${
+        peer.online ? "在线" : "离线"
+      }</span>
+    </span>
+    <span id="typing-hint" class="typing-hint" hidden>正在输入…</span>`;
+  clearTypingHint();
   document.getElementById("message-input").value = "";
   document.getElementById("load-older").hidden = true;
   renderMessages();
@@ -545,6 +563,7 @@ function loadOlder() {
 }
 
 function closeChat() {
+  sendTyping("stop");
   state.activeSub = null;
   state.activePeer = null;
   state.messages = [];
@@ -587,8 +606,51 @@ function appendMessage(message) {
   container.scrollTop = container.scrollHeight;
 }
 
+function updatePeerStatus(sub, online) {
+  const friend = state.friends.find((item) => item.sub === sub);
+  if (friend) friend.online = online;
+  if (sub === state.activeSub) {
+    const status = document.getElementById("chat-peer-status");
+    if (status) status.textContent = online ? "在线" : "离线";
+  }
+}
+
+function showTypingHint() {
+  if (!state.activeSub) return;
+  const hint = document.getElementById("typing-hint");
+  if (hint) hint.hidden = false;
+  if (state.typingTimer) window.clearTimeout(state.typingTimer);
+  state.typingTimer = window.setTimeout(clearTypingHint, 2500);
+}
+
+function clearTypingHint() {
+  if (state.typingTimer) {
+    window.clearTimeout(state.typingTimer);
+    state.typingTimer = null;
+  }
+  const hint = document.getElementById("typing-hint");
+  if (hint) hint.hidden = true;
+}
+
+function sendTyping(action) {
+  const socket = state.ws;
+  if (!socket || socket.readyState !== WebSocket.OPEN || !state.activeSub) return;
+  if (action === "start") {
+    const now = Date.now();
+    if (now - state.lastTypingAt < 1500) return;
+    state.lastTypingAt = now;
+    state.typingSent = true;
+  } else if (!state.typingSent) {
+    return;
+  } else {
+    state.typingSent = false;
+  }
+  socket.send(JSON.stringify({ type: "typing", to: state.activeSub, action }));
+}
+
 async function onComposerSubmit(event) {
   event.preventDefault();
+  sendTyping("stop");
   const input = document.getElementById("message-input");
   const content = input.value.trim();
   if (!content || !state.activeSub) return;
@@ -607,6 +669,14 @@ function onComposerKeydown(event) {
     event.preventDefault();
     document.getElementById("composer").requestSubmit();
   }
+}
+
+function onComposerInput() {
+  sendTyping("start");
+}
+
+function onComposerBlur() {
+  sendTyping("stop");
 }
 
 function handleServerMessage(data) {
@@ -633,6 +703,11 @@ function handleServerMessage(data) {
       state.readUpTo[data.by_sub] = data.last_read_id;
       renderMessages();
     }
+  } else if (data.type === "presence" && data.sub) {
+    updatePeerStatus(data.sub, data.online === true);
+    renderSidebar();
+  } else if (data.type === "typing" && data.from === state.activeSub) {
+    showTypingHint();
   } else if (data.type === "friend_event") {
     refreshSidebar();
   }
@@ -709,6 +784,9 @@ window.addEventListener("pageshow", (event) => {
   state.searchResults = [];
   state.conversations = [];
   state.readUpTo = {};
+  state.typingSent = false;
+  state.lastTypingAt = 0;
+  state.typingTimer = null;
   state.messages = [];
   state.activeSub = null;
   state.activePeer = null;
