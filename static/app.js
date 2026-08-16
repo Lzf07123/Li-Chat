@@ -11,6 +11,10 @@ const state = {
   requests: { incoming: [], outgoing: [] },
   recommendations: [],
   searchResults: [],
+  messageHits: [],
+  searchKind: "contacts",
+  searchNextBefore: null,
+  searchQuery: "",
   conversations: [],
   readUpTo: {},
   typingTimer: null,
@@ -167,6 +171,11 @@ function mainHtml() {
   return `<main class="app-main app-main-chat">
     <aside class="chat-sidebar" aria-label="好友与申请">
       <form id="search-form" class="search-box">
+        <div class="search-modes" role="group" aria-label="搜索类型">
+          <button class="search-mode search-mode-active" type="button"
+            data-kind="contacts">用户</button>
+          <button class="search-mode" type="button" data-kind="messages">消息</button>
+        </div>
         <label class="sr-only" for="search-input">搜索用户</label>
         <input id="search-input" class="input" type="search" maxlength="64"
           placeholder="按昵称或邮箱搜索" autocomplete="off" />
@@ -258,6 +267,7 @@ function renderLoggedIn() {
   document.addEventListener("keydown", onProfileKeydown);
   document.getElementById("logout").addEventListener("click", logout);
   document.getElementById("search-form").addEventListener("submit", onSearch);
+  document.getElementById("search-form").addEventListener("click", onSearchModeClick);
   document.getElementById("search-results").addEventListener("click", onSearchResultClick);
   document.getElementById("requests-list").addEventListener("click", onRequestListClick);
   document.getElementById("recommend-list").addEventListener("click", onRecommendListClick);
@@ -483,6 +493,25 @@ function searchResultHtml(result) {
   </li>`;
 }
 
+function messageHitHtml(hit) {
+  const label =
+    hit.conversation.type === "group"
+      ? hit.conversation.group_name
+      : hit.conversation.peer_name;
+  const target =
+    hit.conversation.type === "group"
+      ? `data-action="open-group-hit" data-group="${hit.conversation.group_id}"`
+      : `data-action="open-dm-hit" data-peer="${escapeHtml(hit.conversation.peer_sub)}"`;
+  return `<li class="contact-item search-item search-hit">
+    <button class="contact-button" type="button" ${target}>
+      <span class="contact-main">
+        <span class="contact-name">${escapeHtml(label || "")}</span>
+        <span class="contact-preview">${escapeHtml(hit.snippet)}</span>
+      </span>
+    </button>
+  </li>`;
+}
+
 async function onSearch(event) {
   event.preventDefault();
   const input = document.getElementById("search-input");
@@ -492,19 +521,74 @@ async function onSearch(event) {
     results.hidden = true;
     return;
   }
-  const response = await api(`/api/users/search?q=${encodeURIComponent(query)}`);
-  if (!response.ok) {
-    results.hidden = true;
+  state.searchQuery = query;
+  if (state.searchKind === "messages") {
+    state.searchNextBefore = null;
+    await searchMessages(query, false);
     return;
   }
-  state.searchResults = (await response.json()).results;
-  results.hidden = state.searchResults.length === 0;
-  results.innerHTML = state.searchResults.map(searchResultHtml).join("");
+  const response = await api(`/api/search?kind=contacts&q=${encodeURIComponent(query)}`);
+  if (!response.ok) return;
+  state.searchResults = (await response.json()).contacts;
+  renderSearchResults();
+}
+
+async function searchMessages(query, append) {
+  let url = `/api/search?kind=messages&q=${encodeURIComponent(query)}`;
+  if (append && state.searchNextBefore) url += `&before=${state.searchNextBefore}`;
+  const response = await api(url);
+  if (!response.ok) return;
+  const body = await response.json();
+  if (!append) state.messageHits = [];
+  state.messageHits = state.messageHits.concat(body.messages);
+  state.searchNextBefore = body.next_before;
+  renderSearchResults();
+}
+
+function renderSearchResults() {
+  const results = document.getElementById("search-results");
+  const hasResults =
+    state.searchKind === "messages"
+      ? state.messageHits.length > 0
+      : state.searchResults.length > 0;
+  results.hidden = !hasResults;
+  const more = state.searchKind === "messages" && state.searchNextBefore
+    ? `<li class="contact-item search-item"><button class="btn btn-ghost btn-sm"
+        type="button" data-action="search-more">加载更多</button></li>`
+    : "";
+  results.innerHTML =
+    (state.searchKind === "messages"
+      ? state.messageHits.map(messageHitHtml).join("")
+      : state.searchResults.map(searchResultHtml).join("")) + more;
+}
+
+function onSearchModeClick(event) {
+  const button = event.target.closest(".search-mode[data-kind]");
+  if (!button) return;
+  state.searchKind = button.dataset.kind;
+  document.querySelectorAll(".search-mode").forEach((item) => {
+    item.classList.toggle("search-mode-active", item === button);
+  });
+  const input = document.getElementById("search-input");
+  input.placeholder = state.searchKind === "messages" ? "搜索聊天记录" : "按昵称或邮箱搜索";
+  input.focus();
 }
 
 async function onSearchResultClick(event) {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
+  if (button.dataset.action === "search-more") {
+    await searchMessages(state.searchQuery, true);
+    return;
+  }
+  if (button.dataset.action === "open-dm-hit") {
+    openChat(button.dataset.peer);
+    return;
+  }
+  if (button.dataset.action === "open-group-hit") {
+    openGroup(Number(button.dataset.group));
+    return;
+  }
   if (button.dataset.action === "open") {
     openChat(button.dataset.sub);
     return;

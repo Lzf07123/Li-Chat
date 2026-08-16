@@ -94,7 +94,7 @@ async def test_app_chat_contracts(api_client: httpx.AsyncClient) -> None:
     text = response.text
     assert "/api/friends" in text
     assert "/api/friends/requests" in text
-    assert "/api/users/search" in text
+    assert "/api/search?kind=contacts" in text
     assert "/api/conversations/" in text
     assert '"message"' in text
     assert "friend_event" in text

@@ -31,6 +31,7 @@ flowchart LR
 | `app/messages/` | 消息业务：发送、历史分页、长度/关系校验 |
 | `app/groups/` | 群聊业务：建群、成员、角色与权限矩阵 |
 | `app/uploads/` | 附件业务：内容嗅探、随机文件名、鉴权回源 |
+| `app/search/` | 搜索业务：消息检索（可见范围 + 游标 + snippet）与联系人检索 |
 | `static/` | 同源前端（登录、好友双栏、单聊、在线状态、退出） |
 | `tests/fixtures/mock_idp.py` | 本地模拟 IdP，测试零外网依赖 |
 

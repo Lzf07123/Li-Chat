@@ -13,6 +13,8 @@
 | POST | `/oidc/backchannel-logout` | 无 | 门户服务器间调用，form 字段 `logout_token`，返回 `{"status":"ok"}` 或 `{"status":"ignored"}` |
 | GET | `/api/me` | 会话 | 当前用户 `{sub, nickname, name, picture, email, csrf_token}` |
 | GET | `/api/users/search?q=` | 会话 | 昵称/邮箱关键词搜索（1–64 字符，≤20 条）；返回 `sub/nickname/name/picture/friend_status`，不回传邮箱 |
+| GET | `/api/search?kind=messages&q=&limit=&before=` | 会话 | 消息全文搜索（仅自己可见范围：单聊双方/群成员；LIKE 不区分大小写、倒序游标、命中片段）；`{"messages":[{id,sender_sub,conversation:{type,peer_sub,peer_name,group_id,group_name},snippet,created_at}],"next_before"}` |
+| GET | `/api/search?kind=contacts&q=` | 会话 | 联系人搜索（语义同 `/api/users/search`）；`{"contacts":[{sub,nickname,name,picture,friend_status}]}` |
 | GET | `/api/friends` | 会话 | 已接受好友列表 `{"friends":[{...Profile,online:bool,last_seen_at:str|null}]}` |
 | GET | `/api/friends/requests` | 会话 | `{"incoming":[{"requester":Profile,"created_at"}],"outgoing":[{"addressee":Profile,"created_at"}]}` |
 | GET | `/api/friends/recommendations?limit=` | 会话 | 随机推荐（默认 5、1–20）；排除自己、好友与双方待处理申请，返回 `{"friends":[Profile]}`，不回传邮箱 |

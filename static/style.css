@@ -600,6 +600,34 @@ a {
   gap: 8px;
 }
 
+.search-modes {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--chat-border);
+  border-radius: 999px;
+  background: var(--chat-surface-2);
+}
+
+.search-mode {
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--chat-muted);
+  font-size: 0.78rem;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.search-mode-active {
+  background: var(--chat-primary);
+  color: var(--chat-primary-fg);
+}
+
+.search-hit .contact-button {
+  width: 100%;
+}
+
 .search-box .input {
   flex: 1;
   min-width: 0;

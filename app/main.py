@@ -18,6 +18,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from app.api.friends import router as friends_router
 from app.api.groups import router as groups_router
 from app.api.messages import router as messages_router
+from app.api.search import router as search_router
 from app.api.uploads import router as uploads_router
 from app.api.users import router as users_router
 from app.auth.session import get_session
@@ -210,6 +211,7 @@ def create_app(
     app.include_router(groups_router)
     app.include_router(messages_router)
     app.include_router(uploads_router)
+    app.include_router(search_router)
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:

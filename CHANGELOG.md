@@ -4,6 +4,9 @@
 
 ### 功能
 
+- 全文搜索：`GET /api/search?kind=messages|contacts`——消息检索限定自己可见范围（单聊双方 /
+  群成员）、LIKE 不区分大小写、倒序游标分页、命中片段前后截断脱敏；联系人检索复用好友搜索
+  语义（附 friend_status）；前端搜索框「用户/消息」双模式、命中跳转与加载更多
 - 附件与图片消息：上传端点（`LICHAT_UPLOAD_MAX_MB` 默认 10、≤20；内容嗅探白名单
   jpeg/png/gif/webp/pdf/txt，拒绝 SVG/HTML 与伪造类型；随机文件名防遍历）、`uploads`
   表、会话鉴权回源（仅上传者可下载、nosniff、图片 inline / 其他 attachment）、消息
