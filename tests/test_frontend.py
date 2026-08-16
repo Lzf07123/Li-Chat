@@ -70,6 +70,18 @@ async def test_app_script_contracts(api_client: httpx.AsyncClient) -> None:
     assert 'window.location.href = "/"' in text
     assert 'window.location.href = "/oidc/login"' not in text
     assert '"pageshow"' in text
+
+
+async def test_logout_modal_offers_two_logout_semantics(
+    api_client: httpx.AsyncClient,
+) -> None:
+    response = await api_client.get("/app.js")
+    text = response.text
+    assert 'id="logout-modal"' in text
+    assert 'id="logout-local"' in text
+    assert 'id="logout-sso"' in text
+    assert 'submitLogoutForm("/oidc/logout-local")' in text
+    assert 'submitLogoutForm("/oidc/logout")' in text
     assert "event.persisted" in text
     assert "state.loggingOut = true" in text
 

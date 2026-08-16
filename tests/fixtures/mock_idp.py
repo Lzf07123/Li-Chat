@@ -90,6 +90,12 @@ class MockIdP:
     def sign_logout_token(self, claims: dict[str, Any]) -> str:
         return self.sign_id_token(claims)
 
+    @staticmethod
+    def at_hash_for(access_token: str) -> str:
+        """与 app.oidc.tokens._at_hash 同口径的测试侧实现。"""
+        digest = hashlib.sha256(access_token.encode()).digest()[:16]
+        return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+
     def issue_code(
         self,
         *,
@@ -159,7 +165,13 @@ class MockIdP:
         @app.post("/oauth2/token")
         async def token(request: Request):
             if self.blocked:
-                return JSONResponse({"detail": "该账号已被此网站限制访问"}, status_code=403)
+                return JSONResponse(
+                    {
+                        "error": "access_denied",
+                        "error_description": "该账号已被此网站限制访问",
+                    },
+                    status_code=403,
+                )
             form = await request.form()
             if form.get("client_secret") and form.get("client_secret") != self.client_secret:
                 return JSONResponse({"error": "invalid_client"}, status_code=401)
@@ -178,6 +190,7 @@ class MockIdP:
                 {
                     "sub": self.token_sub or self.user["sub"],
                     "nonce": record["nonce"],
+                    "at_hash": self.at_hash_for(access_token),
                     "sid": self.sid,
                     "acr": self.acr,
                     "jti": secrets.token_urlsafe(16),

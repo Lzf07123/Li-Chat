@@ -6,18 +6,19 @@
 | state/nonce 校验且单次使用 | 服务端存储，取出即删除，10 分钟过期 | `app/oidc/state.py` |
 | redirect_uri 精确匹配 | 只从配置读取，不拼接、不做前缀匹配 | `app/config.py` |
 | 开放重定向防护 | `redirect_after` 仅允许站内相对路径 | `app/sso/routes.py:_safe_redirect_after` |
-| id_token 校验 | iss、aud=client_id、nonce、RS256、iat/exp、按 kid 从 JWKS 选钥，密钥轮换时自动刷新 | `app/oidc/tokens.py` |
+| id_token 校验 | iss、aud=client_id、nonce、RS256、iat/exp、`at_hash`（等于 `base64url(SHA256(access_token) 左 16 字节)`，缺失/不符即拒绝）、按 kid 从 JWKS 选钥，密钥轮换时自动刷新 | `app/oidc/tokens.py` |
 | access_token 用途限定 | 只用于调用 userinfo，不在本地校验 aud | `app/oidc/provider.py` |
 | 本地会话 | HttpOnly + SameSite=Lax（生产 Secure）、滑动 2h/绝对 7d、绑定门户 sid | `app/auth/session.py` |
 | 会话守护 | RP 登出/回程登出/撤销授权均断开该用户 WS（Redis 时跨副本广播）；WS 心跳逐次重校验会话，失效即 4401 关闭 | `app/sso/routes.py`、`app/main.py` |
 | CSRF | 双提交令牌，支持请求头与表单字段，`secrets.compare_digest` 比对 | `app/auth/deps.py` |
 | RP 登出 state | HMAC-SHA256 签名，回跳验签 | `app/sso/signing.py` |
 | RP 登出 hint | `id_token` 仅存本地会话表作为 `end-session` 的 `id_token_hint`（5 分钟寿命令牌），随会话删除/过期一并清除，不落前端与日志 | `app/models.py`、`app/sso/routes.py` |
+| 双语义登出 | `POST /oidc/logout`（登出 SSO）与 `POST /oidc/logout-local`（仅本网站）分离；二者同等要求 CSRF、同样清会话/断 WS/广播，仅联邦范围不同 | `app/sso/routes.py` |
 | 回程登出 | 验 iss/aud/120 秒新鲜窗口/jti 防重放/events，命中清会话并断 WS；`sid` 缺失或未命中时回退删除该用户全部会话（防门户 sid 轮换导致撤销授权不生效） | `app/sso/routes.py`、`app/sso/replay.py`、`app/auth/session.py` |
 | 授权单飞 | 同一浏览器复用未完成 auth state（HttpOnly Cookie `lichat_auth` 记 state），完成后删除状态并清 Cookie，其余授权确认页随之作废，防止多确认页并行放行 | `app/sso/routes.py` |
 | jti 防重放（Redis） | 配置 `LICHAT_REDIS_URL` 后改用 `SET NX EX` 原子判重，多副本共享 | `app/sso/replay.py`、`app/redis.py` |
 | 跨副本登出广播 | 回程登出后经 `lichat:logout` 频道广播，各副本断开该用户 WS（4401） | `app/redis.py`、`app/main.py` |
-| 账号封禁 | `account_blocked` 与 403 映射为友好提示，不泄露细节 | `app/sso/routes.py` |
+| 账号封禁 | 回调 `error_description=account_blocked`、token 403 `error=access_denied`、userinfo 403 均映射为友好提示，不泄露细节 | `app/sso/routes.py` |
 | 生产密钥强度 | prod 环境会话密钥不足 32 字符直接拒绝启动 | `app/config.py` |
 | 日志 | 结构化日志，仅记录错误码与 id，不落令牌 | `app/logging.py` |
 | 搜索信息泄露防护 | 匹配昵称/邮箱但只回传 sub/nickname/name/picture；查询 ≤64、结果 ≤20 | `app/friends/service.py` |
@@ -64,7 +65,9 @@
 - Redis 未配置时进程内缓存与广播退化（仅单进程）；配置后启动 PING 失败即拒绝启动，避免静默降级。
 - 登录限流为进程内实现；多副本部署需在网关或共享存储层限流（当前已按 IP 滑动窗口缓解单进程暴力尝试）。
 - 数据库迁移尚未引入 Alembic。
-- 发现文档声明的 http 端点已在本端升级为 https 传输（2026-08-16 起，issuer 字面值仍按原文校验）；彻底收敛仍需 IdP 侧把 issuer 改为 https。注意 http→https 的 301 不会被 httpx 的带体 POST 跟随，端点必须用 https 字面值调用。
+- Li&Pass 发现文档已于 2026-08-17 收敛为 https 字面值（issuer 与五个端点）；本端的
+  http→https 升级逻辑保留为防御性兜底（旧文档回退时仍强制 https 调用）。注意 http→https
+  的 301 不会被 httpx 的带体 POST 跟随，传输端点必须用 https 字面值调用。
 - 音视频呼叫默认无 ICE 服务器，只走 host 候选：同网/直连可用，跨 NAT/跨网需配置
   `LICHAT_RTC_ICE_SERVERS`（自建或购买 STUN/TURN）后才能建连。
 - 麦克风/摄像头采集（语音消息与音视频通话）依赖安全上下文：生产必须 https；局域网

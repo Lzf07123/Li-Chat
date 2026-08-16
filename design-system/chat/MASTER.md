@@ -1,6 +1,6 @@
 # Li&Chat 设计系统实现速览（MASTER）
 
-> 状态：已回写（2026-08-16，随首次设计实例化） ｜ 代码事实：static/style.css、static/brand.js
+> 状态：已回写（2026-08-16 首次实例化；2026-08-17 同步模板 V1.2） ｜ 代码事实：static/style.css、static/brand.js
 
 ## 令牌快照
 
@@ -10,12 +10,17 @@
 
 阴影 `--shadow-sm/md/lg` 三档弥散（透明度总和 <0.1）；缓动 `--ease-out` / `--ease-spring`；时长 `--motion-fast/base/slow = 150/250/350ms`。
 
+按钮着色（V1.2）：`--chat-btn-primary-bg/-bg-hover/-border`（浅 `rgba(37,99,235,.10/.17/.26)`、
+深 `rgba(96,165,250,.13/.21/.30)`）、`--chat-brand-fg`（浅 `#1E40AF`、深 `#DBEAFE`）、
+`--chat-btn-sweep`（扫光亮度，浅 `.42` / 深 `.18`）。
+
 ## 组件清单
 
 | 类名 | 用途 |
 | --- | --- |
-| .btn-* | primary/secondary/ghost/danger/link/sm；按压 scale(0.97)、hover 上移 1px、disabled opacity-50 |
+| .btn-* | primary/secondary/ghost/danger/link/sm；主按钮半透明单色着色 + 细描边 + `::after` 扫光（4s，disabled 关闭）；按压 scale(0.97)、hover 上移 1px、disabled opacity-50 |
 | .card / .card-interactive | 16px 圆角表面 + 弥散阴影；interactive hover 上移 |
+| .auth-halo / .auth-brand::before | 认证卡与 Logo 呼吸辉光（4.5s，reduced-motion 静止） |
 | .badge-* | 语义状态徽章（success/warning/danger/muted/primary） |
 | .label / .input | 表单（预留，里程碑二使用） |
 | .notice | 提示条 |
@@ -61,6 +66,12 @@ brand.js 暴露 `BRAND.{name,slug,slogan,description,icp,police,logo,footer()}`�
 ambient.js 暴露 `LiChatAmbient.setDensity(n)`；浓度：登录 10、登录后 8、移动端（<768px）≤6；四类符号（直线穿行/方块钟摆/Z 形穿行/光斑公转）；颜色读 CSS 令牌；页面隐藏时暂停；reduced-motion 单帧。
 
 ## 验收状态
+
+RGB 调校审计（2026-08-17，模板 V1.2 附录 E 方法）：明暗两套令牌前景/背景对全部 ≥4.5:1
+（最低 `muted` on bg = 4.548），无粉色系、无大面积重色；按钮半透明底文字对比浅 7.28 /
+深 12.62。按钮状态纪律审计：现有异步动作的 pending 均为单按钮/消息气泡 spinner，无
+成对按钮双转圈。每个新增 `animation` 均已定义对应 `@keyframes`（`chat-btn-sweep`、
+`chat-halo-breathe`），reduced-motion 下全局降为单帧。
 
 布局回归（2026-08-16，微信式布局）：桌面 1440×900 与移动 390×844 经无头浏览器程序化验收——
 页面 `scrollY=0`、`body overflow:hidden`、无横向溢出、聊天框内部滚动（可见高度 < 内容高度）、

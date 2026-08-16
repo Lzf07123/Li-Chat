@@ -9,16 +9,32 @@
   丢失导致「已接通」却无媒体）；远程视频显式 `play()` 兜底自动播放拦截
 - 呼叫 ICE 限频不再给发送方回 `invalid`：超限静默丢弃（修复 trickle ICE 连发候选触发
   「呼叫失败」并自挂断）
+- 修复 `--chat-surface-1` 未定义导致弹层卡片背景透明（统一回退到 `--chat-surface`）
 
 ### 功能
 
 - 可配置 WebRTC ICE 服务器：`LICHAT_RTC_ICE_SERVERS`（JSON 数组，stun/stuns/turn/turns
   前缀、≤8 个，非法值拒绝启动），列表随 `GET /api/me` 的 `ice_servers` 下发；跨网通话
   可接入 STUN/TURN（默认空 = 仅同网/直连）
+- 双语义登出：新增 `POST /oidc/logout-local`（仅退出本网站，清本地会话并断 WS，不触发
+  SSO）；退出登录弹窗提供「仅退出本网站 / 退出 SSO」两个选项，对齐 Li&Pass 指南 §8.1
+- 设计系统同步 Li-Design 模板 V1.2：主按钮改半透明单色着色 + 细描边 + `::after` 扫光
+  （4s，disabled 关闭），认证卡与 Logo 呼吸辉光（4.5s，reduced-motion 静止）；槽位表
+  20 → 22，不采用项（科技光效层/雾灰深色/六强调色板）与理由记录于 BRAND.md；预览基线
+  六张全部重拍
+
+### 安全加固
+
+- id_token 校验新增 `at_hash` 核对（`base64url(SHA256(access_token) 左 16 字节)`，
+  缺失/不符即拒绝登录），补齐 Li&Pass V2 接入验收清单「id_token 校验完整」
+- token 端点 403 黑名单按 RFC 6749 新格式 `error=access_denied` 映射封禁提示，不再
+  误报「登录凭证已失效」
 
 ### 行为变更
 
 - ICE 限频默认最小间隔由 50ms 放宽至 10ms（仍为每对呼叫粒度的滥用防护）
+- Li&Pass 发现文档 issuer 与五个端点已收敛为 https 字面值；本端 http→https 升级逻辑
+  保留为防御性兜底（当前为 no-op），`iss` 仍按发现文档原文严格校验
 
 ## v1.0.0 — 2026-08-16
 

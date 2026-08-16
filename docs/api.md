@@ -9,7 +9,8 @@
 | GET | `/oidc/login?redirect_after=/` | 无 | 生成 PKCE 并 302 到授权页；`redirect_after` 仅接受站内相对路径 |
 | GET | `/oidc/callback` | 无 | 授权回调（code/state/error/error_description），成功 302 回 `redirect_after` 并种会话 Cookie |
 | GET | `/oidc/error?message=` | 无 | 登录错误页，返回 `{"message": ...}` |
-| POST | `/oidc/logout` | CSRF | 清本地会话，302 到 IdP `end-session` |
+| POST | `/oidc/logout` | CSRF | 清本地会话后 302 到 IdP `end-session`（**登出 SSO**：门户确认后联邦退出全部已授权网站） |
+| POST | `/oidc/logout-local` | CSRF | **仅登出本网站**：清本地会话并断 WS，302 首页，不调 `end-session` |
 | GET | `/oidc/post-logout?state=` | 无 | 门户登出回跳（浏览器 GET 带签名 `state`）：验签后 302 首页，无效 400 |
 | POST | `/oidc/backchannel-logout` | 无 | 门户服务器间调用，form 字段 `logout_token`，返回 `{"status":"ok"}` 或 `{"status":"ignored"}` |
 | GET | `/api/me` | 会话 | 当前用户 `{sub, nickname, name, picture, email, csrf_token, ice_servers}`（`ice_servers` 为 WebRTC ICE 服务器列表，默认空） |
@@ -94,7 +95,8 @@
 
 ## CSRF 约定
 
-对非安全方法（如 `POST /oidc/logout`）二选一携带：请求头 `X-CSRF-Token: <csrf_token>`，或表单字段 `csrf_token`。令牌从 `/api/me` 获取。
+对非安全方法（如 `POST /oidc/logout`、`POST /oidc/logout-local`）二选一携带：请求头
+`X-CSRF-Token: <csrf_token>`，或表单字段 `csrf_token`。令牌从 `/api/me` 获取。
 
 ## 状态码约定
 

@@ -85,9 +85,49 @@ async def test_id_token_validation(
         jwks_uri=f"{mock_idp.ISSUER}/oauth2/jwks",
         transport=mock_transport,
     )
-    token = mock_idp.sign_id_token({"sub": "u-1001", "nonce": "nonce-1"})
-    claims = await verifier.validate_id_token(token, "nonce-1")
+    token = mock_idp.sign_id_token(
+        {
+            "sub": "u-1001",
+            "nonce": "nonce-1",
+            "at_hash": mock_idp.at_hash_for("access-token-1"),
+        }
+    )
+    claims = await verifier.validate_id_token(token, "nonce-1", "access-token-1")
     assert claims["sub"] == "u-1001"
+
+
+async def test_id_token_at_hash_mismatch_rejected(
+    settings: Settings, mock_idp: MockIdP, mock_transport: httpx.ASGITransport
+) -> None:
+    verifier = TokenVerifier(
+        issuer=mock_idp.ISSUER,
+        client_id=settings.oidc_client_id,
+        jwks_uri=f"{mock_idp.ISSUER}/oauth2/jwks",
+        transport=mock_transport,
+    )
+    token = mock_idp.sign_id_token(
+        {
+            "sub": "u-1001",
+            "nonce": "nonce-1",
+            "at_hash": mock_idp.at_hash_for("other-access-token"),
+        }
+    )
+    with pytest.raises(TokenValidationError, match="at_hash"):
+        await verifier.validate_id_token(token, "nonce-1", "access-token-1")
+
+
+async def test_id_token_missing_at_hash_rejected(
+    settings: Settings, mock_idp: MockIdP, mock_transport: httpx.ASGITransport
+) -> None:
+    verifier = TokenVerifier(
+        issuer=mock_idp.ISSUER,
+        client_id=settings.oidc_client_id,
+        jwks_uri=f"{mock_idp.ISSUER}/oauth2/jwks",
+        transport=mock_transport,
+    )
+    token = mock_idp.sign_id_token({"sub": "u-1001", "nonce": "nonce-1"})
+    with pytest.raises(TokenValidationError, match="at_hash"):
+        await verifier.validate_id_token(token, "nonce-1", "access-token-1")
 
 
 async def test_id_token_wrong_nonce_rejected(
@@ -101,7 +141,7 @@ async def test_id_token_wrong_nonce_rejected(
     )
     token = mock_idp.sign_id_token({"sub": "u-1001", "nonce": "nonce-1"})
     with pytest.raises(TokenValidationError, match="nonce"):
-        await verifier.validate_id_token(token, "other-nonce")
+        await verifier.validate_id_token(token, "other-nonce", "access-token-1")
 
 
 async def test_id_token_wrong_audience_rejected(
@@ -115,4 +155,4 @@ async def test_id_token_wrong_audience_rejected(
     )
     token = mock_idp.sign_id_token({"sub": "u-1001", "nonce": "n", "aud": "other-client"})
     with pytest.raises(TokenValidationError, match="invalid token"):
-        await verifier.validate_id_token(token, "n")
+        await verifier.validate_id_token(token, "n", "access-token-1")

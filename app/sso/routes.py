@@ -152,7 +152,7 @@ async def callback(
         logger.warning("token_exchange_failed", error_code=exc.error_code)
         message = (
             "该账号已被此网站限制访问"
-            if exc.error_code == "account_blocked"
+            if exc.error_code in ("account_blocked", "access_denied")
             else "登录凭证已失效，请重新登录"
         )
         return _error_redirect(message)
@@ -165,7 +165,7 @@ async def callback(
     metadata = await provider.discovery_metadata()
     try:
         claims = await _token_verifier(request, metadata).validate_id_token(
-            id_token, auth_state.nonce
+            id_token, auth_state.nonce, access_token
         )
     except TokenValidationError as exc:
         logger.warning("id_token_validation_failed", error=str(exc))
@@ -210,6 +210,25 @@ async def error(message: str = "登录未完成") -> JSONResponse:
     return JSONResponse({"message": message})
 
 
+async def _clear_local_session(request: Request, db: AsyncSession) -> str | None:
+    """删除当前会话并断该用户 WS（Redis 时跨副本广播）；返回 id_token_hint（如有）。"""
+    settings = _settings(request)
+    session_id = request.cookies.get(settings.session_cookie_name)
+    if not session_id:
+        return None
+    session = await db.get(Session, session_id)
+    if session is None:
+        return None
+    id_token_hint = session.id_token
+    await delete_session(db, session_id)
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    await manager.disconnect_sub(session.user_sub)
+    redis = cast(Redis | None, request.app.state.redis)
+    if redis is not None:
+        await publish_logout(redis, session.user_sub)
+    return id_token_hint
+
+
 @router.post("/logout")
 async def logout(
     request: Request,
@@ -217,18 +236,7 @@ async def logout(
     _csrf: Annotated[None, Depends(require_csrf)],
 ) -> RedirectResponse:
     settings = _settings(request)
-    session_id = request.cookies.get(settings.session_cookie_name)
-    id_token_hint: str | None = None
-    if session_id:
-        session = await db.get(Session, session_id)
-        if session is not None:
-            id_token_hint = session.id_token
-            await delete_session(db, session_id)
-            manager = cast(ConnectionManager, request.app.state.ws_manager)
-            await manager.disconnect_sub(session.user_sub)
-            redis = cast(Redis | None, request.app.state.redis)
-            if redis is not None:
-                await publish_logout(redis, session.user_sub)
+    id_token_hint = await _clear_local_session(request, db)
     metadata = await _provider(request).discovery_metadata()
     signed = sign_state(settings.session_secret, secrets.token_urlsafe(24))
     logout_params = {
@@ -249,6 +257,19 @@ async def logout(
         f"{metadata.end_session_endpoint}?{params}", status_code=302
     )
     clear_session_cookie(response, cookie_name=settings.session_cookie_name)
+    return response
+
+
+@router.post("/logout-local")
+async def logout_local(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> RedirectResponse:
+    """仅登出本网站：清本地会话，不发起 SSO 联邦登出。"""
+    await _clear_local_session(request, db)
+    response = RedirectResponse("/", status_code=302)
+    clear_session_cookie(response, cookie_name=_settings(request).session_cookie_name)
     return response
 
 
