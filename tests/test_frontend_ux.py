@@ -296,3 +296,11 @@ async def test_v52_muted_unread_badge(api_client: httpx.AsyncClient) -> None:
     assert "badge-muted-unread" in text
     css = await _style_css(api_client)
     assert ".badge-muted-unread" in css
+
+
+async def test_v54_empty_and_error_states(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "sidebar-retry" in text
+    assert "加载失败，点击重试" in text
+    assert "messages-empty" in text
+    assert "没有找到相关内容" in text

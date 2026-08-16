@@ -44,6 +44,7 @@ const state = {
   searchQuery: "",
   convFilter: "",
   sidebarLoading: true,
+  sidebarError: false,
   conversations: [],
   archivedConversations: [],
   readUpTo: {},
@@ -1272,8 +1273,10 @@ async function refreshSidebar() {
   const firstLoad = state.friends.length === 0 && state.groups.length === 0;
   if (firstLoad) {
     state.sidebarLoading = true;
+    state.sidebarError = false;
     renderSidebar();
   }
+  let failed = false;
   try {
     const [
       friendsRes,
@@ -1302,10 +1305,14 @@ async function refreshSidebar() {
       state.archivedConversations = (await archivedRes.json()).conversations;
     }
     if (groupsRes.ok) state.groups = (await groupsRes.json()).groups;
+    failed =
+      !friendsRes.ok || !conversationsRes.ok || !groupsRes.ok;
   } catch {
     /* 登录失效已由 api() 统一跳转 */
+    failed = true;
   } finally {
     state.sidebarLoading = false;
+    state.sidebarError = failed;
     renderSidebar();
   }
 }
@@ -1331,6 +1338,16 @@ function sidebarSkeletonHtml(count) {
       </div>
     </li>`
   ).join("");
+}
+
+function sidebarRetryHtml() {
+  return `<li class="contact-item">
+    <button class="contact-button" type="button" data-action="sidebar-retry">
+      <span class="contact-main">
+        <span class="contact-name">加载失败，点击重试</span>
+      </span>
+    </button>
+  </li>`;
 }
 
 function renderSidebar() {
@@ -1369,10 +1386,14 @@ function renderSidebar() {
     matchesConv(displayName(friend), summaryPreview(summaries.get(friend.sub)))
   );
   const friendsLoading = state.sidebarLoading && friends.length === 0;
+  const friendsFailed =
+    state.sidebarError && friends.length === 0 && state.groups.length === 0;
   document.getElementById("friends-empty").hidden =
-    friendsLoading || visibleFriends.length > 0;
+    friendsLoading || friendsFailed || visibleFriends.length > 0;
   document.getElementById("friends-list").innerHTML = friendsLoading
     ? sidebarSkeletonHtml(5)
+    : friendsFailed
+      ? sidebarRetryHtml()
     : visibleFriends
         .map((friend) => friendHtml(friend, summaries.get(friend.sub)))
         .join("");
@@ -1386,9 +1407,11 @@ function renderSidebar() {
   );
   const groupsLoading = state.sidebarLoading && state.groups.length === 0;
   document.getElementById("groups-empty").hidden =
-    groupsLoading || visibleGroups.length > 0;
+    groupsLoading || friendsFailed || visibleGroups.length > 0;
   document.getElementById("groups-list").innerHTML = groupsLoading
     ? sidebarSkeletonHtml(3)
+    : friendsFailed
+      ? ""
     : visibleGroups
         .map((group) => groupHtml(group, groupSummaries.get(group.id)))
         .join("");
@@ -1632,15 +1655,18 @@ function renderSearchResults() {
     state.searchKind === "messages"
       ? state.messageHits.length > 0
       : state.searchResults.length > 0;
-  results.hidden = !hasResults;
+  results.hidden = !hasResults && !state.searchQuery;
   const more = state.searchKind === "messages" && state.searchNextBefore
     ? `<li class="contact-item search-item"><button class="btn btn-ghost btn-sm"
         type="button" data-action="search-more">加载更多</button></li>`
     : "";
-  results.innerHTML =
-    (state.searchKind === "messages"
-      ? state.messageHits.map(messageHitHtml).join("")
-      : state.searchResults.map(searchResultHtml).join("")) + more;
+  results.innerHTML = hasResults
+    ? (state.searchKind === "messages"
+        ? state.messageHits.map(messageHitHtml).join("")
+        : state.searchResults.map(searchResultHtml).join("")) + more
+    : state.searchQuery
+      ? '<li class="sidebar-empty">没有找到相关内容</li>'
+      : "";
 }
 
 function onSearchModeClick(event) {
@@ -1756,6 +1782,10 @@ async function loadRecommendations() {
 function onFriendListClick(event) {
   const button = event.target.closest("[data-action]");
   if (!button) return;
+  if (button.dataset.action === "sidebar-retry") {
+    refreshSidebar();
+    return;
+  }
   if (button.dataset.action.startsWith("toggle-")) {
     toggleConversationSetting(button);
     return;
@@ -3232,9 +3262,11 @@ function renderMessages() {
   const sorted = state.messages
     .slice()
     .sort((a, b) => sortKey(a) - sortKey(b));
-  container.innerHTML = sorted
-    .map((message, index) => messageHtml(message, sorted[index - 1]))
-    .join("");
+  container.innerHTML = sorted.length
+    ? sorted
+        .map((message, index) => messageHtml(message, sorted[index - 1]))
+        .join("")
+    : '<div class="messages-empty">还没有消息，打个招呼吧</div>';
 }
 
 function appendMessage(message) {

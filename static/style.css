@@ -2695,3 +2695,10 @@ a {
   font-weight: 600;
   margin: 6px 0 2px;
 }
+
+.messages-empty {
+  align-self: center;
+  margin: auto;
+  color: var(--chat-muted);
+  font-size: 0.9rem;
+}
