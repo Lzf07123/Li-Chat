@@ -2702,3 +2702,14 @@ a {
   color: var(--chat-muted);
   font-size: 0.9rem;
 }
+
+.char-count {
+  align-self: center;
+  font-size: 0.72rem;
+  color: var(--chat-muted);
+  white-space: nowrap;
+}
+
+.char-count-over {
+  color: var(--chat-destructive);
+}

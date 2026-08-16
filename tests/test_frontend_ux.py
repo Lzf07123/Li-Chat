@@ -311,3 +311,10 @@ async def test_v55_relative_time(api_client: httpx.AsyncClient) -> None:
     assert "function relativeTime(" in text
     assert "分钟前" in text
     assert "小时前" in text
+
+
+async def test_v56_input_validation_feedback(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "char-count" in text
+    assert "还可输入" in text
+    assert "2000 字上限截断" in text

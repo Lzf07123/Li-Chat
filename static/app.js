@@ -540,6 +540,7 @@ function mainHtml() {
           <label class="sr-only" for="message-input">消息内容</label>
           <textarea id="message-input" class="input" rows="1" maxlength="2000"
             placeholder="输入消息"></textarea>
+          <span id="char-count" class="char-count" hidden></span>
           <button class="btn btn-primary" type="submit">发送</button>
         </form>
       </div>
@@ -2093,6 +2094,7 @@ function groupPanelHtml(group) {
         <label class="sr-only" for="group-message-input">消息内容</label>
         <textarea id="group-message-input" class="input" rows="1" maxlength="2000"
           placeholder="${myMuted ? "你已被禁言" : "输入消息"}" ${myMuted ? "disabled" : ""}></textarea>
+        <span id="group-char-count" class="char-count" hidden></span>
         <button class="btn btn-primary" type="submit" ${myMuted ? "disabled" : ""}>发送</button>
       </form>
     </div>
@@ -2199,6 +2201,7 @@ function renderGroupPanel() {
     );
     document.getElementById("group-message-input").addEventListener("input", (event) => {
       autoGrowInput(event.target);
+      updateCharCount(event.target, "group-char-count");
       saveDraftDebounced(event.target.value);
     });
     bindPasteUpload(document.getElementById("group-message-input"), true);
@@ -2422,6 +2425,12 @@ function bindFileDrop(form, isGroup) {
 
 function bindPasteUpload(input, isGroup) {
   input.addEventListener("paste", (event) => {
+    const text = event.clipboardData
+      ? event.clipboardData.getData("text")
+      : "";
+    if (text.length + input.value.length > 2000) {
+      toast("消息过长，已按 2000 字上限截断", "info");
+    }
     const items = event.clipboardData && event.clipboardData.items;
     if (!items) return;
     const files = Array.from(items)
@@ -3983,6 +3992,7 @@ function onComposerInput() {
   sendTyping("start");
   const input = document.getElementById("message-input");
   autoGrowInput(input);
+  updateCharCount(input, "char-count");
   saveDraftDebounced(input.value);
 }
 
@@ -3994,6 +4004,16 @@ function autoGrowInput(input) {
   if (!input) return;
   input.style.height = "auto";
   input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+}
+
+function updateCharCount(input, counterId) {
+  const counter = document.getElementById(counterId);
+  if (!counter || !input) return;
+  const remaining = 2000 - input.value.length;
+  counter.hidden = remaining > 200;
+  counter.textContent =
+    remaining >= 0 ? `还可输入 ${remaining} 字` : `超出 ${-remaining} 字`;
+  counter.classList.toggle("char-count-over", remaining < 0);
 }
 
 function draftKey() {
