@@ -1005,6 +1005,59 @@ a {
   color: var(--chat-muted);
 }
 
+.reactions-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 0 4px;
+}
+
+.reaction-chip,
+.reaction-add {
+  border: 1px solid var(--chat-border);
+  border-radius: 999px;
+  background: var(--chat-surface-2);
+  color: var(--chat-fg);
+  font-size: 0.75rem;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+
+.reaction-chip-active {
+  border-color: var(--chat-primary);
+  background: var(--chat-primary-soft);
+  color: var(--chat-primary);
+}
+
+.reaction-add {
+  border-style: dashed;
+  padding: 1px 7px;
+  color: var(--chat-muted);
+}
+
+.reaction-picker {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px 4px;
+  border: 1px solid var(--chat-border);
+  border-radius: 999px;
+  background: var(--chat-surface-2);
+}
+
+.reaction-option {
+  border: none;
+  background: none;
+  font-size: 0.9rem;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.reaction-option:hover {
+  transform: scale(1.2);
+}
+
 .chat-peer-main {
   display: flex;
   flex-direction: column;

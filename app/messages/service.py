@@ -1,20 +1,22 @@
 from __future__ import annotations
 
+import unicodedata
 from datetime import timedelta
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.friends.service import are_friends, list_friends
-from app.models import DmRead, Message, User
+from app.models import DmRead, Message, Reaction, User
 from app.timeutil import iso_utc, utcnow
 
 MAX_MESSAGE_LENGTH = 2000
 HISTORY_DEFAULT_LIMIT = 50
 HISTORY_MAX_LIMIT = 100
 EDIT_WINDOW_SECONDS = 300
+EMOJI_MAX_LENGTH = 8
 
 
 def pair_key(a: str, b: str) -> tuple[str, str]:
@@ -247,3 +249,84 @@ async def delete_message(
     await db.commit()
     await db.refresh(message)
     return message
+
+
+def clean_emoji(value: str) -> str:
+    stripped = value.strip()
+    if not stripped or len(stripped) > EMOJI_MAX_LENGTH:
+        raise ValueError(f"emoji must be 1-{EMOJI_MAX_LENGTH} characters")
+    for char in stripped:
+        if char.isspace():
+            raise ValueError("emoji must not contain whitespace")
+        category = unicodedata.category(char)
+        if category in {"Cc", "Cf"} and char != "\u200d":
+            raise ValueError("emoji must not contain control characters")
+    return stripped
+
+
+async def set_reaction(
+    db: AsyncSession,
+    me_sub: str,
+    other_sub: str,
+    message_id: int,
+    emoji: str,
+    *,
+    add: bool,
+) -> dict[str, Any]:
+    lo, hi = pair_key(me_sub, other_sub)
+    message = await db.get(Message, message_id)
+    if message is None or (message.participant_lo, message.participant_hi) != (lo, hi):
+        raise HTTPException(status_code=404, detail="message not found in conversation")
+    if message.deleted_at is not None:
+        raise HTTPException(status_code=409, detail="message deleted")
+    existing = await db.get(Reaction, (message_id, me_sub, emoji))
+    if add and existing is None:
+        db.add(Reaction(message_id=message_id, user_sub=me_sub, emoji=emoji))
+        await db.commit()
+    elif not add and existing is not None:
+        await db.delete(existing)
+        await db.commit()
+    count = await _reaction_count(db, message_id, emoji)
+    return {
+        "message_id": message_id,
+        "emoji": emoji,
+        "action": "added" if add else "removed",
+        "count": count,
+    }
+
+
+async def _reaction_count(db: AsyncSession, message_id: int, emoji: str) -> int:
+    result = await db.execute(
+        select(func.count())
+        .select_from(Reaction)
+        .where(Reaction.message_id == message_id, Reaction.emoji == emoji)
+    )
+    return int(result.scalar_one())
+
+
+async def reactions_for(
+    db: AsyncSession, message_ids: list[int], viewer_sub: str
+) -> dict[int, dict[str, Any]]:
+    if not message_ids:
+        return {}
+    rows = (
+        await db.execute(select(Reaction).where(Reaction.message_id.in_(message_ids)))
+    ).scalars().all()
+    counts: dict[int, dict[str, int]] = {}
+    mine: dict[int, set[str]] = {}
+    for row in rows:
+        counts.setdefault(row.message_id, {})
+        counts[row.message_id][row.emoji] = counts[row.message_id].get(row.emoji, 0) + 1
+        if row.user_sub == viewer_sub:
+            mine.setdefault(row.message_id, set()).add(row.emoji)
+    result: dict[int, dict[str, Any]] = {}
+    for message_id in message_ids:
+        per_emoji = counts.get(message_id, {})
+        result[message_id] = {
+            "reactions": [
+                {"emoji": emoji, "count": count}
+                for emoji, count in sorted(per_emoji.items())
+            ],
+            "my_reactions": sorted(mine.get(message_id, set())),
+        }
+    return result

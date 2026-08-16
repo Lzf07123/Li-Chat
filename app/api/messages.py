@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Annotated, cast
+from typing import Annotated, Any, cast
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +32,11 @@ class MessageIn(BaseModel):
         return stripped
 
 
+class ReactionCountOut(BaseModel):
+    emoji: str
+    count: int
+
+
 class MessageOut(BaseModel):
     id: int
     sender_sub: str
@@ -40,6 +45,27 @@ class MessageOut(BaseModel):
     deleted: bool = False
     edited_at: str | None = None
     created_at: str
+    reactions: list[ReactionCountOut] = []
+    my_reactions: list[str] = []
+
+
+class ReactionIn(BaseModel):
+    emoji: str
+
+    @field_validator("emoji")
+    @classmethod
+    def _validate_emoji(cls, value: str) -> str:
+        try:
+            return service.clean_emoji(value)
+        except ValueError as error:
+            raise ValueError(str(error)) from error
+
+
+class ReactionOut(BaseModel):
+    message_id: int
+    emoji: str
+    action: str
+    count: int
 
 
 class MessagePageOut(BaseModel):
@@ -138,8 +164,22 @@ async def message_history(
     rows, next_before = await service.history(
         db, user.sub, other_sub, before=before, limit=limit
     )
+    reaction_map = await service.reactions_for(
+        db, [item.id for item in rows], user.sub
+    )
+    messages: list[MessageOut] = []
+    for item in rows:
+        data = service.message_payload(item)
+        aggregate = reaction_map.get(item.id, {})
+        messages.append(
+            MessageOut(
+                **data,
+                reactions=aggregate.get("reactions", []),
+                my_reactions=aggregate.get("my_reactions", []),
+            )
+        )
     return MessagePageOut(
-        messages=[MessageOut(**service.message_payload(item)) for item in rows],
+        messages=messages,
         next_before=next_before,
     )
 
@@ -179,3 +219,57 @@ async def delete_message(
     await manager.send_to(message.sender_sub, event)
     await manager.send_to(message.recipient_sub, event)
     return MessageOut(**payload)
+
+
+@router.put("/{other_sub}/messages/{message_id}/reactions", response_model=ReactionOut)
+async def add_reaction(
+    request: Request,
+    other_sub: str,
+    message_id: int,
+    body: ReactionIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> ReactionOut:
+    result = await service.set_reaction(
+        db, user.sub, other_sub, message_id, body.emoji, add=True
+    )
+    await _broadcast_reaction(request, result, user.sub, other_sub)
+    return ReactionOut(**result)
+
+
+@router.delete("/{other_sub}/messages/{message_id}/reactions", response_model=ReactionOut)
+async def remove_reaction(
+    request: Request,
+    other_sub: str,
+    message_id: int,
+    emoji: Annotated[str, Query(min_length=1, max_length=16)],
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> ReactionOut:
+    try:
+        cleaned = service.clean_emoji(emoji)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    result = await service.set_reaction(
+        db, user.sub, other_sub, message_id, cleaned, add=False
+    )
+    await _broadcast_reaction(request, result, user.sub, other_sub)
+    return ReactionOut(**result)
+
+
+async def _broadcast_reaction(
+    request: Request, result: dict[str, Any], sender_sub: str, other_sub: str
+) -> None:
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    event = {
+        "type": "message_reaction",
+        "message_id": result["message_id"],
+        "emoji": result["emoji"],
+        "action": result["action"],
+        "count": result["count"],
+        "by_sub": sender_sub,
+    }
+    await manager.send_to(sender_sub, event)
+    await manager.send_to(other_sub, event)

@@ -121,3 +121,18 @@ class DmRead(Base):
     __table_args__ = (
         CheckConstraint("participant_lo < participant_hi", name="ck_dm_reads_pair_order"),
     )
+
+
+class Reaction(Base):
+    __tablename__ = "reactions"
+
+    message_id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), primary_key=True
+    )
+    emoji: Mapped[str] = mapped_column(String(16), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

@@ -24,6 +24,8 @@
 | GET | `/api/conversations/{sub}/messages?limit=&before=` | 会话 | 历史倒序分页（limit 默认 50、1–100；before 为上一页最小 id 不含）；`{"messages":[...],"next_before":int|null}` |
 | PATCH | `/api/conversations/{sub}/messages/{id}` | 会话 + CSRF | 编辑 `{"content"}`；仅发送者、未撤回、5 分钟内；403 非发送者 / 404 不存在 / 409 已撤回或超窗 |
 | DELETE | `/api/conversations/{sub}/messages/{id}` | 会话 + CSRF | 撤回；同上鉴权；返回墓碑 `{id,sender_sub,recipient_sub,deleted:true,created_at}`（不含原文） |
+| PUT | `/api/conversations/{sub}/messages/{id}/reactions` | 会话 + CSRF | 回应 `{"emoji"}`（1–8 字符，禁空白/控制符；幂等）；404 非参与者 / 409 已撤回；`{"message_id","emoji","action":"added","count"}` |
+| DELETE | `/api/conversations/{sub}/messages/{id}/reactions?emoji=` | 会话 + CSRF | 移除回应（幂等）；`{"message_id","emoji","action":"removed","count"}` |
 | GET | `/api/conversations` | 会话 | 好友会话摘要，按最后消息倒序；`{"conversations":[{peer:Profile,last_message:Message|null,unread_count:int,last_read_id:int}]}` |
 | POST | `/api/conversations/{sub}/read` | 会话 + CSRF | 标记已读 `{"last_read_id":int>=1}`；403 非好友 / 404 消息不属于该会话；游标只前进；`{"status":"ok","last_read_id":n}` |
 | GET | `/` | 无 | 同源前端页面 |
@@ -36,7 +38,7 @@
 - 客户端可发 `{"type":"typing","to":"<sub>","action":"start|stop"}`：仅双方为好友且满足
   2 秒限频时，服务端原样中继为 `{"type":"typing","from":"<sub>","action":...}`；否则静默丢弃。
 - 回程登出会主动以 4401 断开该用户连接，前端据此跳转登录。
-- 服务端推送（只增不改，客户端写操作一律走 REST）：`{"type":"message","message":{id,sender_sub,recipient_sub,content,created_at,edited_at?}}` → 发送方与接收方；`{"type":"message_edited","message":...}` / `{"type":"message_deleted","message":{...,deleted:true}}` → 双方（撤回墓碑不含原文）；`{"type":"read_receipt","by_sub","peer_sub","last_read_id"}` → 会话另一方；`{"type":"presence","sub","online":true}` / `{"type":"presence","sub","online":false,"last_seen_at"}` → 该用户全部好友（上线/全部连接释放时）；`{"type":"friend_event","event":"request_received|request_accepted|request_rejected|friend_removed","by_sub":...,"at":...}` → 相关方（申请→被申请人；接受/拒绝→申请人；解除→关系另一方）。
+- 服务端推送（只增不改，客户端写操作一律走 REST）：`{"type":"message","message":{id,sender_sub,recipient_sub,content,created_at,edited_at?}}` → 发送方与接收方；`{"type":"message_edited","message":...}` / `{"type":"message_deleted","message":{...,deleted:true}}` → 双方（撤回墓碑不含原文）；`{"type":"message_reaction","message_id","emoji","action":"added|removed","count","by_sub"}` → 双方；`{"type":"read_receipt","by_sub","peer_sub","last_read_id"}` → 会话另一方；`{"type":"presence","sub","online":true}` / `{"type":"presence","sub","online":false,"last_seen_at"}` → 该用户全部好友（上线/全部连接释放时）；`{"type":"friend_event","event":"request_received|request_accepted|request_rejected|friend_removed","by_sub":...,"at":...}` → 相关方（申请→被申请人；接受/拒绝→申请人；解除→关系另一方）。
 
 ## CSRF 约定
 

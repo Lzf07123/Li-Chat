@@ -1,5 +1,7 @@
 "use strict";
 
+const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
 const state = {
   me: null,
   ws: null,
@@ -17,6 +19,7 @@ const state = {
   activeSub: null,
   activePeer: null,
   editingId: null,
+  pickerMessageId: null,
   messages: [],
   nextBefore: null,
   loadingHistory: false,
@@ -496,6 +499,7 @@ async function openChat(sub) {
   state.activeSub = sub;
   state.activePeer = peer;
   state.editingId = null;
+  state.pickerMessageId = null;
   state.messages = [];
   state.nextBefore = null;
   document.getElementById("chat-empty").hidden = true;
@@ -601,12 +605,36 @@ function messageHtml(message) {
   const editedMark = !message.deleted && message.edited_at
     ? '<span class="message-read">已编辑</span>'
     : "";
+  const reactions = message.deleted ? "" : reactionsHtml(message);
   return `<div class="message ${own ? "message-own" : "message-other"}">
     ${body}
     <div class="message-meta">${escapeHtml(time)}${read
       ? '<span class="message-read">已读</span>'
       : ""}${editedMark}${actions}</div>
+    ${reactions}
   </div>`;
+}
+
+function reactionsHtml(message) {
+  const reactions = message.reactions || [];
+  const mine = message.my_reactions || [];
+  const chips = reactions
+    .map((reaction) => {
+      const active = mine.includes(reaction.emoji) ? " reaction-chip-active" : "";
+      return `<button class="reaction-chip${active}" type="button"
+        data-action="react" data-emoji="${escapeHtml(reaction.emoji)}"
+        data-id="${message.id}">${escapeHtml(reaction.emoji)} ${reaction.count}</button>`;
+    })
+    .join("");
+  const picker = state.pickerMessageId === message.id
+    ? `<span class="reaction-picker">${QUICK_EMOJIS.map(
+        (emoji) => `<button class="reaction-option" type="button"
+          data-action="react-emoji" data-emoji="${emoji}" data-id="${message.id}">${emoji}</button>`
+      ).join("")}</span>`
+    : "";
+  return `<div class="reactions-row">${chips}
+    <button class="reaction-add" type="button" data-action="react-picker"
+      data-id="${message.id}" aria-label="添加回应">+</button>${picker}</div>`;
 }
 
 function renderMessages() {
@@ -691,11 +719,31 @@ async function onComposerSubmit(event) {
 }
 
 async function onMessagesClick(event) {
-  const button = event.target.closest(".message-action[data-action]");
+  const button = event.target.closest("[data-action]");
   if (!button) return;
   const messageId = button.dataset.id;
   const sub = state.activeSub;
   if (!sub) return;
+  if (button.dataset.action === "react-picker") {
+    const numericId = Number(messageId);
+    state.pickerMessageId = state.pickerMessageId === numericId ? null : numericId;
+    renderMessages();
+    return;
+  }
+  if (button.dataset.action === "react" || button.dataset.action === "react-emoji") {
+    const message = state.messages.find((item) => String(item.id) === messageId);
+    if (!message) return;
+    const emoji = button.dataset.emoji;
+    const mine = (message.my_reactions || []).includes(emoji);
+    const url = `/api/conversations/${encodeURIComponent(sub)}/messages/${messageId}/reactions`;
+    await api(url, {
+      method: mine ? "DELETE" : "PUT",
+      body: mine ? undefined : JSON.stringify({ emoji }),
+    });
+    state.pickerMessageId = null;
+    return;
+  }
+  if (button.dataset.action !== "edit" && button.dataset.action !== "withdraw") return;
   if (button.dataset.action === "edit") {
     const message = state.messages.find((item) => String(item.id) === messageId);
     if (!message || message.deleted) return;
@@ -774,9 +822,46 @@ function handleServerMessage(data) {
     replaceMessage(data.message);
   } else if (data.type === "message_deleted" && data.message) {
     replaceMessage(data.message);
+  } else if (data.type === "message_reaction") {
+    applyReaction(data);
   } else if (data.type === "friend_event") {
     refreshSidebar();
   }
+}
+
+function applyReaction(event) {
+  const message = state.messages.find((item) => item.id === event.message_id);
+  if (!message) return;
+  message.reactions = message.reactions || [];
+  message.my_reactions = message.my_reactions || [];
+  const index = message.reactions.findIndex(
+    (reaction) => reaction.emoji === event.emoji
+  );
+  if (event.action === "added") {
+    if (index >= 0) {
+      message.reactions[index].count = event.count;
+    } else {
+      message.reactions.push({ emoji: event.emoji, count: event.count });
+    }
+    if (
+      event.by_sub === state.me.sub &&
+      !message.my_reactions.includes(event.emoji)
+    ) {
+      message.my_reactions.push(event.emoji);
+    }
+  } else if (index >= 0) {
+    if (event.count > 0) {
+      message.reactions[index].count = event.count;
+    } else {
+      message.reactions.splice(index, 1);
+    }
+    if (event.by_sub === state.me.sub) {
+      message.my_reactions = message.my_reactions.filter(
+        (emoji) => emoji !== event.emoji
+      );
+    }
+  }
+  renderMessages();
 }
 
 function replaceMessage(message) {
@@ -874,6 +959,7 @@ window.addEventListener("pageshow", (event) => {
   state.activeSub = null;
   state.activePeer = null;
   state.editingId = null;
+  state.pickerMessageId = null;
   state.nextBefore = null;
   loadMe();
 });

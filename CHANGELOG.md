@@ -4,6 +4,10 @@
 
 ### 功能
 
+- 表情回应：`reactions` 表复合主键幂等 toggle（`PUT`/`DELETE
+  /api/conversations/{sub}/messages/{id}/reactions`，emoji 1–8 字符、禁空白与控制符、
+  已撤回 409、非参与者 404）；历史消息附 `reactions` 聚合与 `my_reactions`；WS
+  `message_reaction` 定向双方；前端回应栏 + 快捷 emoji + 点击切换
 - 消息编辑与撤回：发送者 5 分钟内可 `PATCH` 编辑（回显 `edited_at`）或 `DELETE` 撤回
   （content 清空落库，历史与 WS 只回墓碑不泄露原文）；WS `message_edited`/
   `message_deleted` 定向双方；前端编辑态与撤回按钮、墓碑与「已编辑」标记

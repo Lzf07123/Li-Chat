@@ -10,7 +10,7 @@
 - 同源前端：登录、资料展示、在线状态、心跳保活、退出
 - 好友：按昵称/邮箱搜索、申请与处理、列表与解除
 - 好友推荐：随机推荐未建立关系的人，一键添加、刷新换一批
-- 单聊：纯文本实时收发、历史分页拉取、未读计数与已读回执、消息编辑与撤回
+- 单聊：纯文本实时收发、历史分页拉取、未读计数与已读回执、消息编辑与撤回、表情回应
 - 在线状态与正在输入：好友在线圆点、last_seen、输入中提示
 
 ## 快速开始
@@ -45,7 +45,7 @@ uv run mypy app
 app/
 ├── main.py        # 应用装配、生命周期、/ws、/healthz、静态挂载
 ├── config.py      # LICHAT_* 环境变量
-├── models.py      # users / auth_states / sessions / friendships / messages / dm_reads 六张表
+├── models.py      # users / auth_states / sessions / friendships / messages / dm_reads / reactions 七张表
 ├── auth/          # 本地会话与鉴权依赖
 ├── oidc/          # 依赖方实现（发现、PKCE、令牌校验、用户同步）
 ├── sso/           # /oidc/* 路由、登出签名、jti 防重放
