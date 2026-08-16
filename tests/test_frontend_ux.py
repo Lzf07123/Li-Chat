@@ -66,3 +66,13 @@ async def test_v24_image_viewer(api_client: httpx.AsyncClient) -> None:
     css = await _style_css(api_client)
     assert ".image-viewer" in css
     assert ".image-viewer-img" in css
+
+
+async def test_v25_paste_drop_and_multi_upload(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function sendFiles(" in text
+    assert '"paste"' in text
+    assert '"dragover"' in text
+    assert '"drop"' in text
+    assert "dataTransfer" in text
+    assert "multiple" in text

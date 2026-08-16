@@ -2176,3 +2176,13 @@ a {
 .image-viewer-close:hover {
   background: rgba(255, 255, 255, 0.24);
 }
+
+/* 拖拽上传 */
+.composer {
+  position: relative;
+}
+
+.composer-dragging {
+  outline: 2px dashed var(--chat-primary);
+  outline-offset: -6px;
+}

@@ -406,7 +406,7 @@ function mainHtml() {
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
             </svg>
           </button>
-          <input id="attach-input" type="file" hidden
+          <input id="attach-input" type="file" multiple hidden
             accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain" />
           <div id="message-reply-bar" class="reply-bar" hidden>
             <span class="reply-bar-text"></span>
@@ -450,6 +450,8 @@ function renderLoggedIn() {
   document.getElementById("message-input").addEventListener("keydown", onComposerKeydown);
   document.getElementById("message-input").addEventListener("input", onComposerInput);
   document.getElementById("message-input").addEventListener("blur", onComposerBlur);
+  bindFileDrop(document.getElementById("composer"), false);
+  bindPasteUpload(document.getElementById("message-input"), false);
   document.getElementById("attach-btn").addEventListener("click", () => {
     document.getElementById("attach-input").click();
   });
@@ -1260,7 +1262,7 @@ function groupPanelHtml(group) {
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
           </svg>
         </button>
-        <input id="group-attach-input" type="file" hidden
+        <input id="group-attach-input" type="file" multiple hidden
           accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain" />
         <div id="group-reply-bar" class="reply-bar" hidden>
           <span class="reply-bar-text"></span>
@@ -1342,6 +1344,7 @@ function renderGroupPanel() {
   if (composer) {
     composer.addEventListener("submit", onGroupComposerSubmit);
     composer.addEventListener("click", onComposerBarClick);
+    bindFileDrop(composer, true);
     document.getElementById("group-mention-btn").addEventListener("click", toggleMentionList);
     const mentionList = document.getElementById("group-mention-list");
     if (mentionList) {
@@ -1354,6 +1357,7 @@ function renderGroupPanel() {
     document.getElementById("group-message-input").addEventListener("input", (event) => {
       autoGrowInput(event.target);
     });
+    bindPasteUpload(document.getElementById("group-message-input"), true);
     document.getElementById("group-attach-btn").addEventListener("click", () => {
       document.getElementById("group-attach-input").click();
     });
@@ -1389,27 +1393,69 @@ async function onGroupAvatarSelected(event) {
   if (avatarResponse.ok) await refreshGroups();
 }
 
-async function onAttachSelected(event, isGroup) {
+async function sendFiles(files, isGroup) {
+  const list = Array.from(files || []).filter((file) => file instanceof File);
+  if (list.length === 0) return;
+  let sent = 0;
+  for (const file of list) {
+    const form = new FormData();
+    form.append("file", file);
+    const uploadResponse = await api("/api/uploads", { method: "POST", body: form });
+    if (!uploadResponse.ok) continue;
+    const upload = await uploadResponse.json();
+    const content_type = upload.mime.startsWith("image/") ? "image" : "file";
+    const url = isGroup
+      ? `/api/groups/${state.activeGroupId}/messages`
+      : `/api/conversations/${encodeURIComponent(state.activeSub)}/messages`;
+    const messageResponse = await api(url, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "",
+        content_type,
+        attachment: { url: upload.url },
+      }),
+    });
+    if (messageResponse.ok) sent += 1;
+  }
+  if (sent > 0) {
+    toast(sent === 1 ? "附件已发送" : `已发送 ${sent} 个附件`, "success");
+  }
+}
+
+function onAttachSelected(event, isGroup) {
   const input = event.target;
-  const file = input.files && input.files[0];
-  if (!file) return;
-  const form = new FormData();
-  form.append("file", file);
-  const uploadResponse = await api("/api/uploads", { method: "POST", body: form });
+  sendFiles(input.files, isGroup);
   input.value = "";
-  if (!uploadResponse.ok) return;
-  const upload = await uploadResponse.json();
-  const content_type = upload.mime.startsWith("image/") ? "image" : "file";
-  const url = isGroup
-    ? `/api/groups/${state.activeGroupId}/messages`
-    : `/api/conversations/${encodeURIComponent(state.activeSub)}/messages`;
-  await api(url, {
-    method: "POST",
-    body: JSON.stringify({
-      content: "",
-      content_type,
-      attachment: { url: upload.url },
-    }),
+}
+
+function bindFileDrop(form, isGroup) {
+  form.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    form.classList.add("composer-dragging");
+  });
+  form.addEventListener("dragleave", () => {
+    form.classList.remove("composer-dragging");
+  });
+  form.addEventListener("drop", (event) => {
+    event.preventDefault();
+    form.classList.remove("composer-dragging");
+    const files = event.dataTransfer && event.dataTransfer.files;
+    if (files && files.length) sendFiles(files, isGroup);
+  });
+}
+
+function bindPasteUpload(input, isGroup) {
+  input.addEventListener("paste", (event) => {
+    const items = event.clipboardData && event.clipboardData.items;
+    if (!items) return;
+    const files = Array.from(items)
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file) => file instanceof File);
+    if (files.length) {
+      event.preventDefault();
+      sendFiles(files, isGroup);
+    }
   });
 }
 
