@@ -304,3 +304,10 @@ async def test_v54_empty_and_error_states(api_client: httpx.AsyncClient) -> None
     assert "加载失败，点击重试" in text
     assert "messages-empty" in text
     assert "没有找到相关内容" in text
+
+
+async def test_v55_relative_time(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function relativeTime(" in text
+    assert "分钟前" in text
+    assert "小时前" in text

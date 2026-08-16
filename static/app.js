@@ -188,6 +188,23 @@ function dayLabel(iso) {
   return `${date.getFullYear()}年${month}月${day}日`;
 }
 
+function relativeTime(iso) {
+  const date = new Date(iso);
+  const diff = Date.now() - date.getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "刚刚";
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  const dayDiff = Math.floor(diff / 86400000);
+  if (dayDiff === 1) return "昨天";
+  const now = new Date();
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${date.getMonth() + 1}月${date.getDate()}日`;
+  }
+  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+}
+
 function localMessage(content) {
   localSeq += 1;
   return {
@@ -1480,6 +1497,15 @@ function friendHtml(friend, summary) {
           : summary.last_message.content
     : "";
   const online = friend.online === true;
+  const lastTime = summary && summary.last_message
+    ? relativeTime(summary.last_message.created_at)
+    : "";
+  const lastFull = summary && summary.last_message
+    ? new Date(summary.last_message.created_at).toLocaleString([], {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    : "";
   return `<li class="contact-item">
     <button class="contact-button" type="button"
       data-action="open" data-sub="${escapeHtml(friend.sub)}">
@@ -1489,7 +1515,11 @@ function friendHtml(friend, summary) {
           <span class="presence-dot${online ? " presence-online" : ""}" aria-hidden="true"></span>
           ${escapeHtml(displayName(friend))}
         </span>
-        ${preview ? `<span class="contact-preview">${escapeHtml(preview)}</span>` : ""}
+        ${preview
+          ? `<span class="contact-preview" title="${escapeHtml(lastFull)}">${escapeHtml(preview)}${
+              lastTime ? ` · ${lastTime}` : ""
+            }</span>`
+          : ""}
       </span>
       ${unread > 0
         ? `<span class="badge badge-unread${muted ? " badge-muted-unread" : ""}"
@@ -1524,6 +1554,15 @@ function groupHtml(group, summary) {
           ? "[文件]"
           : summary.last_message.content
     : "";
+  const lastTime = summary && summary.last_message
+    ? relativeTime(summary.last_message.created_at)
+    : "";
+  const lastFull = summary && summary.last_message
+    ? new Date(summary.last_message.created_at).toLocaleString([], {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    : "";
   return `<li class="contact-item">
     <button class="contact-button" type="button"
       data-action="open-group" data-id="${group.id}">
@@ -1532,7 +1571,9 @@ function groupHtml(group, summary) {
         : '<div class="avatar avatar-placeholder group-avatar" aria-hidden="true">#</div>'}
       <span class="contact-main">
         <span class="contact-name">${escapeHtml(group.name)}</span>
-        <span class="contact-preview">${preview || `${count} 位成员`}</span>
+        <span class="contact-preview" title="${escapeHtml(lastFull)}">${
+          preview || `${count} 位成员`
+        }${lastTime ? ` · ${lastTime}` : ""}</span>
       </span>
       ${unread > 0
         ? `<span class="badge badge-unread${muted ? " badge-muted-unread" : ""}"
@@ -1566,12 +1607,21 @@ function archivedRowHtml(item) {
   const openAction = peer
     ? `data-action="open-archived" data-sub="${escapeHtml(peer.sub)}"`
     : `data-action="open-archived-group" data-id="${item.group.id}"`;
+  const lastTime = item.last_message ? relativeTime(item.last_message.created_at) : "";
+  const lastFull = item.last_message
+    ? new Date(item.last_message.created_at).toLocaleString([], {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    : "";
   return `<li class="contact-item">
     <button class="contact-button" type="button" ${openAction}>
       ${avatar}
       <span class="contact-main">
         <span class="contact-name">${escapeHtml(label)}</span>
-        <span class="contact-preview">${escapeHtml(summaryPreview(item)) || "归档会话"}</span>
+        <span class="contact-preview" title="${escapeHtml(lastFull)}">${
+          escapeHtml(summaryPreview(item)) || "归档会话"
+        }${lastTime ? ` · ${lastTime}` : ""}</span>
       </span>
     </button>
     <button class="btn btn-ghost btn-sm" type="button" data-action="unarchive"
