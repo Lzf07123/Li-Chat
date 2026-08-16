@@ -28,6 +28,7 @@ const state = {
   activeGroupId: null,
   activeGroup: null,
   messages: [],
+  call: null,
   nextBefore: null,
   loadingHistory: false,
 };
@@ -293,6 +294,7 @@ function renderLoggedIn() {
   document.getElementById("load-older").addEventListener("click", loadOlder);
   document.getElementById("chat-back").addEventListener("click", closeChat);
   document.getElementById("group-panel").addEventListener("click", onGroupPanelClick);
+  document.getElementById("chat-active").addEventListener("click", onChatHeaderClick);
   refreshSidebar();
 }
 
@@ -1078,6 +1080,23 @@ async function openChat(sub) {
         peer.online ? "在线" : "离线"
       }</span>
     </span>
+    <span class="chat-peer-actions">
+      <button class="icon-btn" type="button" data-action="call-audio"
+        aria-label="语音通话">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.08 4.18 2 2 0 0 1 4.06 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>
+        </svg>
+      </button>
+      <button class="icon-btn" type="button" data-action="call-video"
+        aria-label="视频通话">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M23 7l-7 5 7 5V7z"/>
+          <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+        </svg>
+      </button>
+    </span>
     <span id="typing-hint" class="typing-hint" hidden>正在输入…</span>`;
   clearTypingHint();
   document.getElementById("message-input").value = "";
@@ -1501,6 +1520,8 @@ function handleServerMessage(data) {
     replaceMessage(data.message);
   } else if (data.type === "message_reaction") {
     applyReaction(data);
+  } else if (data.type === "call") {
+    handleCallSignal(data);
   } else if (data.type === "group_event") {
     refreshGroups();
   } else if (data.type === "friend_event") {
@@ -1541,6 +1562,208 @@ function applyReaction(event) {
     }
   }
   renderMessages();
+}
+
+function onChatHeaderClick(event) {
+  const button = event.target.closest("[data-action^='call-']");
+  if (!button || !state.activeSub) return;
+  startCall(button.dataset.action === "call-video" ? "video" : "audio");
+}
+
+async function startCall(kind) {
+  if (state.call || !state.activeSub) return;
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: kind === "video",
+    });
+  } catch {
+    window.alert("无法访问麦克风/摄像头，请检查浏览器权限");
+    return;
+  }
+  const pc = new RTCPeerConnection();
+  state.call = {
+    pc,
+    peerSub: state.activeSub,
+    kind,
+    status: "calling",
+    incoming: false,
+    localStream: stream,
+    offer: null,
+  };
+  wireCallEvents();
+  stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  sendCallSignal("offer", pc.localDescription.toJSON());
+  showCallOverlay("呼叫中…");
+}
+
+function wireCallEvents() {
+  const call = state.call;
+  if (!call) return;
+  call.pc.onicecandidate = (event) => {
+    if (event.candidate) sendCallSignal("ice", event.candidate.toJSON());
+  };
+  call.pc.ontrack = (event) => {
+    const remote = document.getElementById("call-remote");
+    if (remote && event.streams[0]) remote.srcObject = event.streams[0];
+  };
+}
+
+function sendCallSignal(op, payload = {}) {
+  const call = state.call;
+  const peer = call ? call.peerSub : state.activeSub;
+  if (!peer || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+  state.ws.send(JSON.stringify({ type: "call", op, to: peer, payload }));
+}
+
+function showCallOverlay(status) {
+  let overlay = document.getElementById("call-overlay");
+  if (!overlay) {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<div class="call-overlay" id="call-overlay" role="dialog" aria-modal="true">
+        <div class="call-videos">
+          <video id="call-local" class="call-video" autoplay muted playsinline></video>
+          <video id="call-remote" class="call-video" autoplay playsinline></video>
+        </div>
+        <div id="call-status" class="call-status"></div>
+        <div class="call-actions">
+          <button id="call-hangup" class="btn btn-danger" type="button">挂断</button>
+        </div>
+      </div>`
+    );
+    overlay = document.getElementById("call-overlay");
+    document.getElementById("call-hangup").addEventListener("click", hangUp);
+  }
+  const local = document.getElementById("call-local");
+  if (local && state.call && state.call.localStream) {
+    local.srcObject = state.call.localStream;
+  }
+  setCallStatus(status);
+}
+
+function setCallStatus(status) {
+  const element = document.getElementById("call-status");
+  if (element) element.textContent = status;
+}
+
+function hangUp() {
+  sendCallSignal("end");
+  endCallLocal();
+}
+
+function endCallLocal() {
+  const call = state.call;
+  if (call) {
+    if (call.localStream) {
+      call.localStream.getTracks().forEach((track) => track.stop());
+    }
+    if (call.pc) call.pc.close();
+  }
+  state.call = null;
+  const overlay = document.getElementById("call-overlay");
+  if (overlay) overlay.remove();
+  const incoming = document.getElementById("call-incoming");
+  if (incoming) incoming.remove();
+}
+
+function handleCallSignal(data) {
+  if (data.op === "offer") {
+    if (state.call) {
+      state.ws.send(
+        JSON.stringify({ type: "call", op: "reject", to: data.from, payload: {} })
+      );
+      return;
+    }
+    state.call = {
+      pc: null,
+      peerSub: data.from,
+      kind: "unknown",
+      status: "incoming",
+      incoming: true,
+      localStream: null,
+      offer: data.payload || {},
+    };
+    showIncomingCall();
+    return;
+  }
+  const call = state.call;
+  if (!call) return;
+  if (data.op === "answer") {
+    call.pc.setRemoteDescription(data.payload).then(() => {
+      call.status = "connected";
+      setCallStatus("已接通");
+    });
+  } else if (data.op === "ice" && data.payload) {
+    call.pc.addIceCandidate(data.payload).catch(() => {});
+  } else if (data.op === "end" || data.op === "reject") {
+    endCallLocal();
+  } else if (data.op === "unavailable") {
+    setCallStatus("对方不在线");
+    endCallLocal();
+  } else if (data.op === "busy") {
+    setCallStatus("对方忙线中");
+    endCallLocal();
+  } else if (data.op === "invalid" || data.op === "error") {
+    setCallStatus("呼叫失败");
+    endCallLocal();
+  }
+}
+
+function showIncomingCall() {
+  const call = state.call;
+  if (!call) return;
+  const peer =
+    state.friends.find((friend) => friend.sub === call.peerSub) || null;
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="call-incoming" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <h3 class="modal-title">来电</h3>
+        <p>${escapeHtml(peer ? displayName(peer) : call.peerSub)} 邀请你通话</p>
+        <div class="modal-actions">
+          <button id="call-reject" class="btn btn-ghost" type="button">拒绝</button>
+          <button id="call-accept" class="btn btn-primary" type="button">接听</button>
+        </div>
+      </div>
+    </div>`
+  );
+  document.getElementById("call-reject").addEventListener("click", () => {
+    sendCallSignal("reject");
+    endCallLocal();
+  });
+  document.getElementById("call-accept").addEventListener("click", acceptIncomingCall);
+}
+
+async function acceptIncomingCall() {
+  const call = state.call;
+  if (!call) return;
+  const incoming = document.getElementById("call-incoming");
+  if (incoming) incoming.remove();
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+  } catch {
+    window.alert("无法访问麦克风/摄像头，请检查浏览器权限");
+    sendCallSignal("reject");
+    endCallLocal();
+    return;
+  }
+  const pc = new RTCPeerConnection();
+  call.pc = pc;
+  call.localStream = stream;
+  call.status = "connecting";
+  call.incoming = false;
+  wireCallEvents();
+  stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+  await pc.setRemoteDescription(call.offer);
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  sendCallSignal("answer", pc.localDescription.toJSON());
+  showCallOverlay("接听中…");
 }
 
 function replaceMessage(message) {
@@ -1600,6 +1823,7 @@ function connectWebSocket() {
     }
   });
   socket.addEventListener("close", (event) => {
+    if (state.call) endCallLocal();
     if (event.code === 4401) {
       if (state.loggingOut) {
         setStatus("disconnected", "已退出登录");

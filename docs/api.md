@@ -55,8 +55,12 @@
 - 客户端发 `{"type":"ping"}` 收到 `{"type":"pong"}`，前端每 25 秒心跳一次。
 - 客户端可发 `{"type":"typing","to":"<sub>","action":"start|stop"}`：仅双方为好友且满足
   2 秒限频时，服务端原样中继为 `{"type":"typing","from":"<sub>","action":...}`；否则静默丢弃。
+- 客户端可发 `{"type":"call","op":"offer|answer|ice|reject|end","to":"<sub>","payload":{}}`：
+  仅好友间中继为 `{"type":"call","op":...,"from":"<sub>","payload":...}`；载荷 ≤16KB、ICE
+  限频；离线回 `unavailable`、通话中重复 offer 回 `busy`、非法迁移回 `invalid`、超限回
+  `error`（只回发起方）。媒体走 WebRTC P2P，服务端不中转流、不落信令。
 - 回程登出会主动以 4401 断开该用户连接，前端据此跳转登录。
-- 服务端推送（只增不改，客户端写操作一律走 REST）：`{"type":"message","message":{id,sender_sub,recipient_sub,content,created_at,edited_at?}}` → 发送方与接收方；`{"type":"message_edited","message":...}` / `{"type":"message_deleted","message":{...,deleted:true}}` → 双方（撤回墓碑不含原文）；`{"type":"message_reaction","message_id","emoji","action":"added|removed","count","by_sub"}` → 双方；`{"type":"read_receipt","by_sub","peer_sub","last_read_id"}` → 会话另一方；`{"type":"presence","sub","online":true}` / `{"type":"presence","sub","online":false,"last_seen_at"}` → 该用户全部好友（上线/全部连接释放时）；`{"type":"group_event","event":"created|renamed|member_joined|member_removed|member_left|role_changed|owner_changed","group":Group,"by_sub":...,"at":...}` → 群全体成员；`{"type":"friend_event","event":"request_received|request_accepted|request_rejected|friend_removed","by_sub":...,"at":...}` → 相关方（申请→被申请人；接受/拒绝→申请人；解除→关系另一方）。
+- 服务端推送（只增不改，客户端写操作一律走 REST）：`{"type":"message","message":{id,sender_sub,recipient_sub,content,created_at,edited_at?}}` → 发送方与接收方；`{"type":"message_edited","message":...}` / `{"type":"message_deleted","message":{...,deleted:true}}` → 双方（撤回墓碑不含原文）；`{"type":"message_reaction","message_id","emoji","action":"added|removed","count","by_sub"}` → 双方；`{"type":"read_receipt","by_sub","peer_sub","last_read_id"}` → 会话另一方；`{"type":"presence","sub","online":true}` / `{"type":"presence","sub","online":false,"last_seen_at"}` → 该用户全部好友（上线/全部连接释放时）；`{"type":"group_event","event":"created|renamed|member_joined|member_removed|member_left|role_changed|owner_changed","group":Group,"by_sub":...,"at":...}` → 群全体成员；`{"type":"call","op":...,"from":...,"payload":...}` → 呼叫对端；`{"type":"friend_event","event":"request_received|request_accepted|request_rejected|friend_removed","by_sub":...,"at":...}` → 相关方（申请→被申请人；接受/拒绝→申请人；解除→关系另一方）。
 
 ## CSRF 约定
 

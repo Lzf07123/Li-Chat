@@ -4,6 +4,10 @@
 
 ### 功能
 
+- 音视频呼叫信令（里程碑四起点）：WS `call` 协议 `offer/answer/ice/reject/end` 与
+  `busy/invalid/unavailable/error` 应答；仅好友间、载荷 ≤16KB、ICE 限频、进程内状态机
+  （idle→ringing→connected→ended）、信令不落库不记日志；前端 WebRTC 1:1 呼叫（发起/来电
+  接听/拒绝/挂断）；媒体为 P2P，服务端只中转信令
 - 个人资料与头像：`PATCH /api/me`（昵称 1–32 / 简介 ≤200，简介仅好友可见）、
   `POST /api/me/avatar`（引用本人上传的图片，非图片 422 / 他人附件 403）；前端资料编辑弹层
   与头像上传

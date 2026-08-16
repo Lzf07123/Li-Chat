@@ -33,6 +33,7 @@ from app.sso.replay import MemoryReplayCache, RedisReplayCache, ReplayCache
 from app.sso.routes import router as sso_router
 from app.timeutil import iso_utc, utcnow
 from app.uploads.service import resolve_upload_root
+from app.ws.calls import CallManager, handle_call
 from app.ws.manager import ConnectionManager
 from app.ws.relay import relay_typing
 
@@ -205,6 +206,7 @@ def create_app(
     app.state.http_transport = http_transport
     app.state.redis = redis_client
     app.state.ws_manager = ConnectionManager()
+    app.state.call_manager = CallManager()
     app.state.replay_cache = replay_cache
 
     app.include_router(sso_router)
@@ -231,6 +233,7 @@ def create_app(
                 return
             user_sub = session.user_sub
         manager = cast(ConnectionManager, app.state.ws_manager)
+        call_manager = cast(CallManager, app.state.call_manager)
         await manager.connect(user_sub, websocket)
         presence_peers: list[str] = []
         try:
@@ -267,6 +270,9 @@ def create_app(
                 elif message.get("type") == "typing":
                     async with session_factory() as db:
                         await relay_typing(db, manager, user_sub, message)
+                elif message.get("type") == "call":
+                    async with session_factory() as db:
+                        await handle_call(db, manager, call_manager, user_sub, message)
         except WebSocketDisconnect:
             pass
         finally:

@@ -25,7 +25,7 @@ flowchart LR
 | `app/oidc/` | 依赖方实现：发现文档、PKCE、授权状态、令牌校验、用户同步 |
 | `app/sso/` | `/oidc/*` 路由、登出 state 签名、jti 防重放（内存/Redis 双实现） |
 | `app/redis.py` | Redis 客户端构建与登出广播订阅（`LICHAT_REDIS_URL` 可选启用） |
-| `app/ws/` | 内存连接表，按用户 sub 管理 WebSocket；presence/typing 信令中继；跨副本断开经 Redis 广播 |
+| `app/ws/` | 内存连接表，按用户 sub 管理 WebSocket；presence/typing/call 信令中继；跨副本断开经 Redis 广播 |
 | `app/api/` | `/api/me`、用户搜索、好友、单聊与群聊薄路由 |
 | `app/friends/` | 好友业务：搜索、关系状态、申请生命周期 |
 | `app/messages/` | 消息业务：发送、历史分页、长度/关系校验 |
@@ -61,4 +61,4 @@ flowchart LR
 
 **回程登出**：门户 POST `logout_token` → 验 iss/aud/120 秒窗/jti/events → 清 `(sub, sid)` 会话并主动断开该用户 WS。
 
-**实时通道**：`/ws` 握手校验同源 Cookie，无效以 4401 关闭；心跳 ping/pong；回程登出触发服务端断开。除心跳外，服务端按需推送 `message`（新消息：单聊双方 / 群全体）、`message_edited`/`message_deleted`（编辑/撤回，单聊双方）、`message_reaction`（回应增删，单聊双方）、`read_receipt`（已读回执：单聊会话另一方 / 群全体）、`presence`（好友上线/下线）、`group_event`（建群/成员/角色变更，群全体）与 `friend_event`（申请/接受/拒绝/解除，相关方）；客户端可发 `typing` 信令，服务端校验好友关系并限频后中继。
+**实时通道**：`/ws` 握手校验同源 Cookie，无效以 4401 关闭；心跳 ping/pong；回程登出触发服务端断开。除心跳外，服务端按需推送 `message`（新消息：单聊双方 / 群全体）、`message_edited`/`message_deleted`（编辑/撤回，单聊双方）、`message_reaction`（回应增删，单聊双方）、`read_receipt`（已读回执：单聊会话另一方 / 群全体）、`presence`（好友上线/下线）、`group_event`（建群/成员/角色变更，群全体）、`call`（音视频呼叫信令，对端）与 `friend_event`（申请/接受/拒绝/解除，相关方）；客户端可发 `typing` 与 `call` 信令，服务端校验好友关系并限频后中继。

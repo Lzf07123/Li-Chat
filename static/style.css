@@ -1251,6 +1251,54 @@ a {
   gap: 10px;
 }
 
+.chat-peer-actions {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.call-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 16px;
+  background: rgb(10 12 20 / 0.9);
+  color: #fff;
+}
+
+.call-videos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+.call-video {
+  width: min(320px, 45vw);
+  aspect-ratio: 4 / 3;
+  border-radius: 14px;
+  background: #000;
+  object-fit: cover;
+}
+
+#call-local {
+  width: min(140px, 22vw);
+}
+
+.call-status {
+  font-size: 0.95rem;
+}
+
+.call-actions {
+  display: flex;
+  gap: 12px;
+}
+
 .chat-peer-main {
   display: flex;
   flex-direction: column;
