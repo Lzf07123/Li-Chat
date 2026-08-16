@@ -217,16 +217,24 @@ a {
 .auth-shell {
   align-items: center;
   justify-content: center;
-  padding: 48px 16px;
+  padding: 40px 16px;
   text-align: center;
 }
 
-.auth-main {
-  margin: auto;
+.auth-head {
+  position: absolute;
+  top: 40px;
+  left: 0;
+  right: 0;
   width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+.auth-card {
+  margin-top: auto;
+  margin-bottom: auto;
 }
 
 .auth-shell .site-footer {

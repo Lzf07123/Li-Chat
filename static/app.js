@@ -366,16 +366,16 @@ function renderLoggedOut() {
   mount(
     "auth-shell",
     `${themeToggleHtml()}
-    <div class="auth-main">
+    <div class="auth-head">
     <div class="auth-brand">${BRAND.logo}<span class="brand-name">${escapeHtml(BRAND.name)}</span></div>
     <p class="slogan">${escapeHtml(BRAND.slogan)}</p>
+    </div>
     <section class="card card-interactive auth-card card-signature page-enter">
       <div class="auth-halo" aria-hidden="true"></div>
       <h1>欢迎回来</h1>
       <p class="muted">统一使用 Li&Pass 账号登录，本地不保存密码。</p>
       <a class="btn btn-primary" href="/oidc/login">使用 Li&Pass 登录</a>
     </section>
-    </div>
     ${footerHtml()}`
   );
   const heading = document.querySelector(".auth-card h1");
