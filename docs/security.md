@@ -33,6 +33,7 @@
 | 附件安全 | 内容嗅探白名单（jpeg/png/gif/webp/pdf/txt），拒绝 SVG/HTML 与伪造类型；大小 ≤20MB；随机文件名防遍历；回源会话鉴权（上传者或引用该附件的会话参与者）+ nosniff；附件消息归属校验 | `app/uploads/`、`app/messages/service.py` |
 | 转发边界 | 源消息必须自己可见（单聊双方/群成员）且未撤回；目标好友/群成员校验；不得转发给自己 | `app/messages/service.py` |
 | 提及防护 | 单聊仅可提及对方、群仅可提及成员；≤50 去重；非法提及 422 | `app/messages/service.py` |
+| 收藏边界 | 只能收藏自己可见范围（单聊双方/群成员）的消息；越权 404 | `app/messages/service.py` |
 | 搜索信息泄露防护 | 消息搜索限定自己可见范围（单聊双方 / 群成员）；排除已撤回；命中片段截断；q ≤64、limit ≤50 | `app/search/service.py` |
 | 资料与头像防护 | 昵称/简介长度校验；简介仅好友可见（搜索不回传）；头像必须为本人上传的图片；CSRF 保护 | `app/api/users.py`、`app/friends/service.py` |
 | 呼叫信令防护 | 仅好友间、载荷 ≤16KB、ICE 限频、状态机校验非法迁移；信令不落库、SDP 不记日志；媒体 P2P 不经服务端 | `app/ws/calls.py` |

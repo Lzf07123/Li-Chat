@@ -299,6 +299,9 @@ async def group_history(
         db, [item.id for item in rows], user.sub
     )
     mentions = await messages_service.mentions_for(db, [item.id for item in rows])
+    starred_ids = await messages_service.starred_for(
+        db, user.sub, [item.id for item in rows]
+    )
     reply_ids = [item.reply_to_id for item in rows if item.reply_to_id is not None]
     replies: dict[int, Message] = {}
     if reply_ids:
@@ -324,6 +327,7 @@ async def group_history(
                 **data,
                 reactions=aggregate.get("reactions", []),
                 my_reactions=aggregate.get("my_reactions", []),
+                starred=item.id in starred_ids,
             )
         )
     return MessagePageOut(messages=messages, next_before=next_before)

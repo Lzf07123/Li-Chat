@@ -19,6 +19,7 @@ from app.models import (
     MessageMention,
     Reaction,
     User,
+    UserStar,
 )
 from app.timeutil import iso_utc, utcnow
 from app.uploads.service import get_upload
@@ -600,6 +601,115 @@ async def mentions_for(
     for row in rows:
         result.setdefault(row.message_id, []).append(row.user_sub)
     return result
+
+
+async def set_star(
+    db: AsyncSession, me_sub: str, message_id: int, *, starred: bool
+) -> dict[str, Any]:
+    message = await db.get(Message, message_id)
+    if message is None or not await _can_view(db, me_sub, message):
+        raise HTTPException(status_code=404, detail="message not found")
+    row = await db.get(UserStar, (me_sub, message_id))
+    if starred and row is None:
+        db.add(UserStar(user_sub=me_sub, message_id=message_id))
+        await db.commit()
+    elif not starred and row is not None:
+        await db.delete(row)
+        await db.commit()
+    return {"message_id": message_id, "starred": starred}
+
+
+async def starred_for(
+    db: AsyncSession, viewer_sub: str, message_ids: list[int]
+) -> set[int]:
+    if not message_ids:
+        return set()
+    rows = (
+        await db.execute(
+            select(UserStar.message_id).where(
+                UserStar.user_sub == viewer_sub,
+                UserStar.message_id.in_(message_ids),
+            )
+        )
+    ).scalars().all()
+    return set(rows)
+
+
+async def starred_messages(
+    db: AsyncSession,
+    me_sub: str,
+    *,
+    cursor: int | None = None,
+    limit: int = 20,
+) -> tuple[list[dict[str, Any]], int | None]:
+    stmt = (
+        select(UserStar)
+        .where(UserStar.user_sub == me_sub)
+        .order_by(UserStar.message_id.desc())
+        .limit(limit + 1)
+    )
+    if cursor is not None:
+        stmt = stmt.where(UserStar.message_id < cursor)
+    rows = (await db.execute(stmt)).scalars().all()
+    has_more = len(rows) > limit
+    page = list(rows[:limit])
+    message_ids = [row.message_id for row in page]
+    messages = (
+        await db.execute(select(Message).where(Message.id.in_(message_ids)))
+    ).scalars().all()
+    by_id = {message.id: message for message in messages}
+    items: list[dict[str, Any]] = []
+    for row in page:
+        message = by_id.get(row.message_id)
+        if message is None:
+            continue
+        conversation: dict[str, Any]
+        if message.conversation_type == "group":
+            group = (
+                await db.get(Group, message.group_id)
+                if message.group_id is not None
+                else None
+            )
+            conversation = {
+                "type": "group",
+                "group_id": message.group_id,
+                "group_name": group.name if group is not None else None,
+                "peer_sub": None,
+                "peer_name": None,
+            }
+        else:
+            peer = (
+                message.sender_sub
+                if message.sender_sub != me_sub
+                else message.recipient_sub
+            )
+            peer_user = await db.get(User, peer)
+            conversation = {
+                "type": "dm",
+                "peer_sub": peer,
+                "peer_name": (
+                    (peer_user.nickname or peer_user.name or peer)
+                    if peer_user is not None
+                    else peer
+                ),
+                "group_id": None,
+                "group_name": None,
+            }
+        items.append(
+            {
+                "id": message.id,
+                "sender_sub": message.sender_sub,
+                "conversation": conversation,
+                "content": (
+                    None if message.deleted_at is not None else message.content[:200]
+                ),
+                "content_type": message.content_type,
+                "deleted": message.deleted_at is not None,
+                "created_at": iso_utc(message.created_at),
+            }
+        )
+    next_before = page[-1].message_id if has_more and page else None
+    return items, next_before
 
 
 async def mark_read(

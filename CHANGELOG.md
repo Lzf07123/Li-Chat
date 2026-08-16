@@ -4,6 +4,9 @@
 
 ### 功能
 
+- 收藏消息：`user_stars` 幂等 star/unstar（`PUT/DELETE /api/messages/{id}/star`，仅自己
+  可见范围、越权 404）、收藏列表 `GET /api/me/stars`（会话引用 + 倒序游标 ≤50）、历史载荷
+  按查看者附 `starred`；前端收藏切换与「我的收藏」列表
 - @提及：`message_mentions` 表与成员/对端校验（单聊仅对方、群仅成员，≤50 去重，非法 422）、
   载荷与 WS 事件附 `mentions`；前端群 composer「@」成员选择器与「@我」高亮
 - 消息转发：`POST /api/conversations/{sub}/forward` 与 `/api/groups/{id}/forward`（源消息

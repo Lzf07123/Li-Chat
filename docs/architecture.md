@@ -20,7 +20,7 @@ flowchart LR
 | `app/main.py` | 应用装配、生命周期（建表/建目录）、`/ws`、`/healthz`、静态挂载 |
 | `app/config.py` | `LICHAT_*` 环境变量，生产环境校验会话密钥强度 |
 | `app/db.py` | 异步引擎、`get_db` 依赖 |
-| `app/models.py` | `users` / `auth_states` / `sessions` / `friendships` / `messages` / `dm_reads` / `reactions` / `message_mentions` / `groups` / `group_members` / `group_reads` / `uploads` 十二张表 |
+| `app/models.py` | `users` / `auth_states` / `sessions` / `friendships` / `messages` / `dm_reads` / `reactions` / `message_mentions` / `user_stars` / `groups` / `group_members` / `group_reads` / `uploads` 十三张表 |
 | `app/auth/` | 本地会话生命周期、Cookie、`get_current_user` / `require_csrf` |
 | `app/oidc/` | 依赖方实现：发现文档、PKCE、授权状态、令牌校验、用户同步 |
 | `app/sso/` | `/oidc/*` 路由、登出 state 签名、jti 防重放（内存/Redis 双实现） |
@@ -47,6 +47,7 @@ flowchart LR
 | `dm_reads` | `user_sub+participant_lo+participant_hi`(复合 PK)、last_read_message_id、updated_at | 单聊已读游标，只前进；未读 = 对方消息 id 大于游标 |
 | `reactions` | `message_id+user_sub+emoji`(复合 PK)、created_at | 幂等 toggle；聚合计数回显，不泄露非上榜用户 |
 | `message_mentions` | `message_id+user_sub`(复合 PK) | @提及落账；发送时校验成员/对端 |
+| `user_stars` | `user_sub+message_id`(复合 PK)、created_at | 收藏幂等 toggle；列表按 message_id 倒序游标 |
 | `groups` | `id`、name、owner_sub、created_at、updated_at | 群元数据；owner 变更随转让同步 |
 | `group_members` | `group_id+user_sub`(复合 PK)、role(owner/admin/member)、joined_at | 角色约束 + 权限矩阵在 service 层强校验 |
 | `group_reads` | `user_sub+group_id`(复合 PK)、last_read_message_id、updated_at | 群已读游标，只前进；未读 = 群消息 id 大于游标且非本人发送 |

@@ -1021,6 +1021,10 @@ a {
   text-decoration: underline;
 }
 
+.message-star-on {
+  color: var(--chat-primary);
+}
+
 .message-bubble-deleted {
   font-style: italic;
   opacity: 0.7;

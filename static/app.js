@@ -165,6 +165,9 @@ function headerHtml() {
           <button id="edit-profile" class="profile-menu-item" role="menuitem" type="button">
             编辑资料
           </button>
+          <button id="open-stars" class="profile-menu-item" role="menuitem" type="button">
+            我的收藏
+          </button>
           <button id="logout" class="profile-menu-item" role="menuitem" type="button">
             退出登录
           </button>
@@ -280,6 +283,7 @@ function renderLoggedIn() {
   document.addEventListener("keydown", onProfileKeydown);
   document.getElementById("logout").addEventListener("click", logout);
   document.getElementById("edit-profile").addEventListener("click", openProfileModal);
+  document.getElementById("open-stars").addEventListener("click", openStarsModal);
   document.getElementById("search-form").addEventListener("submit", onSearch);
   document.getElementById("search-form").addEventListener("click", onSearchModeClick);
   document.getElementById("search-results").addEventListener("click", onSearchResultClick);
@@ -348,6 +352,61 @@ function openProfileModal() {
   });
   document.getElementById("profile-avatar-input").addEventListener("change", onAvatarSelected);
   document.getElementById("profile-nickname").focus();
+}
+
+async function openStarsModal() {
+  setProfileMenu(false);
+  const response = await api("/api/me/stars?limit=50");
+  if (!response.ok) return;
+  const body = await response.json();
+  const items = body.messages
+    .map((item) => {
+      const label =
+        item.conversation.type === "group"
+          ? `群：${item.conversation.group_name || ""}`
+          : item.conversation.peer_name || "";
+      const target =
+        item.conversation.type === "group"
+          ? `data-group="${item.conversation.group_id}"`
+          : `data-peer="${escapeHtml(item.conversation.peer_sub || "")}"`;
+      const preview = item.deleted ? "消息已撤回" : item.content || "";
+      return `<li class="contact-item">
+        <button class="contact-button" type="button" data-action="open-star" ${target}>
+          <span class="contact-main">
+            <span class="contact-name">${escapeHtml(label)}</span>
+            <span class="contact-preview">${escapeHtml(preview)}</span>
+          </span>
+        </button>
+      </li>`;
+    })
+    .join("");
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="stars-modal" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <h3 class="modal-title">我的收藏</h3>
+        <ul class="contact-list forward-list">${
+          items || '<li class="sidebar-empty">还没有收藏</li>'
+        }</ul>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" data-action="close-stars">关闭</button>
+        </div>
+      </div>
+    </div>`
+  );
+  const modal = document.getElementById("stars-modal");
+  modal.addEventListener("click", (event) => {
+    const target = event.target.closest("[data-action='open-star']");
+    if (target) {
+      modal.remove();
+      if (target.dataset.group) openGroup(Number(target.dataset.group));
+      else if (target.dataset.peer) openChat(target.dataset.peer);
+      return;
+    }
+    if (event.target === modal || event.target.closest("[data-action='close-stars']")) {
+      modal.remove();
+    }
+  });
 }
 
 async function onProfileSubmit(event) {
@@ -1253,6 +1312,8 @@ function messageHtml(message) {
     ? `<span class="message-actions">${editActions}
         <button class="message-action" type="button"
           data-action="forward" data-id="${message.id}">转发</button>
+        <button class="message-action${message.starred ? " message-star-on" : ""}" type="button"
+          data-action="star" data-id="${message.id}">${message.starred ? "取消收藏" : "收藏"}</button>
         <button class="message-action" type="button"
           data-action="reply" data-id="${message.id}">回复</button>
       </span>`
@@ -1551,6 +1612,19 @@ async function onMessagesClick(event) {
   if (button.dataset.action === "forward") {
     const message = state.messages.find((item) => String(item.id) === messageId);
     if (message && !message.deleted) openForwardModal(message);
+    return;
+  }
+  if (button.dataset.action === "star") {
+    const message = state.messages.find((item) => String(item.id) === messageId);
+    if (!message || message.deleted) return;
+    const url = `/api/messages/${messageId}/star`;
+    const response = await api(url, {
+      method: message.starred ? "DELETE" : "PUT",
+    });
+    if (response.ok) {
+      message.starred = !message.starred;
+      renderMessages();
+    }
     return;
   }
   const sub = state.activeSub;

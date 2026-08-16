@@ -14,6 +14,9 @@
 | GET | `/api/me` | 会话 | 当前用户 `{sub, nickname, name, picture, email, csrf_token}` |
 | PATCH | `/api/me` | 会话 + CSRF | 改资料 `{"nickname"?, "bio"?}`（昵称 1–32、简介 ≤200） |
 | POST | `/api/me/avatar` | 会话 + CSRF | 设头像 `{"url"}`（须为本人上传的图片）；422 非图片/非法地址、403 他人附件 |
+| PUT | `/api/messages/{id}/star` | 会话 + CSRF | 收藏（幂等；仅自己可见范围，越权 404）；`{"message_id","starred":true}` |
+| DELETE | `/api/messages/{id}/star` | 会话 + CSRF | 取消收藏（幂等）；`{"message_id","starred":false}` |
+| GET | `/api/me/stars?cursor=&limit=` | 会话 | 收藏列表（倒序游标 ≤50；附会话引用与内容摘要）；`{"messages":[...],"next_before"}` |
 | GET | `/api/users/search?q=` | 会话 | 昵称/邮箱关键词搜索（1–64 字符，≤20 条）；返回 `sub/nickname/name/picture/friend_status`，不回传邮箱 |
 | GET | `/api/search?kind=messages&q=&limit=&before=` | 会话 | 消息全文搜索（仅自己可见范围：单聊双方/群成员；LIKE 不区分大小写、倒序游标、命中片段）；`{"messages":[{id,sender_sub,conversation:{type,peer_sub,peer_name,group_id,group_name},snippet,created_at}],"next_before"}` |
 | GET | `/api/search?kind=contacts&q=` | 会话 | 联系人搜索（语义同 `/api/users/search`）；`{"contacts":[{sub,nickname,name,picture,friend_status}]}` |

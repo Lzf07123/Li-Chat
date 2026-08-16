@@ -84,6 +84,7 @@ class MessageOut(BaseModel):
     attachment: AttachmentOut | None = None
     reply_to: ReplyToOut | None = None
     mentions: list[str] = []
+    starred: bool = False
     deleted: bool = False
     edited_at: str | None = None
     created_at: str
@@ -231,6 +232,7 @@ async def message_history(
     )
     replies = await _replies_for(db, rows)
     mentions = await service.mentions_for(db, [item.id for item in rows])
+    starred_ids = await service.starred_for(db, user.sub, [item.id for item in rows])
     reaction_map = await service.reactions_for(
         db, [item.id for item in rows], user.sub
     )
@@ -250,6 +252,7 @@ async def message_history(
                 **data,
                 reactions=aggregate.get("reactions", []),
                 my_reactions=aggregate.get("my_reactions", []),
+                starred=item.id in starred_ids,
             )
         )
     return MessagePageOut(
