@@ -155,6 +155,19 @@ class Reaction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class MessageMention(Base):
+    __tablename__ = "message_mentions"
+
+    message_id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), primary_key=True
+    )
+
+
 class Group(Base):
     __tablename__ = "groups"
 

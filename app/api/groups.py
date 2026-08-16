@@ -266,13 +266,15 @@ async def send_group_message(
         content_type=body.content_type,
         attachment=body.attachment.model_dump() if body.attachment else None,
         reply_to_id=body.reply_to_id,
+        mentions=body.mentions,
     )
+    mention_subs = list(dict.fromkeys(body.mentions))
     reply = (
         await db.get(Message, message.reply_to_id)
         if message.reply_to_id is not None
         else None
     )
-    payload = messages_service.message_payload(message, reply)
+    payload = messages_service.message_payload(message, reply, mention_subs)
     manager = cast(ConnectionManager, request.app.state.ws_manager)
     event = {"type": "message", "message": payload}
     for sub in await service.member_subs(db, group_id):
@@ -296,6 +298,7 @@ async def group_history(
     reaction_map = await messages_service.reactions_for(
         db, [item.id for item in rows], user.sub
     )
+    mentions = await messages_service.mentions_for(db, [item.id for item in rows])
     reply_ids = [item.reply_to_id for item in rows if item.reply_to_id is not None]
     replies: dict[int, Message] = {}
     if reply_ids:
@@ -313,6 +316,8 @@ async def group_history(
             else None
         )
         data = messages_service.message_payload(item, reply)
+        if "mentions" in data:
+            data["mentions"] = mentions.get(item.id, [])
         aggregate = reaction_map.get(item.id, {})
         messages.append(
             MessageOut(

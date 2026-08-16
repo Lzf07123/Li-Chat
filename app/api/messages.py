@@ -22,6 +22,7 @@ class MessageIn(BaseModel):
     content: str = ""
     attachment: AttachmentIn | None = None
     reply_to_id: int | None = Field(default=None, ge=1)
+    mentions: list[str] = []
 
     @field_validator("content")
     @classmethod
@@ -34,6 +35,13 @@ class MessageIn(BaseModel):
                 f"content must be at most {MAX_MESSAGE_LENGTH} characters"
             )
         return stripped
+
+    @field_validator("mentions")
+    @classmethod
+    def _validate_mentions(cls, value: list[str]) -> list[str]:
+        if len(value) > service.MAX_MENTIONS:
+            raise ValueError(f"at most {service.MAX_MENTIONS} mentions")
+        return value
 
 
 class AttachmentIn(BaseModel):
@@ -75,6 +83,7 @@ class MessageOut(BaseModel):
     forwarded: bool = False
     attachment: AttachmentOut | None = None
     reply_to: ReplyToOut | None = None
+    mentions: list[str] = []
     deleted: bool = False
     edited_at: str | None = None
     created_at: str
@@ -191,13 +200,15 @@ async def send_message(
         content_type=body.content_type,
         attachment=body.attachment.model_dump() if body.attachment else None,
         reply_to_id=body.reply_to_id,
+        mentions=body.mentions,
     )
+    mention_subs = list(dict.fromkeys(body.mentions))
     reply = (
         await db.get(Message, message.reply_to_id)
         if message.reply_to_id is not None
         else None
     )
-    payload = service.message_payload(message, reply)
+    payload = service.message_payload(message, reply, mention_subs)
     manager = cast(ConnectionManager, request.app.state.ws_manager)
     event = {"type": "message", "message": payload}
     await manager.send_to(message.sender_sub, event)
@@ -219,6 +230,7 @@ async def message_history(
         db, user.sub, other_sub, before=before, limit=limit
     )
     replies = await _replies_for(db, rows)
+    mentions = await service.mentions_for(db, [item.id for item in rows])
     reaction_map = await service.reactions_for(
         db, [item.id for item in rows], user.sub
     )
@@ -230,6 +242,8 @@ async def message_history(
             else None
         )
         data = service.message_payload(item, reply)
+        if "mentions" in data:
+            data["mentions"] = mentions.get(item.id, [])
         aggregate = reaction_map.get(item.id, {})
         messages.append(
             MessageOut(

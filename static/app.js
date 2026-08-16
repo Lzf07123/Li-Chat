@@ -26,6 +26,8 @@ const state = {
   pickerMessageId: null,
   replyTo: null,
   forwardMessageId: null,
+  mentionSubs: [],
+  mentionOpen: false,
   groups: [],
   activeGroupId: null,
   activeGroup: null,
@@ -762,6 +764,8 @@ async function openGroup(groupId) {
   state.editingId = null;
   state.pickerMessageId = null;
   state.replyTo = null;
+  state.mentionSubs = [];
+  state.mentionOpen = false;
   state.messages = [];
   state.nextBefore = null;
   document.getElementById("chat-empty").hidden = true;
@@ -854,6 +858,9 @@ function groupPanelHtml(group) {
       <div id="group-messages" class="messages" role="log" aria-live="polite"
         aria-label="群聊记录"></div>
       <form id="group-composer" class="composer">
+        <div id="group-mention-list" class="mention-list" hidden></div>
+        <button id="group-mention-btn" class="icon-btn" type="button"
+          aria-label="提及成员">@</button>
         <button id="group-attach-btn" class="icon-btn" type="button" aria-label="发送附件">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -921,6 +928,11 @@ function renderGroupPanel() {
   if (composer) {
     composer.addEventListener("submit", onGroupComposerSubmit);
     composer.addEventListener("click", onComposerBarClick);
+    document.getElementById("group-mention-btn").addEventListener("click", toggleMentionList);
+    const mentionList = document.getElementById("group-mention-list");
+    if (mentionList) {
+      mentionList.addEventListener("click", onMentionPick);
+    }
     document.getElementById("group-message-input").addEventListener(
       "keydown",
       onGroupComposerKeydown
@@ -1192,6 +1204,7 @@ function closeChat() {
 
 function messageHtml(message) {
   const own = message.sender_sub === state.me.sub;
+  const mentioned = (message.mentions || []).includes(state.me.sub);
   const readByPeer = state.readUpTo[state.activeSub];
   const read = own && typeof readByPeer === "number" && message.id <= readByPeer;
   const time = new Date(message.created_at).toLocaleTimeString([], {
@@ -1250,12 +1263,15 @@ function messageHtml(message) {
   const forwardMark = message.forwarded
     ? '<span class="message-read">已转发</span>'
     : "";
+  const mentionMark = mentioned ? '<span class="message-read">@我</span>' : "";
   const reactions = message.deleted || state.activeGroupId ? "" : reactionsHtml(message);
-  return `<div class="message ${own ? "message-own" : "message-other"}">
+  return `<div class="message ${own ? "message-own" : "message-other"}${
+    mentioned ? " message-mentioned" : ""
+  }">
     ${body}
     <div class="message-meta">${escapeHtml(time)}${read
       ? '<span class="message-read">已读</span>'
-      : ""}${editedMark}${forwardMark}${actions}</div>
+      : ""}${editedMark}${forwardMark}${mentionMark}${actions}</div>
     ${reactions}
   </div>`;
 }
@@ -1364,13 +1380,54 @@ async function onGroupComposerSubmit(event) {
     body: JSON.stringify({
       content,
       reply_to_id: state.replyTo ? state.replyTo.id : undefined,
+      mentions: state.mentionSubs,
     }),
   });
   if (response.ok) {
     clearReply();
+    state.mentionSubs = [];
+    state.mentionOpen = false;
+    const mentionList = document.getElementById("group-mention-list");
+    if (mentionList) mentionList.hidden = true;
     input.value = "";
     input.focus();
   }
+}
+
+function toggleMentionList() {
+  state.mentionOpen = !state.mentionOpen;
+  renderMentionList();
+}
+
+function renderMentionList() {
+  const list = document.getElementById("group-mention-list");
+  if (!list) return;
+  list.hidden = !state.mentionOpen;
+  if (!state.mentionOpen) return;
+  const members = state.activeGroup
+    ? state.activeGroup.members.filter((member) => member.user.sub !== state.me.sub)
+    : [];
+  list.innerHTML = members
+    .map(
+      (member) => `<button class="mention-option" type="button"
+        data-sub="${escapeHtml(member.user.sub)}">@${escapeHtml(displayName(member.user))}</button>`
+    )
+    .join("") || '<span class="muted">没有可提及的成员</span>';
+}
+
+function onMentionPick(event) {
+  const button = event.target.closest(".mention-option[data-sub]");
+  if (!button) return;
+  const sub = button.dataset.sub;
+  const member = state.activeGroup.members.find((item) => item.user.sub === sub);
+  if (!member) return;
+  if (!state.mentionSubs.includes(sub)) state.mentionSubs.push(sub);
+  const input = document.getElementById("group-message-input");
+  const label = `@${displayName(member.user)} `;
+  input.value = input.value ? `${input.value}${label}` : label;
+  input.focus();
+  state.mentionOpen = false;
+  renderMentionList();
 }
 
 function onGroupComposerKeydown(event) {

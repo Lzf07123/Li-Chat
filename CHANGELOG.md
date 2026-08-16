@@ -4,6 +4,8 @@
 
 ### 功能
 
+- @提及：`message_mentions` 表与成员/对端校验（单聊仅对方、群仅成员，≤50 去重，非法 422）、
+  载荷与 WS 事件附 `mentions`；前端群 composer「@」成员选择器与「@我」高亮
 - 消息转发：`POST /api/conversations/{sub}/forward` 与 `/api/groups/{id}/forward`（源消息
   须在转发者可见范围、已撤回 409；DM↔群互转），复制文本/附件元数据并置 `forwarded` 标记；
   前端「转发」按钮与目标选择弹层

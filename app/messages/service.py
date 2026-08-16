@@ -10,7 +10,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.friends.service import are_friends, list_friends
 from app.groups.service import membership as group_membership
-from app.models import DmRead, Group, GroupMember, GroupRead, Message, Reaction, User
+from app.models import (
+    DmRead,
+    Group,
+    GroupMember,
+    GroupRead,
+    Message,
+    MessageMention,
+    Reaction,
+    User,
+)
 from app.timeutil import iso_utc, utcnow
 from app.uploads.service import get_upload
 
@@ -20,13 +29,18 @@ HISTORY_MAX_LIMIT = 100
 EDIT_WINDOW_SECONDS = 300
 EMOJI_MAX_LENGTH = 8
 GROUP_RECIPIENT_PREFIX = "group:"
+MAX_MENTIONS = 50
 
 
 def pair_key(a: str, b: str) -> tuple[str, str]:
     return (a, b) if a < b else (b, a)
 
 
-def message_payload(message: Message, reply: Message | None = None) -> dict[str, Any]:
+def message_payload(
+    message: Message,
+    reply: Message | None = None,
+    mentions: list[str] | None = None,
+) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "id": message.id,
         "sender_sub": message.sender_sub,
@@ -54,6 +68,7 @@ def message_payload(message: Message, reply: Message | None = None) -> dict[str,
             payload["edited_at"] = iso_utc(message.edited_at)
         if message.reply_to_id is not None and reply is not None:
             payload["reply_to"] = reply_payload(reply)
+        payload["mentions"] = mentions if mentions is not None else []
     return payload
 
 
@@ -92,6 +107,28 @@ async def validate_reply(
                 status_code=404, detail="replied message not in conversation"
             )
     return target
+
+
+async def validate_mentions(
+    db: AsyncSession,
+    mentions: list[str],
+    *,
+    other_sub: str | None = None,
+    group_id: int | None = None,
+) -> list[str]:
+    if not mentions:
+        return []
+    if len(mentions) > MAX_MENTIONS:
+        raise HTTPException(status_code=422, detail=f"at most {MAX_MENTIONS} mentions")
+    if group_id is not None:
+        for sub in mentions:
+            if await group_membership(db, group_id, sub) is None:
+                raise HTTPException(status_code=422, detail="mention must be a group member")
+    else:
+        assert other_sub is not None
+        if set(mentions) - {other_sub}:
+            raise HTTPException(status_code=422, detail="mention must be your chat partner")
+    return list(dict.fromkeys(mentions))
 
 
 async def resolve_attachment(
@@ -149,6 +186,7 @@ async def send_message(
     content_type: str = "text",
     attachment: dict[str, Any] | None = None,
     reply_to_id: int | None = None,
+    mentions: list[str] | None = None,
 ) -> Message:
     if sender_sub == recipient_sub:
         raise HTTPException(status_code=400, detail="cannot message yourself")
@@ -158,6 +196,7 @@ async def send_message(
         raise HTTPException(status_code=403, detail="not friends")
     if reply_to_id is not None:
         await validate_reply(db, sender_sub, reply_to_id, other_sub=recipient_sub)
+    mention_subs = await validate_mentions(db, mentions or [], other_sub=recipient_sub)
     attachment_fields = await resolve_attachment(
         db, sender_sub, content_type, attachment
     )
@@ -174,6 +213,8 @@ async def send_message(
     )
     db.add(message)
     await db.flush()
+    for sub in mention_subs:
+        db.add(MessageMention(message_id=message.id, user_sub=sub))
     await _advance_read(db, sender_sub, lo, hi, message.id)
     await db.commit()
     await db.refresh(message)
@@ -373,6 +414,7 @@ async def send_group_message(
     content_type: str = "text",
     attachment: dict[str, Any] | None = None,
     reply_to_id: int | None = None,
+    mentions: list[str] | None = None,
 ) -> Message:
     member_row = await group_membership(db, group_id, sender_sub)
     if member_row is None:
@@ -382,6 +424,7 @@ async def send_group_message(
         raise HTTPException(status_code=404, detail="group not found")
     if reply_to_id is not None:
         await validate_reply(db, sender_sub, reply_to_id, group_id=group_id)
+    mention_subs = await validate_mentions(db, mentions or [], group_id=group_id)
     attachment_fields = await resolve_attachment(
         db, sender_sub, content_type, attachment
     )
@@ -400,6 +443,8 @@ async def send_group_message(
     )
     db.add(message)
     await db.flush()
+    for sub in mention_subs:
+        db.add(MessageMention(message_id=message.id, user_sub=sub))
     await _advance_group_read(db, sender_sub, group_id, message.id)
     await db.commit()
     await db.refresh(message)
@@ -539,6 +584,22 @@ async def forward_message(
     await db.commit()
     await db.refresh(message)
     return message
+
+
+async def mentions_for(
+    db: AsyncSession, message_ids: list[int]
+) -> dict[int, list[str]]:
+    if not message_ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(MessageMention).where(MessageMention.message_id.in_(message_ids))
+        )
+    ).scalars().all()
+    result: dict[int, list[str]] = {}
+    for row in rows:
+        result.setdefault(row.message_id, []).append(row.user_sub)
+    return result
 
 
 async def mark_read(

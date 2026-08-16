@@ -1354,6 +1354,44 @@ a {
   width: 100%;
 }
 
+.mention-list {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 8px;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 260px;
+  padding: 8px;
+  border: 1px solid var(--chat-border);
+  border-radius: 10px;
+  background: var(--chat-surface-1);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+
+.composer {
+  position: relative;
+}
+
+.mention-list[hidden] {
+  display: none;
+}
+
+.mention-option {
+  border: 1px solid var(--chat-border);
+  border-radius: 999px;
+  background: var(--chat-surface-2);
+  color: var(--chat-fg);
+  font-size: 0.78rem;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.message-mentioned .message-bubble {
+  border: 1px solid var(--chat-primary);
+}
+
 .chat-peer-main {
   display: flex;
   flex-direction: column;
