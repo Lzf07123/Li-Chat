@@ -184,6 +184,8 @@
 
 ### 文档
 
+- 文档全量同步（v67）：README 功能清单/测试数（282）/项目结构/路线图对齐 v21–v70；
+  architecture 表结构与模块清单同步；新增 docs/user-guide.md 用户指南；429 状态码口径扩展
 - 部署收口（v66）：compose 透传写操作限流/上传上限并注释生产开关（prod/https/PostgreSQL）；
   部署指南新增 PostgreSQL 兼容性验证（驱动/建表/语义差异/多副本前提）
 - 新增 design-system/chat/BRAND.md、MASTER.md 与 preview 视觉基线

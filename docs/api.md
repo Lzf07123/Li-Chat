@@ -103,7 +103,7 @@
 | 401 | 未登录、会话过期、id_token 校验失败、userinfo sub 不一致 |
 | 403 | CSRF 校验失败 |
 | 409 | 好友/申请冲突（已申请、已是好友、对方已申请） |
-| 429 | 登录限流（`/oidc/login`、`/oidc/callback` 超窗口配额，附 `Retry-After`） |
+| 429 | 登录限流（`/oidc/login`、`/oidc/callback`）或写操作限流（发消息/编辑/上传/投票），附 `Retry-After` |
 | 422 | 参数校验失败（搜索串、消息内容、分页参数越界） |
 | 502 | IdP 响应缺令牌、userinfo 请求失败 |
 | 302 | 登录/登出跳转 |

@@ -20,7 +20,7 @@ flowchart LR
 | `app/main.py` | 应用装配、生命周期（建表/建目录）、`/ws`、`/healthz`、静态挂载 |
 | `app/config.py` | `LICHAT_*` 环境变量，生产环境校验会话密钥强度 |
 | `app/db.py` | 异步引擎、`get_db` 依赖 |
-| `app/models.py` | `users` / `auth_states` / `sessions` / `friendships` / `messages` / `dm_reads` / `reactions` / `message_mentions` / `user_stars` / `user_conversation_settings` / `groups` / `group_members` / `group_reads` / `uploads` / `call_logs` 十五张表 |
+| `app/models.py` | `users` / `auth_states` / `sessions` / `friendships` / `messages` / `dm_reads` / `reactions` / `message_mentions` / `user_stars` / `user_conversation_settings` / `groups` / `group_members` / `group_reads` / `polls` / `poll_votes` / `notifications` / `user_message_deletes` / `uploads` / `call_logs` 十九张表 |
 | `app/auth/` | 本地会话生命周期、Cookie、`get_current_user` / `require_csrf` |
 | `app/oidc/` | 依赖方实现：发现文档、PKCE、授权状态、令牌校验、用户同步 |
 | `app/sso/` | `/oidc/*` 路由、登出 state 签名、jti 防重放（内存/Redis 双实现） |
@@ -32,6 +32,8 @@ flowchart LR
 | `app/groups/` | 群聊业务：建群、成员、角色与权限矩阵 |
 | `app/uploads/` | 附件业务：内容嗅探、随机文件名、鉴权回源 |
 | `app/search/` | 搜索业务：消息检索（可见范围 + 游标 + snippet）与联系人检索 |
+| `app/polls/` | 群投票业务：创建、投票/改票、关闭、计数聚合 |
+| `app/notifications/` | 站内通知业务：落账、倒序游标列表、全部已读 |
 | `static/` | 同源前端（登录、好友双栏、单聊、在线状态、退出） |
 | `tests/fixtures/mock_idp.py` | 本地模拟 IdP，测试零外网依赖 |
 
