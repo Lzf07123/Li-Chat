@@ -56,7 +56,7 @@ class CallManager:
     def clear_log_id(self, a: str, b: str) -> None:
         self._log_ids.pop(self._key(a, b), None)
 
-    def ice_allowed(self, a: str, b: str, min_interval: float = 0.05) -> bool:
+    def ice_allowed(self, a: str, b: str, min_interval: float = 0.01) -> bool:
         key = self._key(a, b)
         now = time.monotonic()
         last = self._ice_slots.get(key)
@@ -135,10 +135,6 @@ async def handle_call(
         if not calls.is_active(sender_sub, target) or not calls.ice_allowed(
             sender_sub, target
         ):
-            await manager.send_to(
-                sender_sub,
-                {"type": "call", "op": "invalid", "from": target, "payload": {}},
-            )
             return
     else:
         was_connected = calls.is_active(sender_sub, target) and calls._calls.get(
@@ -152,10 +148,15 @@ async def handle_call(
                 "accepted" if was_connected else "missed"
             )
             await _update_call(db, end_log_id, status, ended=True)
-    await manager.send_to(
-        target,
-        {"type": "call", "op": op, "from": sender_sub, "payload": payload},
-    )
+    relayed: dict[str, Any] = {
+        "type": "call",
+        "op": op,
+        "from": sender_sub,
+        "payload": payload,
+    }
+    if op == "offer":
+        relayed["kind"] = kind
+    await manager.send_to(target, relayed)
 
 
 async def _record_call(

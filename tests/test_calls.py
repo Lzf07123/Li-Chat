@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+import httpx
 from starlette.testclient import TestClient
 
 from app.ws.calls import CallManager, handle_call
@@ -142,6 +143,73 @@ def test_call_to_stranger_is_dropped(app: Any) -> None:
     assert marker == {"type": "pong"}
 
 
+def test_call_offer_relays_kind(app: Any) -> None:
+    """offer 中继帧必须携带 kind，被叫端才能区分视频/语音。"""
+    _friends(app, "u-alice", "u-bob")
+    alice_sid, _ = seed_session_sync(app, "u-alice")
+    bob_sid, _ = seed_session_sync(app, "u-bob")
+    with TestClient(app) as client:
+        client.cookies.set("lichat_session", alice_sid)
+        with client.websocket_connect("/ws") as alice_ws:
+            assert alice_ws.receive_json() == {"type": "hello", "sub": "u-alice"}
+            client.cookies.set("lichat_session", bob_sid)
+            with client.websocket_connect("/ws") as bob_ws:
+                assert bob_ws.receive_json() == {"type": "hello", "sub": "u-bob"}
+                alice_ws.send_json(
+                    {
+                        "type": "call",
+                        "op": "offer",
+                        "to": "u-bob",
+                        "kind": "video",
+                        "payload": {"type": "offer", "sdp": "v=0"},
+                    }
+                )
+                offer = _receive_type(bob_ws, "call")
+    assert offer["op"] == "offer"
+    assert offer["kind"] == "video"
+    assert offer["payload"] == {"type": "offer", "sdp": "v=0"}
+
+
+def test_call_throttled_ice_dropped_silently(app: Any, monkeypatch: Any) -> None:
+    """限频的 ICE 必须静默丢弃：双方都不应收到 invalid/error。"""
+    _friends(app, "u-alice", "u-bob")
+    alice_sid, _ = seed_session_sync(app, "u-alice")
+    bob_sid, _ = seed_session_sync(app, "u-bob")
+    with TestClient(app) as client:
+        client.cookies.set("lichat_session", alice_sid)
+        with client.websocket_connect("/ws") as alice_ws:
+            assert alice_ws.receive_json() == {"type": "hello", "sub": "u-alice"}
+            client.cookies.set("lichat_session", bob_sid)
+            with client.websocket_connect("/ws") as bob_ws:
+                assert bob_ws.receive_json() == {"type": "hello", "sub": "u-bob"}
+                client.cookies.set("lichat_session", alice_sid)
+                alice_ws.send_json(
+                    {"type": "call", "op": "offer", "to": "u-bob", "payload": {}}
+                )
+                _receive_type(bob_ws, "call")
+                bob_ws.send_json(
+                    {"type": "call", "op": "answer", "to": "u-alice", "payload": {}}
+                )
+                _receive_type(alice_ws, "call")
+                monkeypatch.setattr(
+                    app.state.call_manager,
+                    "ice_allowed",
+                    lambda *args, **kwargs: False,
+                )
+                alice_ws.send_json(
+                    {
+                        "type": "call",
+                        "op": "ice",
+                        "to": "u-bob",
+                        "payload": {"candidate": "c1"},
+                    }
+                )
+                alice_ws.send_json({"type": "ping"})
+                assert alice_ws.receive_json() == {"type": "pong"}
+                bob_ws.send_json({"type": "ping"})
+                assert bob_ws.receive_json() == {"type": "pong"}
+
+
 async def test_call_payload_size_limit(app: Any) -> None:
     async with app.state.session_factory() as db:
         await make_friends(db, "u-alice", "u-bob")
@@ -168,3 +236,14 @@ def _receive_type(ws: Any, expected: str) -> dict[str, Any]:
         if event.get("type") == expected:
             return event
     raise AssertionError(f"expected ws event type {expected!r}")
+
+
+async def test_call_frontend_contract(api_client: httpx.AsyncClient) -> None:
+    """前端必须缓冲 ICE 候选、按 kind 采集媒体并接线 ICE 服务器。"""
+    response = await api_client.get("/app.js")
+    assert response.status_code == 200
+    text = response.text
+    assert "pendingIce" in text
+    assert "function flushPendingIce(" in text
+    assert "iceServers" in text
+    assert 'data.kind === "video"' in text

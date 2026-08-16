@@ -27,6 +27,22 @@ async def test_me_after_login(
     assert data["nickname"] == "Alice"
     assert data["picture"] == "https://mock-idp.test/a.jpg"
     assert data["csrf_token"]
+    assert data["ice_servers"] == []
+
+
+async def test_me_returns_configured_ice_servers(
+    api_client: httpx.AsyncClient,
+    mock_client: httpx.AsyncClient,
+    settings,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        settings, "rtc_ice_servers", [{"urls": "stun:stun.test:3478"}]
+    )
+    await _login(api_client, mock_client)
+    response = await api_client.get("/api/me")
+    assert response.status_code == 200
+    assert response.json()["ice_servers"] == [{"urls": "stun:stun.test:3478"}]
 
 
 async def test_me_without_session_returns_401(api_client: httpx.AsyncClient) -> None:

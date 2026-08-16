@@ -32,6 +32,7 @@ let localSeq = 0;
 
 const state = {
   me: null,
+  iceServers: [],
   ws: null,
   pingTimer: null,
   loggingOut: false,
@@ -319,6 +320,9 @@ async function loadMe() {
     return;
   }
   state.me = await response.json();
+  state.iceServers = Array.isArray(state.me.ice_servers)
+    ? state.me.ice_servers
+    : [];
   if (!localStorage.getItem("lichat-session-active")) {
     localStorage.setItem("lichat-session-active", "1");
     localStorage.setItem("lichat-login", String(Date.now()));
@@ -4375,7 +4379,7 @@ async function startCall(kind) {
     toast("无法访问麦克风/摄像头，请检查浏览器权限", "error");
     return;
   }
-  const pc = new RTCPeerConnection();
+  const pc = new RTCPeerConnection({ iceServers: state.iceServers || [] });
   state.call = {
     pc,
     peerSub: state.activeSub,
@@ -4384,6 +4388,7 @@ async function startCall(kind) {
     incoming: false,
     localStream: stream,
     offer: null,
+    pendingIce: [],
   };
   wireCallEvents();
   stream.getTracks().forEach((track) => pc.addTrack(track, stream));
@@ -4401,8 +4406,22 @@ function wireCallEvents() {
   };
   call.pc.ontrack = (event) => {
     const remote = document.getElementById("call-remote");
-    if (remote && event.streams[0]) remote.srcObject = event.streams[0];
+    if (remote && event.streams[0]) {
+      remote.srcObject = event.streams[0];
+      const play = remote.play();
+      if (play) play.catch(() => {});
+    }
   };
+}
+
+function flushPendingIce() {
+  const call = state.call;
+  if (!call || !call.pc || !call.pc.remoteDescription) return;
+  const queue = call.pendingIce || [];
+  call.pendingIce = [];
+  for (const candidate of queue) {
+    call.pc.addIceCandidate(candidate).catch(() => {});
+  }
 }
 
 function sendCallSignal(op, payload = {}, kind = null) {
@@ -4476,11 +4495,12 @@ function handleCallSignal(data) {
     state.call = {
       pc: null,
       peerSub: data.from,
-      kind: "unknown",
+      kind: data.kind === "video" ? "video" : "audio",
       status: "incoming",
       incoming: true,
       localStream: null,
       offer: data.payload || {},
+      pendingIce: [],
     };
     showIncomingCall();
     return;
@@ -4488,12 +4508,18 @@ function handleCallSignal(data) {
   const call = state.call;
   if (!call) return;
   if (data.op === "answer") {
-    call.pc.setRemoteDescription(data.payload).then(() => {
-      call.status = "connected";
-      setCallStatus("已接通");
-    });
+    call.pc
+      .setRemoteDescription(data.payload)
+      .then(() => {
+        call.status = "connected";
+        flushPendingIce();
+        setCallStatus("已接通");
+      })
+      .catch(() => {});
   } else if (data.op === "ice" && data.payload) {
-    call.pc.addIceCandidate(data.payload).catch(() => {});
+    call.pendingIce = call.pendingIce || [];
+    call.pendingIce.push(data.payload);
+    flushPendingIce();
   } else if (data.op === "end" || data.op === "reject") {
     endCallLocal();
   } else if (data.op === "unavailable") {
@@ -4518,7 +4544,9 @@ function showIncomingCall() {
     `<div class="modal-overlay" id="call-incoming" role="dialog" aria-modal="true">
       <div class="modal-card">
         <h3 class="modal-title">来电</h3>
-        <p>${escapeHtml(peer ? displayName(peer) : call.peerSub)} 邀请你通话</p>
+        <p>${escapeHtml(peer ? displayName(peer) : call.peerSub)} 邀请你进行${
+          call.kind === "video" ? "视频" : "语音"
+        }通话</p>
         <div class="modal-actions">
           <button id="call-reject" class="btn btn-ghost" type="button">拒绝</button>
           <button id="call-accept" class="btn btn-primary" type="button">接听</button>
@@ -4540,28 +4568,29 @@ async function acceptIncomingCall() {
   if (incoming) incoming.remove();
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: call.kind === "video",
+    });
   } catch {
     toast("无法访问麦克风/摄像头，请检查浏览器权限", "error");
     sendCallSignal("reject");
     endCallLocal();
     return;
   }
-  const pc = new RTCPeerConnection();
+  const pc = new RTCPeerConnection({ iceServers: state.iceServers || [] });
   call.pc = pc;
   call.localStream = stream;
   call.status = "connecting";
   call.incoming = false;
+  call.pendingIce = call.pendingIce || [];
   wireCallEvents();
   stream.getTracks().forEach((track) => pc.addTrack(track, stream));
   await pc.setRemoteDescription(call.offer);
+  flushPendingIce();
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
-  sendCallSignal(
-    "answer",
-    pc.localDescription.toJSON(),
-    call.kind === "unknown" ? "audio" : call.kind
-  );
+  sendCallSignal("answer", pc.localDescription.toJSON(), call.kind);
   showCallOverlay("接听中…");
 }
 
