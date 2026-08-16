@@ -226,3 +226,11 @@ async def test_v42_send_status_and_retry(api_client: httpx.AsyncClient) -> None:
     assert "function localMessage(" in text
     css = await _style_css(api_client)
     assert ".message-failed" in css
+
+
+async def test_v43_conversation_archive_ui(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "toggle-archive" in text
+    assert "archived-list" in text
+    assert '"unarchive"' in text
+    assert "archivedConversations" in text

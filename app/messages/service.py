@@ -258,7 +258,9 @@ async def history(
     return page, next_before
 
 
-async def conversation_summaries(db: AsyncSession, me_sub: str) -> list[dict[str, Any]]:
+async def conversation_summaries(
+    db: AsyncSession, me_sub: str, *, archived: bool | None = None
+) -> list[dict[str, Any]]:
     dm_summaries = await _dm_conversation_summaries(db, me_sub)
     group_summaries = await _group_conversation_summaries(db, me_sub)
     summaries = [*dm_summaries, *group_summaries]
@@ -273,6 +275,9 @@ async def conversation_summaries(db: AsyncSession, me_sub: str) -> list[dict[str
         row = settings.get((kind, key))
         item["pinned"] = row.pinned if row is not None else False
         item["muted"] = row.muted if row is not None else False
+        item["archived"] = row.archived if row is not None else False
+    if archived is not None:
+        summaries = [item for item in summaries if item["archived"] == archived]
     summaries.sort(
         key=lambda item: (
             0 if item["pinned"] else 1,
@@ -293,11 +298,14 @@ async def set_conversation_setting(
     key: str,
     pinned: bool | None,
     muted: bool | None,
+    archived: bool | None,
 ) -> dict[str, Any]:
     if kind not in {"dm", "group"}:
         raise HTTPException(status_code=422, detail="invalid kind")
-    if pinned is None and muted is None:
-        raise HTTPException(status_code=422, detail="pinned or muted is required")
+    if pinned is None and muted is None and archived is None:
+        raise HTTPException(
+            status_code=422, detail="pinned, muted or archived is required"
+        )
     if kind == "dm":
         parts = key.split(":", 1)
         if len(parts) != 2 or parts[0] == parts[1]:
@@ -321,9 +329,17 @@ async def set_conversation_setting(
         row.pinned = pinned
     if muted is not None:
         row.muted = muted
+    if archived is not None:
+        row.archived = archived
     await db.commit()
     await db.refresh(row)
-    return {"kind": kind, "key": key, "pinned": row.pinned, "muted": row.muted}
+    return {
+        "kind": kind,
+        "key": key,
+        "pinned": row.pinned,
+        "muted": row.muted,
+        "archived": row.archived,
+    }
 
 
 async def conversation_settings_for(

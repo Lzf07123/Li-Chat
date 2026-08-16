@@ -173,6 +173,7 @@ class ConversationSummaryOut(BaseModel):
     last_read_id: int
     pinned: bool = False
     muted: bool = False
+    archived: bool = False
 
 
 class ConversationSettingsIn(BaseModel):
@@ -180,6 +181,7 @@ class ConversationSettingsIn(BaseModel):
     key: str
     pinned: bool | None = None
     muted: bool | None = None
+    archived: bool | None = None
 
 
 class ConversationSettingsOut(BaseModel):
@@ -187,6 +189,7 @@ class ConversationSettingsOut(BaseModel):
     key: str
     pinned: bool
     muted: bool
+    archived: bool
 
 
 class GroupSummaryOut(BaseModel):
@@ -214,9 +217,14 @@ class ReadOut(BaseModel):
 async def conversations_list(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    archived: bool = False,
 ) -> ConversationsOut:
     return ConversationsOut.model_validate(
-        {"conversations": await service.conversation_summaries(db, user.sub)}
+        {
+            "conversations": await service.conversation_summaries(
+                db, user.sub, archived=archived
+            )
+        }
     )
 
 
@@ -228,7 +236,7 @@ async def update_conversation_settings(
     _csrf: Annotated[None, Depends(require_csrf)],
 ) -> ConversationSettingsOut:
     result = await service.set_conversation_setting(
-        db, user.sub, body.kind, body.key, body.pinned, body.muted
+        db, user.sub, body.kind, body.key, body.pinned, body.muted, body.archived
     )
     return ConversationSettingsOut(**result)
 

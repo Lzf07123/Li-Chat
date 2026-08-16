@@ -4,6 +4,9 @@
 
 ### 功能
 
+- 会话归档（v43）：`user_conversation_settings.archived`；`PATCH /api/conversations/settings`
+  支持归档、`GET /api/conversations?archived=true|false` 过滤（缺省未归档）；前端会话行
+  「归档」按钮与侧栏「已归档」分区（取消归档/直接打开）
 - 发送状态与失败重试（v42）：消息先以本地乐观对象上屏（发送中转圈、半透明），成功后替换为
   服务端消息（WS 同步），失败标红并提供「重试」按钮；单聊/群聊发送均覆盖，本地消息不参与
   编辑/撤回/转发

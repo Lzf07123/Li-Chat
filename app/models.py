@@ -199,6 +199,7 @@ class UserConversationSetting(Base):
     key: Mapped[str] = mapped_column(String(160), primary_key=True)
     pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     muted: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 

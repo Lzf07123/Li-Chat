@@ -48,7 +48,7 @@ flowchart LR
 | `reactions` | `message_id+user_sub+emoji`(复合 PK)、created_at | 幂等 toggle；聚合计数回显，不泄露非上榜用户 |
 | `message_mentions` | `message_id+user_sub`(复合 PK) | @提及落账；发送时校验成员/对端 |
 | `user_stars` | `user_sub+message_id`(复合 PK)、created_at | 收藏幂等 toggle；列表按 message_id 倒序游标 |
-| `user_conversation_settings` | `user_sub+kind+key`(复合 PK)、pinned、muted | 会话置顶/免打扰；key：单聊 pair 排序键 / 群 id |
+| `user_conversation_settings` | `user_sub+kind+key`(复合 PK)、pinned、muted、archived | 会话置顶/免打扰/归档；key：单聊 pair 排序键 / 群 id；归档会话从默认摘要隐藏（`?archived=true` 可见） |
 | `call_logs` | `id`、caller_sub、callee_sub、kind、status、started_at、ended_at | 呼叫落账：missed/accepted/rejected |
 | `groups` | `id`、name、owner_sub、announcement、avatar_url、created_at、updated_at | 群元数据；公告/头像由 owner/admin 维护，owner 变更随转让同步 |
 | `group_members` | `group_id+user_sub`(复合 PK)、role(owner/admin/member)、muted、joined_at | 角色约束 + 权限矩阵在 service 层强校验；muted 由 owner/admin 维护，禁言成员发消息 403 |

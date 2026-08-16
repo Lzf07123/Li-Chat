@@ -165,6 +165,23 @@ def _ensure_group_member_columns(conn: Connection) -> None:
         )
 
 
+def _ensure_settings_columns(conn: Connection) -> None:
+    """SQLite 兼容迁移：为既有库补齐 user_conversation_settings.archived。"""
+    if conn.dialect.name != "sqlite":
+        return
+    names = {
+        row[1]
+        for row in conn.exec_driver_sql(
+            "PRAGMA table_info(user_conversation_settings)"
+        ).fetchall()
+    }
+    if "archived" not in names:
+        conn.exec_driver_sql(
+            "ALTER TABLE user_conversation_settings "
+            "ADD COLUMN archived BOOLEAN NOT NULL DEFAULT 0"
+        )
+
+
 async def _friend_subs(db: AsyncSession, sub: str) -> list[str]:
     friends = await list_friends(db, sub)
     return [friend["sub"] for friend in friends if friend["sub"] is not None]
@@ -221,6 +238,7 @@ def create_app(
             await conn.run_sync(_ensure_message_columns)
             await conn.run_sync(_ensure_group_columns)
             await conn.run_sync(_ensure_group_member_columns)
+            await conn.run_sync(_ensure_settings_columns)
         subscriber: asyncio.Task[None] | None = None
         if redis_client is not None:
             await redis_client.ping()

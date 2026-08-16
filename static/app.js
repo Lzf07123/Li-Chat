@@ -22,6 +22,7 @@ const state = {
   convFilter: "",
   sidebarLoading: true,
   conversations: [],
+  archivedConversations: [],
   readUpTo: {},
   typingTimer: null,
   typingSent: false,
@@ -430,6 +431,13 @@ function mainHtml() {
         <p id="groups-empty" class="sidebar-empty">还没有群聊</p>
         <ul id="groups-list" class="contact-list"></ul>
       </section>
+      <section class="sidebar-section" id="archive-section">
+        <h2 class="sidebar-title">已归档
+          <span id="archived-count" class="badge badge-muted" hidden>0</span>
+        </h2>
+        <p id="archived-empty" class="sidebar-empty" hidden>暂无归档会话</p>
+        <ul id="archived-list" class="contact-list"></ul>
+      </section>
     </aside>
     <section id="chat-panel" class="chat-panel" aria-label="聊天">
       <div id="chat-empty" class="chat-empty">
@@ -518,6 +526,7 @@ function renderLoggedIn() {
   document.getElementById("recommend-refresh").addEventListener("click", loadRecommendations);
   document.getElementById("friends-list").addEventListener("click", onFriendListClick);
   document.getElementById("groups-list").addEventListener("click", onGroupListClick);
+  document.getElementById("archived-list").addEventListener("click", onArchivedListClick);
   document.getElementById("group-create").addEventListener("click", openGroupCreateModal);
   document.getElementById("composer").addEventListener("submit", onComposerSubmit);
   document.getElementById("composer").addEventListener("click", onComposerBarClick);
@@ -1186,11 +1195,19 @@ async function refreshSidebar() {
     renderSidebar();
   }
   try {
-    const [friendsRes, requestsRes, recommendRes, conversationsRes, groupsRes] = await Promise.all([
+    const [
+      friendsRes,
+      requestsRes,
+      recommendRes,
+      conversationsRes,
+      archivedRes,
+      groupsRes,
+    ] = await Promise.all([
       api("/api/friends"),
       api("/api/friends/requests"),
       api("/api/friends/recommendations"),
       api("/api/conversations"),
+      api("/api/conversations?archived=true"),
       api("/api/groups"),
     ]);
     if (friendsRes.ok) state.friends = (await friendsRes.json()).friends;
@@ -1200,6 +1217,9 @@ async function refreshSidebar() {
     }
     if (conversationsRes.ok) {
       state.conversations = (await conversationsRes.json()).conversations;
+    }
+    if (archivedRes.ok) {
+      state.archivedConversations = (await archivedRes.json()).conversations;
     }
     if (groupsRes.ok) state.groups = (await groupsRes.json()).groups;
   } catch {
@@ -1292,6 +1312,14 @@ function renderSidebar() {
     : visibleGroups
         .map((group) => groupHtml(group, groupSummaries.get(group.id)))
         .join("");
+  document.getElementById("archived-empty").hidden =
+    state.archivedConversations.length > 0;
+  const archivedCount = document.getElementById("archived-count");
+  archivedCount.hidden = state.archivedConversations.length === 0;
+  archivedCount.textContent = String(state.archivedConversations.length);
+  document.getElementById("archived-list").innerHTML = state.archivedConversations
+    .map(archivedRowHtml)
+    .join("");
   updateTitleBadge();
 }
 
@@ -1371,6 +1399,9 @@ function friendHtml(friend, summary) {
       <button class="icon-btn conv-toggle${muted ? " conv-toggle-on" : ""}" type="button"
         data-action="toggle-mute" data-kind="dm" data-key="${dmKey}"
         data-value="${muted}" aria-label="免打扰">🔕</button>
+      <button class="icon-btn conv-toggle" type="button"
+        data-action="toggle-archive" data-kind="dm" data-key="${dmKey}"
+        data-value="false" aria-label="归档">🗄️</button>
     </span>
   </li>`;
 }
@@ -1410,7 +1441,36 @@ function groupHtml(group, summary) {
       <button class="icon-btn conv-toggle${muted ? " conv-toggle-on" : ""}" type="button"
         data-action="toggle-mute" data-kind="group" data-key="${group.id}"
         data-value="${muted}" aria-label="免打扰">🔕</button>
+      <button class="icon-btn conv-toggle" type="button"
+        data-action="toggle-archive" data-kind="group" data-key="${group.id}"
+        data-value="false" aria-label="归档">🗄️</button>
     </span>
+  </li>`;
+}
+
+function archivedRowHtml(item) {
+  const peer = item.peer;
+  const kind = peer ? "dm" : "group";
+  const key = peer ? [state.me.sub, peer.sub].sort().join(":") : String(item.group.id);
+  const label = peer ? displayName(peer) : item.group.name;
+  const avatar = peer
+    ? avatarHtml(peer)
+    : item.group && item.group.avatar_url
+      ? `<img class="avatar group-avatar-img" src="${escapeHtml(item.group.avatar_url)}" alt="群头像" />`
+      : '<div class="avatar avatar-placeholder group-avatar" aria-hidden="true">#</div>';
+  const openAction = peer
+    ? `data-action="open-archived" data-sub="${escapeHtml(peer.sub)}"`
+    : `data-action="open-archived-group" data-id="${item.group.id}"`;
+  return `<li class="contact-item">
+    <button class="contact-button" type="button" ${openAction}>
+      ${avatar}
+      <span class="contact-main">
+        <span class="contact-name">${escapeHtml(label)}</span>
+        <span class="contact-preview">${escapeHtml(summaryPreview(item)) || "归档会话"}</span>
+      </span>
+    </button>
+    <button class="btn btn-ghost btn-sm" type="button" data-action="unarchive"
+      data-kind="${kind}" data-key="${key}">取消归档</button>
   </li>`;
 }
 
@@ -1614,7 +1674,7 @@ async function loadRecommendations() {
 function onFriendListClick(event) {
   const button = event.target.closest("[data-action]");
   if (!button) return;
-  if (button.dataset.action === "toggle-pin" || button.dataset.action === "toggle-mute") {
+  if (button.dataset.action.startsWith("toggle-")) {
     toggleConversationSetting(button);
     return;
   }
@@ -1625,7 +1685,7 @@ function onFriendListClick(event) {
 function onGroupListClick(event) {
   const button = event.target.closest("[data-action]");
   if (!button) return;
-  if (button.dataset.action === "toggle-pin" || button.dataset.action === "toggle-mute") {
+  if (button.dataset.action.startsWith("toggle-")) {
     toggleConversationSetting(button);
     return;
   }
@@ -1633,8 +1693,40 @@ function onGroupListClick(event) {
   openGroup(Number(button.dataset.id));
 }
 
+async function onArchivedListClick(event) {
+  const button = event.target.closest("[data-action]");
+  if (!button) return;
+  if (button.dataset.action === "unarchive") {
+    const response = await api("/api/conversations/settings", {
+      method: "PATCH",
+      body: JSON.stringify({
+        kind: button.dataset.kind,
+        key: button.dataset.key,
+        archived: false,
+      }),
+    });
+    if (response.ok) {
+      toast("已取消归档", "success");
+      await refreshSidebar();
+    }
+    return;
+  }
+  if (button.dataset.action === "open-archived") {
+    openChat(button.dataset.sub);
+    return;
+  }
+  if (button.dataset.action === "open-archived-group") {
+    openGroup(Number(button.dataset.id));
+  }
+}
+
 async function toggleConversationSetting(button) {
-  const field = button.dataset.action === "toggle-pin" ? "pinned" : "muted";
+  const field =
+    button.dataset.action === "toggle-pin"
+      ? "pinned"
+      : button.dataset.action === "toggle-mute"
+        ? "muted"
+        : "archived";
   const value = button.dataset.value === "true";
   const response = await api("/api/conversations/settings", {
     method: "PATCH",
@@ -1650,9 +1742,13 @@ async function toggleConversationSetting(button) {
         ? value
           ? "已取消置顶"
           : "已置顶"
-        : value
-          ? "已开启提醒"
-          : "已开启免打扰";
+        : field === "muted"
+          ? value
+            ? "已开启提醒"
+            : "已开启免打扰"
+          : value
+            ? "已取消归档"
+            : "已归档";
     toast(label, "success");
   }
   await refreshSidebar();
