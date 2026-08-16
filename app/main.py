@@ -310,6 +310,9 @@ def create_app(
     app.state.login_limiter = SlidingWindowRateLimiter(
         app_settings.login_rate_limit, app_settings.login_rate_window
     )
+    app.state.action_limiter = SlidingWindowRateLimiter(
+        app_settings.action_rate_limit, app_settings.action_rate_window
+    )
 
     app.include_router(sso_router)
     app.include_router(users_router)

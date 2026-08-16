@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.notifications import push_notification
 from app.api.polls import PollOut
-from app.auth.deps import get_current_user, require_csrf
+from app.auth.deps import get_current_user, require_action_rate, require_csrf
 from app.db import get_db
 from app.messages import service
 from app.messages.service import MAX_MESSAGE_LENGTH
@@ -276,6 +276,7 @@ async def send_message(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     _csrf: Annotated[None, Depends(require_csrf)],
+    _rate: Annotated[None, Depends(require_action_rate)],
 ) -> MessageOut:
     message = await service.send_message(
         db,
@@ -383,6 +384,7 @@ async def edit_message(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     _csrf: Annotated[None, Depends(require_csrf)],
+    _rate: Annotated[None, Depends(require_action_rate)],
 ) -> MessageOut:
     message = await service.edit_message(db, user.sub, other_sub, message_id, body.content)
     reply = (

@@ -18,7 +18,7 @@ from app.api.messages import (
     ReadOut,
 )
 from app.api.notifications import push_notification
-from app.auth.deps import get_current_user, require_csrf
+from app.auth.deps import get_current_user, require_action_rate, require_csrf
 from app.db import get_db
 from app.groups import service
 from app.messages import service as messages_service
@@ -447,6 +447,7 @@ async def send_group_message(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     _csrf: Annotated[None, Depends(require_csrf)],
+    _rate: Annotated[None, Depends(require_action_rate)],
 ) -> MessageOut:
     message = await messages_service.send_group_message(
         db,
@@ -620,6 +621,7 @@ async def edit_group_message(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     _csrf: Annotated[None, Depends(require_csrf)],
+    _rate: Annotated[None, Depends(require_action_rate)],
 ) -> MessageOut:
     message = await messages_service.edit_group_message(
         db, user.sub, group_id, message_id, body.content

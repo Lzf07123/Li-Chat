@@ -228,6 +228,8 @@
 
 ### 安全加固
 
+- 写操作限流（v65）：发消息/编辑/上传/投票按用户滑动窗口限流（`LICHAT_ACTION_RATE_LIMIT`
+  默认 60/60 秒），超限 429 + Retry-After；进程内实现，多副本仍需共享存储
 - 登录限流：`/oidc/login` 与 `/oidc/callback` 按客户端 IP 做进程内滑动窗口限流
   （`LICHAT_LOGIN_RATE_LIMIT` 默认 10、`LICHAT_LOGIN_RATE_WINDOW` 默认 60 秒），超限
   429 + `Retry-After`；多副本部署仍需网关或共享存储限流

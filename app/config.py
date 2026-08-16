@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     upload_dir: str = "./data/uploads"
     login_rate_limit: int = 10
     login_rate_window: int = 60
+    action_rate_limit: int = 60
+    action_rate_window: int = 60
 
     @property
     def discovery_url(self) -> str:
@@ -66,4 +68,18 @@ class Settings(BaseSettings):
     def _validate_login_rate_window(cls, value: int) -> int:
         if value < 1:
             raise ValueError("login_rate_window must be at least 1 second")
+        return value
+
+    @field_validator("action_rate_limit")
+    @classmethod
+    def _validate_action_rate_limit(cls, value: int) -> int:
+        if not 1 <= value <= 10000:
+            raise ValueError("action_rate_limit must be between 1 and 10000")
+        return value
+
+    @field_validator("action_rate_window")
+    @classmethod
+    def _validate_action_rate_window(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("action_rate_window must be at least 1 second")
         return value

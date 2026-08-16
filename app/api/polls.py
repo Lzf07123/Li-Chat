@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import get_current_user, require_csrf
+from app.auth.deps import get_current_user, require_action_rate, require_csrf
 from app.db import get_db
 from app.groups import service as groups_service
 from app.models import User
@@ -71,6 +71,7 @@ async def vote_poll(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     _csrf: Annotated[None, Depends(require_csrf)],
+    _rate: Annotated[None, Depends(require_action_rate)],
 ) -> PollOut:
     poll = await service.vote(db, user.sub, group_id, poll_id, body.option_indexes)
     payload = await service.poll_payload(db, poll, user.sub)
