@@ -76,6 +76,17 @@ compose 插值变量（应用忽略）：`LICHAT_PORT`（宿主机端口）、`R
 5. 多副本时把 jti 防重放与会话状态迁到 Redis（当前为进程内实现）。
 6. 在网关或应用层给登录/回程接口加限流。
 
+### PostgreSQL 兼容性验证
+
+- 驱动：`postgresql+psycopg://user:pass@host:5432/lichat`，需在镜像/虚拟环境安装
+  `psycopg[binary]>=3.2`（生产镜像可在 Dockerfile 追加运行时依赖）。
+- 建表：`Base.metadata.create_all` 生成的 15+ 张表均使用通用类型（BigInteger 变体、
+  DateTime、Text/JSON-as-Text），无 SQLite 专有语法；SQLite 侧增量补列逻辑在
+  PostgreSQL 下自动跳过（`conn.dialect.name != "sqlite"` 直接返回）。
+- 语义差异需真库回归：时间精度、外键级联（本项目显式清理依赖数据、不依赖数据库级联）、
+  群消息 `group:{id}` 哨兵列（占位字符串满足非空约束，不依赖 FK 强制）。
+- 多副本上线前仍必须引入 Alembic 并把 jti 防重放/会话状态迁到 Redis。
+
 ## Issuer 注意事项
 
 发现文档声明的 `issuer` 与五个端点为 `http://account.lizf.cn`（http 字面值），但传输层实际走 https。本实现自 2026-08-16 起把五个传输端点统一升级为 https（`issuer` 保留原文用于严格校验）；建议推动 Li&Pass 侧将 issuer 改为 https，修改后无需改代码（发现文档启动时拉取并按 TTL 缓存）。

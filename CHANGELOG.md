@@ -184,6 +184,8 @@
 
 ### 文档
 
+- 部署收口（v66）：compose 透传写操作限流/上传上限并注释生产开关（prod/https/PostgreSQL）；
+  部署指南新增 PostgreSQL 兼容性验证（驱动/建表/语义差异/多副本前提）
 - 新增 design-system/chat/BRAND.md、MASTER.md 与 preview 视觉基线
 - 新增 docs/superpowers UI 重构设计规格与实施计划
 - 补齐 .env.example 全部配置项：LICHAT_*、compose 插值变量与镜像加速源（`BASE_IMAGE_REGISTRY` 与 `IMAGE_REGISTRY` 拆分，避免加速前缀污染应用镜像名）
