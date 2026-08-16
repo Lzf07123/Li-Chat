@@ -25,7 +25,7 @@ const EMOJI_SETS = {
   ],
 };
 // 与 app/main.py 的 FRONTEND_VERSION 保持一致；落后即清缓存强制刷新
-const FRONTEND_VERSION = "0.3.0";
+const FRONTEND_VERSION = "1.0.0";
 const RENDER_CHUNK_SIZE = 40;
 let draftTimer = null;
 let localSeq = 0;
@@ -1058,7 +1058,7 @@ function openShortcutsModal() {
 
 async function openAboutModal() {
   setProfileMenu(false);
-  let appVersion = "0.1.0";
+  let appVersion = "1.0.0";
   try {
     const response = await fetch("/api/version", { credentials: "same-origin" });
     if (response.ok) {

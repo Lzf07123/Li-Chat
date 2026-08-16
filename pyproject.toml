@@ -1,6 +1,6 @@
 [project]
 name = "li-chat"
-version = "0.1.0"
+version = "1.0.0"
 description = "Li&Chat — SSO-based instant messaging for a small circle"
 readme = "README.md"
 requires-python = ">=3.12"

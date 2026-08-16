@@ -46,8 +46,8 @@ _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 logger = get_logger(__name__)
 
 # 前端构建版本：升级 static/ 资源时同步修改此处与 static/app.js 的 FRONTEND_VERSION
-FRONTEND_VERSION = "0.3.0"
-APP_VERSION = "0.1.0"
+FRONTEND_VERSION = "1.0.0"
+APP_VERSION = "1.0.0"
 SLOW_REQUEST_MS = 500.0
 
 _STATIC_PATHS = {
