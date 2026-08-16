@@ -29,6 +29,7 @@ from app.logging import configure_logging, get_logger
 from app.models import User
 from app.oidc.discovery import DiscoveryStore
 from app.redis import build_redis, logout_subscriber
+from app.sso.ratelimit import SlidingWindowRateLimiter
 from app.sso.replay import MemoryReplayCache, RedisReplayCache, ReplayCache
 from app.sso.routes import router as sso_router
 from app.timeutil import iso_utc, utcnow
@@ -109,6 +110,25 @@ def _ensure_message_columns(conn: Connection) -> None:
         conn.exec_driver_sql("ALTER TABLE messages ADD COLUMN attachment_mime VARCHAR(64)")
     if "attachment_url" not in names:
         conn.exec_driver_sql("ALTER TABLE messages ADD COLUMN attachment_url VARCHAR(255)")
+    if "reply_to_id" not in names:
+        conn.exec_driver_sql("ALTER TABLE messages ADD COLUMN reply_to_id INTEGER")
+    if "forwarded" not in names:
+        conn.exec_driver_sql(
+            "ALTER TABLE messages ADD COLUMN forwarded BOOLEAN NOT NULL DEFAULT 0"
+        )
+
+
+def _ensure_group_columns(conn: Connection) -> None:
+    """SQLite 兼容迁移：为既有库补齐 groups.announcement/avatar_url。"""
+    if conn.dialect.name != "sqlite":
+        return
+    names = {
+        row[1] for row in conn.exec_driver_sql("PRAGMA table_info(groups)").fetchall()
+    }
+    if "announcement" not in names:
+        conn.exec_driver_sql("ALTER TABLE groups ADD COLUMN announcement TEXT")
+    if "avatar_url" not in names:
+        conn.exec_driver_sql("ALTER TABLE groups ADD COLUMN avatar_url VARCHAR(255)")
 
 
 async def _friend_subs(db: AsyncSession, sub: str) -> list[str]:
@@ -164,6 +184,7 @@ def create_app(
             await conn.run_sync(_ensure_session_columns)
             await conn.run_sync(_ensure_user_columns)
             await conn.run_sync(_ensure_message_columns)
+            await conn.run_sync(_ensure_group_columns)
         subscriber: asyncio.Task[None] | None = None
         if redis_client is not None:
             await redis_client.ping()
@@ -208,6 +229,9 @@ def create_app(
     app.state.ws_manager = ConnectionManager()
     app.state.call_manager = CallManager()
     app.state.replay_cache = replay_cache
+    app.state.login_limiter = SlidingWindowRateLimiter(
+        app_settings.login_rate_limit, app_settings.login_rate_window
+    )
 
     app.include_router(sso_router)
     app.include_router(users_router)
@@ -234,7 +258,7 @@ def create_app(
             user_sub = session.user_sub
         manager = cast(ConnectionManager, app.state.ws_manager)
         call_manager = cast(CallManager, app.state.call_manager)
-        await manager.connect(user_sub, websocket)
+        await manager.connect(user_sub, websocket, session_id)
         presence_peers: list[str] = []
         try:
             await websocket.send_json({"type": "hello", "sub": user_sub})

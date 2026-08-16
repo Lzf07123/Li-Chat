@@ -10,7 +10,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.friends.service import are_friends, list_friends
 from app.groups.service import membership as group_membership
-from app.models import DmRead, Group, GroupMember, GroupRead, Message, Reaction, User
+from app.models import (
+    DmRead,
+    Group,
+    GroupMember,
+    GroupRead,
+    Message,
+    MessageMention,
+    Reaction,
+    User,
+    UserConversationSetting,
+    UserStar,
+)
 from app.timeutil import iso_utc, utcnow
 from app.uploads.service import get_upload
 
@@ -20,13 +31,23 @@ HISTORY_MAX_LIMIT = 100
 EDIT_WINDOW_SECONDS = 300
 EMOJI_MAX_LENGTH = 8
 GROUP_RECIPIENT_PREFIX = "group:"
+MAX_MENTIONS = 50
 
 
 def pair_key(a: str, b: str) -> tuple[str, str]:
     return (a, b) if a < b else (b, a)
 
 
-def message_payload(message: Message) -> dict[str, Any]:
+def dm_key(a: str, b: str) -> str:
+    lo, hi = pair_key(a, b)
+    return f"{lo}:{hi}"
+
+
+def message_payload(
+    message: Message,
+    reply: Message | None = None,
+    mentions: list[str] | None = None,
+) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "id": message.id,
         "sender_sub": message.sender_sub,
@@ -42,6 +63,7 @@ def message_payload(message: Message) -> dict[str, Any]:
         payload["deleted"] = False
         payload["content"] = message.content
         payload["content_type"] = message.content_type
+        payload["forwarded"] = message.forwarded
         if message.attachment_name is not None:
             payload["attachment"] = {
                 "name": message.attachment_name,
@@ -51,7 +73,69 @@ def message_payload(message: Message) -> dict[str, Any]:
             }
         if message.edited_at is not None:
             payload["edited_at"] = iso_utc(message.edited_at)
+        if message.reply_to_id is not None and reply is not None:
+            payload["reply_to"] = reply_payload(reply)
+        payload["mentions"] = mentions if mentions is not None else []
     return payload
+
+
+def reply_payload(target: Message) -> dict[str, Any]:
+    return {
+        "id": target.id,
+        "sender_sub": target.sender_sub,
+        "content": None if target.deleted_at is not None else target.content[:100],
+        "deleted": target.deleted_at is not None,
+        "content_type": target.content_type,
+    }
+
+
+async def validate_reply(
+    db: AsyncSession,
+    me_sub: str,
+    reply_to_id: int,
+    *,
+    other_sub: str | None = None,
+    group_id: int | None = None,
+) -> Message:
+    target = await db.get(Message, reply_to_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="replied message not found")
+    if group_id is not None:
+        if target.conversation_type != "group" or target.group_id != group_id:
+            raise HTTPException(status_code=404, detail="replied message not in group")
+    else:
+        assert other_sub is not None
+        lo, hi = pair_key(me_sub, other_sub)
+        if target.conversation_type != "dm" or (
+            target.participant_lo,
+            target.participant_hi,
+        ) != (lo, hi):
+            raise HTTPException(
+                status_code=404, detail="replied message not in conversation"
+            )
+    return target
+
+
+async def validate_mentions(
+    db: AsyncSession,
+    mentions: list[str],
+    *,
+    other_sub: str | None = None,
+    group_id: int | None = None,
+) -> list[str]:
+    if not mentions:
+        return []
+    if len(mentions) > MAX_MENTIONS:
+        raise HTTPException(status_code=422, detail=f"at most {MAX_MENTIONS} mentions")
+    if group_id is not None:
+        for sub in mentions:
+            if await group_membership(db, group_id, sub) is None:
+                raise HTTPException(status_code=422, detail="mention must be a group member")
+    else:
+        assert other_sub is not None
+        if set(mentions) - {other_sub}:
+            raise HTTPException(status_code=422, detail="mention must be your chat partner")
+    return list(dict.fromkeys(mentions))
 
 
 async def resolve_attachment(
@@ -108,6 +192,8 @@ async def send_message(
     *,
     content_type: str = "text",
     attachment: dict[str, Any] | None = None,
+    reply_to_id: int | None = None,
+    mentions: list[str] | None = None,
 ) -> Message:
     if sender_sub == recipient_sub:
         raise HTTPException(status_code=400, detail="cannot message yourself")
@@ -115,6 +201,9 @@ async def send_message(
         raise HTTPException(status_code=404, detail="user not found")
     if not await are_friends(db, sender_sub, recipient_sub):
         raise HTTPException(status_code=403, detail="not friends")
+    if reply_to_id is not None:
+        await validate_reply(db, sender_sub, reply_to_id, other_sub=recipient_sub)
+    mention_subs = await validate_mentions(db, mentions or [], other_sub=recipient_sub)
     attachment_fields = await resolve_attachment(
         db, sender_sub, content_type, attachment
     )
@@ -126,10 +215,13 @@ async def send_message(
         participant_hi=hi,
         content=content,
         content_type=content_type,
+        reply_to_id=reply_to_id,
         **attachment_fields,
     )
     db.add(message)
     await db.flush()
+    for sub in mention_subs:
+        db.add(MessageMention(message_id=message.id, user_sub=sub))
     await _advance_read(db, sender_sub, lo, hi, message.id)
     await db.commit()
     await db.refresh(message)
@@ -164,13 +256,81 @@ async def conversation_summaries(db: AsyncSession, me_sub: str) -> list[dict[str
     dm_summaries = await _dm_conversation_summaries(db, me_sub)
     group_summaries = await _group_conversation_summaries(db, me_sub)
     summaries = [*dm_summaries, *group_summaries]
+    settings = await conversation_settings_for(db, me_sub)
+    for item in summaries:
+        if item["peer"] is not None:
+            kind = "dm"
+            key = dm_key(me_sub, item["peer"]["sub"])
+        else:
+            kind = "group"
+            key = str(item["group"]["id"])
+        row = settings.get((kind, key))
+        item["pinned"] = row.pinned if row is not None else False
+        item["muted"] = row.muted if row is not None else False
     summaries.sort(
         key=lambda item: (
-            item["last_message"]["id"] if item["last_message"] is not None else -1
+            0 if item["pinned"] else 1,
+            -(
+                item["last_message"]["id"]
+                if item["last_message"] is not None
+                else -1
+            ),
         ),
-        reverse=True,
     )
     return summaries
+
+
+async def set_conversation_setting(
+    db: AsyncSession,
+    me_sub: str,
+    kind: str,
+    key: str,
+    pinned: bool | None,
+    muted: bool | None,
+) -> dict[str, Any]:
+    if kind not in {"dm", "group"}:
+        raise HTTPException(status_code=422, detail="invalid kind")
+    if pinned is None and muted is None:
+        raise HTTPException(status_code=422, detail="pinned or muted is required")
+    if kind == "dm":
+        parts = key.split(":", 1)
+        if len(parts) != 2 or parts[0] == parts[1]:
+            raise HTTPException(status_code=422, detail="invalid dm key")
+        if me_sub not in parts:
+            raise HTTPException(status_code=404, detail="conversation not found")
+        if dm_key(parts[0], parts[1]) != key:
+            raise HTTPException(status_code=422, detail="invalid dm key")
+    else:
+        if not key.isdigit():
+            raise HTTPException(status_code=422, detail="invalid group key")
+        if await group_membership(db, int(key), me_sub) is None:
+            raise HTTPException(status_code=404, detail="group not found")
+    row = await db.get(UserConversationSetting, (me_sub, kind, key))
+    if row is None:
+        row = UserConversationSetting(
+            user_sub=me_sub, kind=kind, key=key, pinned=False, muted=False
+        )
+        db.add(row)
+    if pinned is not None:
+        row.pinned = pinned
+    if muted is not None:
+        row.muted = muted
+    await db.commit()
+    await db.refresh(row)
+    return {"kind": kind, "key": key, "pinned": row.pinned, "muted": row.muted}
+
+
+async def conversation_settings_for(
+    db: AsyncSession, me_sub: str
+) -> dict[tuple[str, str], UserConversationSetting]:
+    rows = (
+        await db.execute(
+            select(UserConversationSetting).where(
+                UserConversationSetting.user_sub == me_sub
+            )
+        )
+    ).scalars().all()
+    return {(row.kind, row.key): row for row in rows}
 
 
 async def _dm_conversation_summaries(
@@ -304,6 +464,7 @@ async def _group_conversation_summaries(
                     "name": group.name,
                     "owner_sub": group.owner_sub,
                     "member_count": await _group_member_count(db, group.id),
+                    "avatar_url": group.avatar_url,
                 },
                 "last_message": message_payload(last) if last is not None else None,
                 "unread_count": unread_by_group.get(group.id, 0),
@@ -328,6 +489,8 @@ async def send_group_message(
     *,
     content_type: str = "text",
     attachment: dict[str, Any] | None = None,
+    reply_to_id: int | None = None,
+    mentions: list[str] | None = None,
 ) -> Message:
     member_row = await group_membership(db, group_id, sender_sub)
     if member_row is None:
@@ -335,6 +498,9 @@ async def send_group_message(
     group = await db.get(Group, group_id)
     if group is None:
         raise HTTPException(status_code=404, detail="group not found")
+    if reply_to_id is not None:
+        await validate_reply(db, sender_sub, reply_to_id, group_id=group_id)
+    mention_subs = await validate_mentions(db, mentions or [], group_id=group_id)
     attachment_fields = await resolve_attachment(
         db, sender_sub, content_type, attachment
     )
@@ -348,10 +514,13 @@ async def send_group_message(
         conversation_type="group",
         group_id=group_id,
         content_type=content_type,
+        reply_to_id=reply_to_id,
         **attachment_fields,
     )
     db.add(message)
     await db.flush()
+    for sub in mention_subs:
+        db.add(MessageMention(message_id=message.id, user_sub=sub))
     await _advance_group_read(db, sender_sub, group_id, message.id)
     await db.commit()
     await db.refresh(message)
@@ -413,6 +582,209 @@ async def mark_group_read(
         raise HTTPException(status_code=404, detail="message not found in group")
     await _advance_group_read(db, me_sub, group_id, last_read_id)
     await db.commit()
+
+
+async def _can_view(db: AsyncSession, me_sub: str, message: Message) -> bool:
+    if message.conversation_type == "dm":
+        return me_sub in (message.participant_lo, message.participant_hi)
+    return message.group_id is not None and (
+        await group_membership(db, message.group_id, me_sub) is not None
+    )
+
+
+async def forward_message(
+    db: AsyncSession,
+    me_sub: str,
+    message_id: int,
+    *,
+    to_sub: str | None = None,
+    group_id: int | None = None,
+) -> Message:
+    source = await db.get(Message, message_id)
+    if source is None or not await _can_view(db, me_sub, source):
+        raise HTTPException(status_code=404, detail="message not found")
+    if source.deleted_at is not None:
+        raise HTTPException(status_code=409, detail="cannot forward deleted message")
+    attachment_fields: dict[str, Any] = {}
+    if source.attachment_url is not None:
+        attachment_fields = {
+            "attachment_name": source.attachment_name,
+            "attachment_size": source.attachment_size,
+            "attachment_mime": source.attachment_mime,
+            "attachment_url": source.attachment_url,
+        }
+    if group_id is not None:
+        member_row = await group_membership(db, group_id, me_sub)
+        if member_row is None:
+            raise HTTPException(status_code=403, detail="not a group member")
+        marker = f"{GROUP_RECIPIENT_PREFIX}{group_id}"
+        message = Message(
+            sender_sub=me_sub,
+            recipient_sub=marker,
+            participant_lo=marker,
+            participant_hi=f"{marker}:end",
+            content=source.content,
+            conversation_type="group",
+            group_id=group_id,
+            content_type=source.content_type,
+            forwarded=True,
+            **attachment_fields,
+        )
+        db.add(message)
+        await db.flush()
+        await _advance_group_read(db, me_sub, group_id, message.id)
+        await db.commit()
+        await db.refresh(message)
+        return message
+    assert to_sub is not None
+    if me_sub == to_sub:
+        raise HTTPException(status_code=400, detail="cannot forward to yourself")
+    if await db.get(User, to_sub) is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    if not await are_friends(db, me_sub, to_sub):
+        raise HTTPException(status_code=403, detail="not friends")
+    lo, hi = pair_key(me_sub, to_sub)
+    message = Message(
+        sender_sub=me_sub,
+        recipient_sub=to_sub,
+        participant_lo=lo,
+        participant_hi=hi,
+        content=source.content,
+        content_type=source.content_type,
+        forwarded=True,
+        **attachment_fields,
+    )
+    db.add(message)
+    await db.flush()
+    await _advance_read(db, me_sub, lo, hi, message.id)
+    await db.commit()
+    await db.refresh(message)
+    return message
+
+
+async def mentions_for(
+    db: AsyncSession, message_ids: list[int]
+) -> dict[int, list[str]]:
+    if not message_ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(MessageMention).where(MessageMention.message_id.in_(message_ids))
+        )
+    ).scalars().all()
+    result: dict[int, list[str]] = {}
+    for row in rows:
+        result.setdefault(row.message_id, []).append(row.user_sub)
+    return result
+
+
+async def set_star(
+    db: AsyncSession, me_sub: str, message_id: int, *, starred: bool
+) -> dict[str, Any]:
+    message = await db.get(Message, message_id)
+    if message is None or not await _can_view(db, me_sub, message):
+        raise HTTPException(status_code=404, detail="message not found")
+    row = await db.get(UserStar, (me_sub, message_id))
+    if starred and row is None:
+        db.add(UserStar(user_sub=me_sub, message_id=message_id))
+        await db.commit()
+    elif not starred and row is not None:
+        await db.delete(row)
+        await db.commit()
+    return {"message_id": message_id, "starred": starred}
+
+
+async def starred_for(
+    db: AsyncSession, viewer_sub: str, message_ids: list[int]
+) -> set[int]:
+    if not message_ids:
+        return set()
+    rows = (
+        await db.execute(
+            select(UserStar.message_id).where(
+                UserStar.user_sub == viewer_sub,
+                UserStar.message_id.in_(message_ids),
+            )
+        )
+    ).scalars().all()
+    return set(rows)
+
+
+async def starred_messages(
+    db: AsyncSession,
+    me_sub: str,
+    *,
+    cursor: int | None = None,
+    limit: int = 20,
+) -> tuple[list[dict[str, Any]], int | None]:
+    stmt = (
+        select(UserStar)
+        .where(UserStar.user_sub == me_sub)
+        .order_by(UserStar.message_id.desc())
+        .limit(limit + 1)
+    )
+    if cursor is not None:
+        stmt = stmt.where(UserStar.message_id < cursor)
+    rows = (await db.execute(stmt)).scalars().all()
+    has_more = len(rows) > limit
+    page = list(rows[:limit])
+    message_ids = [row.message_id for row in page]
+    messages = (
+        await db.execute(select(Message).where(Message.id.in_(message_ids)))
+    ).scalars().all()
+    by_id = {message.id: message for message in messages}
+    items: list[dict[str, Any]] = []
+    for row in page:
+        message = by_id.get(row.message_id)
+        if message is None:
+            continue
+        conversation: dict[str, Any]
+        if message.conversation_type == "group":
+            group = (
+                await db.get(Group, message.group_id)
+                if message.group_id is not None
+                else None
+            )
+            conversation = {
+                "type": "group",
+                "group_id": message.group_id,
+                "group_name": group.name if group is not None else None,
+                "peer_sub": None,
+                "peer_name": None,
+            }
+        else:
+            peer = (
+                message.sender_sub
+                if message.sender_sub != me_sub
+                else message.recipient_sub
+            )
+            peer_user = await db.get(User, peer)
+            conversation = {
+                "type": "dm",
+                "peer_sub": peer,
+                "peer_name": (
+                    (peer_user.nickname or peer_user.name or peer)
+                    if peer_user is not None
+                    else peer
+                ),
+                "group_id": None,
+                "group_name": None,
+            }
+        items.append(
+            {
+                "id": message.id,
+                "sender_sub": message.sender_sub,
+                "conversation": conversation,
+                "content": (
+                    None if message.deleted_at is not None else message.content[:200]
+                ),
+                "content_type": message.content_type,
+                "deleted": message.deleted_at is not None,
+                "created_at": iso_utc(message.created_at),
+            }
+        )
+    next_before = page[-1].message_id if has_more and page else None
+    return items, next_before
 
 
 async def mark_read(
@@ -477,6 +849,49 @@ async def delete_message(
     return message
 
 
+async def _own_editable_group_message(
+    db: AsyncSession, me_sub: str, group_id: int, message_id: int
+) -> Message:
+    if await group_membership(db, group_id, me_sub) is None:
+        raise HTTPException(status_code=404, detail="group not found")
+    message = await db.get(Message, message_id)
+    if (
+        message is None
+        or message.conversation_type != "group"
+        or message.group_id != group_id
+    ):
+        raise HTTPException(status_code=404, detail="message not found in group")
+    if message.sender_sub != me_sub:
+        raise HTTPException(status_code=403, detail="only the sender can modify this message")
+    if message.deleted_at is not None:
+        raise HTTPException(status_code=409, detail="message already deleted")
+    if utcnow() - message.created_at > timedelta(seconds=EDIT_WINDOW_SECONDS):
+        raise HTTPException(status_code=409, detail="edit window expired")
+    return message
+
+
+async def edit_group_message(
+    db: AsyncSession, me_sub: str, group_id: int, message_id: int, content: str
+) -> Message:
+    message = await _own_editable_group_message(db, me_sub, group_id, message_id)
+    message.content = content
+    message.edited_at = utcnow()
+    await db.commit()
+    await db.refresh(message)
+    return message
+
+
+async def delete_group_message(
+    db: AsyncSession, me_sub: str, group_id: int, message_id: int
+) -> Message:
+    message = await _own_editable_group_message(db, me_sub, group_id, message_id)
+    message.content = ""
+    message.deleted_at = utcnow()
+    await db.commit()
+    await db.refresh(message)
+    return message
+
+
 def clean_emoji(value: str) -> str:
     stripped = value.strip()
     if not stripped or len(stripped) > EMOJI_MAX_LENGTH:
@@ -505,14 +920,49 @@ async def set_reaction(
         raise HTTPException(status_code=404, detail="message not found in conversation")
     if message.deleted_at is not None:
         raise HTTPException(status_code=409, detail="message deleted")
-    existing = await db.get(Reaction, (message_id, me_sub, emoji))
+    count = await _apply_reaction(db, message_id, me_sub, emoji, add)
+    return {
+        "message_id": message_id,
+        "emoji": emoji,
+        "action": "added" if add else "removed",
+        "count": count,
+    }
+
+
+async def _apply_reaction(
+    db: AsyncSession, message_id: int, user_sub: str, emoji: str, add: bool
+) -> int:
+    existing = await db.get(Reaction, (message_id, user_sub, emoji))
     if add and existing is None:
-        db.add(Reaction(message_id=message_id, user_sub=me_sub, emoji=emoji))
+        db.add(Reaction(message_id=message_id, user_sub=user_sub, emoji=emoji))
         await db.commit()
     elif not add and existing is not None:
         await db.delete(existing)
         await db.commit()
-    count = await _reaction_count(db, message_id, emoji)
+    return await _reaction_count(db, message_id, emoji)
+
+
+async def set_group_reaction(
+    db: AsyncSession,
+    me_sub: str,
+    group_id: int,
+    message_id: int,
+    emoji: str,
+    *,
+    add: bool,
+) -> dict[str, Any]:
+    if await group_membership(db, group_id, me_sub) is None:
+        raise HTTPException(status_code=404, detail="group not found")
+    message = await db.get(Message, message_id)
+    if (
+        message is None
+        or message.conversation_type != "group"
+        or message.group_id != group_id
+    ):
+        raise HTTPException(status_code=404, detail="message not found in group")
+    if message.deleted_at is not None:
+        raise HTTPException(status_code=409, detail="message deleted")
+    count = await _apply_reaction(db, message_id, me_sub, emoji, add)
     return {
         "message_id": message_id,
         "emoji": emoji,

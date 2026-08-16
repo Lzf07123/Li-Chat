@@ -2,16 +2,26 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal, cast
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, field_validator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.messages import MessageIn, MessageOut, MessagePageOut, ReadIn, ReadOut
+from app.api.messages import (
+    ForwardIn,
+    MessageIn,
+    MessageOut,
+    MessagePageOut,
+    ReactionIn,
+    ReactionOut,
+    ReadIn,
+    ReadOut,
+)
 from app.auth.deps import get_current_user, require_csrf
 from app.db import get_db
 from app.groups import service
 from app.messages import service as messages_service
-from app.models import User
+from app.models import Message, User
 from app.timeutil import iso_utc, utcnow
 from app.ws.manager import ConnectionManager
 
@@ -35,8 +45,28 @@ class GroupOut(BaseModel):
     id: int
     name: str
     owner_sub: str
+    announcement: str | None = None
+    avatar_url: str | None = None
     created_at: str
     members: list[MemberOut]
+
+
+class AnnouncementIn(BaseModel):
+    text: str
+
+    @field_validator("text")
+    @classmethod
+    def _validate_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if len(stripped) > service.GROUP_ANNOUNCEMENT_MAX:
+            raise ValueError(
+                f"announcement must be at most {service.GROUP_ANNOUNCEMENT_MAX} characters"
+            )
+        return stripped
+
+
+class AvatarIn(BaseModel):
+    url: str
 
 
 class GroupsOut(BaseModel):
@@ -241,6 +271,34 @@ async def transfer_ownership(
     return StatusOut(status="transferred")
 
 
+@router.patch("/{group_id}/announcement", response_model=GroupOut)
+async def set_announcement(
+    request: Request,
+    group_id: int,
+    body: AnnouncementIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> GroupOut:
+    group = await service.set_announcement(db, user.sub, group_id, body.text)
+    await _broadcast(request, db, group_id, "announcement_updated", group, user.sub)
+    return GroupOut.model_validate(group)
+
+
+@router.post("/{group_id}/avatar", response_model=GroupOut)
+async def set_group_avatar(
+    request: Request,
+    group_id: int,
+    body: AvatarIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> GroupOut:
+    group = await service.set_avatar(db, user.sub, group_id, body.url)
+    await _broadcast(request, db, group_id, "avatar_updated", group, user.sub)
+    return GroupOut.model_validate(group)
+
+
 @router.post("/{group_id}/messages", response_model=MessageOut, status_code=201)
 async def send_group_message(
     request: Request,
@@ -257,8 +315,16 @@ async def send_group_message(
         body.content,
         content_type=body.content_type,
         attachment=body.attachment.model_dump() if body.attachment else None,
+        reply_to_id=body.reply_to_id,
+        mentions=body.mentions,
     )
-    payload = messages_service.message_payload(message)
+    mention_subs = list(dict.fromkeys(body.mentions))
+    reply = (
+        await db.get(Message, message.reply_to_id)
+        if message.reply_to_id is not None
+        else None
+    )
+    payload = messages_service.message_payload(message, reply, mention_subs)
     manager = cast(ConnectionManager, request.app.state.ws_manager)
     event = {"type": "message", "message": payload}
     for sub in await service.member_subs(db, group_id):
@@ -282,15 +348,36 @@ async def group_history(
     reaction_map = await messages_service.reactions_for(
         db, [item.id for item in rows], user.sub
     )
+    mentions = await messages_service.mentions_for(db, [item.id for item in rows])
+    starred_ids = await messages_service.starred_for(
+        db, user.sub, [item.id for item in rows]
+    )
+    reply_ids = [item.reply_to_id for item in rows if item.reply_to_id is not None]
+    replies: dict[int, Message] = {}
+    if reply_ids:
+        targets = (
+            await db.execute(
+                select(Message).where(Message.id.in_(reply_ids))
+            )
+        ).scalars().all()
+        replies = {target.id: target for target in targets}
     messages: list[MessageOut] = []
     for item in rows:
-        data = messages_service.message_payload(item)
+        reply = (
+            replies.get(item.reply_to_id)
+            if item.reply_to_id is not None
+            else None
+        )
+        data = messages_service.message_payload(item, reply)
+        if "mentions" in data:
+            data["mentions"] = mentions.get(item.id, [])
         aggregate = reaction_map.get(item.id, {})
         messages.append(
             MessageOut(
                 **data,
                 reactions=aggregate.get("reactions", []),
                 my_reactions=aggregate.get("my_reactions", []),
+                starred=item.id in starred_ids,
             )
         )
     return MessagePageOut(messages=messages, next_before=next_before)
@@ -316,3 +403,131 @@ async def mark_group_read(
     for sub in await service.member_subs(db, group_id):
         await manager.send_to(sub, event)
     return ReadOut(status="ok", last_read_id=body.last_read_id)
+
+
+@router.post("/{group_id}/forward", response_model=MessageOut, status_code=201)
+async def forward_group_message(
+    request: Request,
+    group_id: int,
+    body: ForwardIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> MessageOut:
+    message = await messages_service.forward_message(
+        db, user.sub, body.message_id, group_id=group_id
+    )
+    payload = messages_service.message_payload(message)
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    event = {"type": "message", "message": payload}
+    for sub in await service.member_subs(db, group_id):
+        await manager.send_to(sub, event)
+    return MessageOut(**payload)
+
+
+@router.patch("/{group_id}/messages/{message_id}", response_model=MessageOut)
+async def edit_group_message(
+    request: Request,
+    group_id: int,
+    message_id: int,
+    body: MessageIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> MessageOut:
+    message = await messages_service.edit_group_message(
+        db, user.sub, group_id, message_id, body.content
+    )
+    reply = (
+        await db.get(Message, message.reply_to_id)
+        if message.reply_to_id is not None
+        else None
+    )
+    payload = messages_service.message_payload(message, reply)
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    event = {"type": "message_edited", "message": payload}
+    for sub in await service.member_subs(db, group_id):
+        await manager.send_to(sub, event)
+    return MessageOut(**payload)
+
+
+@router.delete("/{group_id}/messages/{message_id}", response_model=MessageOut)
+async def delete_group_message(
+    request: Request,
+    group_id: int,
+    message_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> MessageOut:
+    message = await messages_service.delete_group_message(
+        db, user.sub, group_id, message_id
+    )
+    payload = messages_service.message_payload(message)
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    event = {"type": "message_deleted", "message": payload}
+    for sub in await service.member_subs(db, group_id):
+        await manager.send_to(sub, event)
+    return MessageOut(**payload)
+
+
+@router.put(
+    "/{group_id}/messages/{message_id}/reactions", response_model=ReactionOut
+)
+async def add_group_reaction(
+    request: Request,
+    group_id: int,
+    message_id: int,
+    body: ReactionIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> ReactionOut:
+    result = await messages_service.set_group_reaction(
+        db, user.sub, group_id, message_id, body.emoji, add=True
+    )
+    await _broadcast_group_reaction(request, db, group_id, result, user.sub)
+    return ReactionOut(**result)
+
+
+@router.delete(
+    "/{group_id}/messages/{message_id}/reactions", response_model=ReactionOut
+)
+async def remove_group_reaction(
+    request: Request,
+    group_id: int,
+    message_id: int,
+    emoji: Annotated[str, Query(min_length=1, max_length=16)],
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> ReactionOut:
+    try:
+        cleaned = messages_service.clean_emoji(emoji)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    result = await messages_service.set_group_reaction(
+        db, user.sub, group_id, message_id, cleaned, add=False
+    )
+    await _broadcast_group_reaction(request, db, group_id, result, user.sub)
+    return ReactionOut(**result)
+
+
+async def _broadcast_group_reaction(
+    request: Request,
+    db: AsyncSession,
+    group_id: int,
+    result: dict[str, Any],
+    by_sub: str,
+) -> None:
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    event = {
+        "type": "message_reaction",
+        "message_id": result["message_id"],
+        "emoji": result["emoji"],
+        "action": result["action"],
+        "count": result["count"],
+        "by_sub": by_sub,
+    }
+    for sub in await service.member_subs(db, group_id):
+        await manager.send_to(sub, event)

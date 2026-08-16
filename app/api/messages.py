@@ -4,22 +4,25 @@ from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user, require_csrf
 from app.db import get_db
 from app.messages import service
 from app.messages.service import MAX_MESSAGE_LENGTH
-from app.models import User
+from app.models import Message, User
 from app.ws.manager import ConnectionManager
 
 router = APIRouter(prefix="/api/conversations", tags=["messages"])
 
 
 class MessageIn(BaseModel):
-    content: str = ""
     content_type: Literal["text", "image", "file"] = "text"
+    content: str = ""
     attachment: AttachmentIn | None = None
+    reply_to_id: int | None = Field(default=None, ge=1)
+    mentions: list[str] = []
 
     @field_validator("content")
     @classmethod
@@ -33,6 +36,13 @@ class MessageIn(BaseModel):
             )
         return stripped
 
+    @field_validator("mentions")
+    @classmethod
+    def _validate_mentions(cls, value: list[str]) -> list[str]:
+        if len(value) > service.MAX_MENTIONS:
+            raise ValueError(f"at most {service.MAX_MENTIONS} mentions")
+        return value
+
 
 class AttachmentIn(BaseModel):
     url: str
@@ -43,6 +53,18 @@ class AttachmentOut(BaseModel):
     size: int | None = None
     mime: str | None = None
     url: str | None = None
+
+
+class ReplyToOut(BaseModel):
+    id: int
+    sender_sub: str
+    content: str | None = None
+    deleted: bool = False
+    content_type: str = "text"
+
+
+class ForwardIn(BaseModel):
+    message_id: int = Field(ge=1)
 
 
 class ReactionCountOut(BaseModel):
@@ -58,7 +80,11 @@ class MessageOut(BaseModel):
     group_id: int | None = None
     content: str | None = None
     content_type: str = "text"
+    forwarded: bool = False
     attachment: AttachmentOut | None = None
+    reply_to: ReplyToOut | None = None
+    mentions: list[str] = []
+    starred: bool = False
     deleted: bool = False
     edited_at: str | None = None
     created_at: str
@@ -103,6 +129,22 @@ class ConversationSummaryOut(BaseModel):
     last_message: MessageOut | None
     unread_count: int
     last_read_id: int
+    pinned: bool = False
+    muted: bool = False
+
+
+class ConversationSettingsIn(BaseModel):
+    kind: Literal["dm", "group"]
+    key: str
+    pinned: bool | None = None
+    muted: bool | None = None
+
+
+class ConversationSettingsOut(BaseModel):
+    kind: str
+    key: str
+    pinned: bool
+    muted: bool
 
 
 class GroupSummaryOut(BaseModel):
@@ -110,6 +152,7 @@ class GroupSummaryOut(BaseModel):
     name: str
     owner_sub: str
     member_count: int
+    avatar_url: str | None = None
 
 
 class ConversationsOut(BaseModel):
@@ -133,6 +176,19 @@ async def conversations_list(
     return ConversationsOut.model_validate(
         {"conversations": await service.conversation_summaries(db, user.sub)}
     )
+
+
+@router.patch("/settings", response_model=ConversationSettingsOut)
+async def update_conversation_settings(
+    body: ConversationSettingsIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> ConversationSettingsOut:
+    result = await service.set_conversation_setting(
+        db, user.sub, body.kind, body.key, body.pinned, body.muted
+    )
+    return ConversationSettingsOut(**result)
 
 
 @router.post("/{other_sub}/read", response_model=ReadOut)
@@ -174,8 +230,16 @@ async def send_message(
         body.content,
         content_type=body.content_type,
         attachment=body.attachment.model_dump() if body.attachment else None,
+        reply_to_id=body.reply_to_id,
+        mentions=body.mentions,
     )
-    payload = service.message_payload(message)
+    mention_subs = list(dict.fromkeys(body.mentions))
+    reply = (
+        await db.get(Message, message.reply_to_id)
+        if message.reply_to_id is not None
+        else None
+    )
+    payload = service.message_payload(message, reply, mention_subs)
     manager = cast(ConnectionManager, request.app.state.ws_manager)
     event = {"type": "message", "message": payload}
     await manager.send_to(message.sender_sub, event)
@@ -196,24 +260,55 @@ async def message_history(
     rows, next_before = await service.history(
         db, user.sub, other_sub, before=before, limit=limit
     )
+    replies = await _replies_for(db, rows)
+    mentions = await service.mentions_for(db, [item.id for item in rows])
+    starred_ids = await service.starred_for(db, user.sub, [item.id for item in rows])
     reaction_map = await service.reactions_for(
         db, [item.id for item in rows], user.sub
     )
     messages: list[MessageOut] = []
     for item in rows:
-        data = service.message_payload(item)
+        reply = (
+            replies.get(item.reply_to_id)
+            if item.reply_to_id is not None
+            else None
+        )
+        data = service.message_payload(item, reply)
+        if "mentions" in data:
+            data["mentions"] = mentions.get(item.id, [])
         aggregate = reaction_map.get(item.id, {})
         messages.append(
             MessageOut(
                 **data,
                 reactions=aggregate.get("reactions", []),
                 my_reactions=aggregate.get("my_reactions", []),
+                starred=item.id in starred_ids,
             )
         )
     return MessagePageOut(
         messages=messages,
         next_before=next_before,
     )
+
+
+@router.post("/{other_sub}/forward", response_model=MessageOut, status_code=201)
+async def forward_dm_message(
+    request: Request,
+    other_sub: str,
+    body: ForwardIn,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _csrf: Annotated[None, Depends(require_csrf)],
+) -> MessageOut:
+    message = await service.forward_message(
+        db, user.sub, body.message_id, to_sub=other_sub
+    )
+    payload = service.message_payload(message)
+    manager = cast(ConnectionManager, request.app.state.ws_manager)
+    event = {"type": "message", "message": payload}
+    await manager.send_to(message.sender_sub, event)
+    await manager.send_to(message.recipient_sub, event)
+    return MessageOut(**payload)
 
 
 @router.patch("/{other_sub}/messages/{message_id}", response_model=MessageOut)
@@ -227,7 +322,12 @@ async def edit_message(
     _csrf: Annotated[None, Depends(require_csrf)],
 ) -> MessageOut:
     message = await service.edit_message(db, user.sub, other_sub, message_id, body.content)
-    payload = service.message_payload(message)
+    reply = (
+        await db.get(Message, message.reply_to_id)
+        if message.reply_to_id is not None
+        else None
+    )
+    payload = service.message_payload(message, reply)
     manager = cast(ConnectionManager, request.app.state.ws_manager)
     event = {"type": "message_edited", "message": payload}
     await manager.send_to(message.sender_sub, event)
@@ -305,3 +405,13 @@ async def _broadcast_reaction(
     }
     await manager.send_to(sender_sub, event)
     await manager.send_to(other_sub, event)
+
+
+async def _replies_for(db: AsyncSession, rows: list[Message]) -> dict[int, Message]:
+    reply_ids = [row.reply_to_id for row in rows if row.reply_to_id is not None]
+    if not reply_ids:
+        return {}
+    targets = (
+        await db.execute(select(Message).where(Message.id.in_(reply_ids)))
+    ).scalars().all()
+    return {target.id: target for target in targets}

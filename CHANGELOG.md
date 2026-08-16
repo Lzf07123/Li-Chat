@@ -4,6 +4,32 @@
 
 ### 功能
 
+- 呼叫记录与未接来电：`call_logs` 落账（离线/忙线记 missed、拒接 rejected、接通 accepted、
+  响铃中被挂断记 missed），`GET /api/me/calls` 倒序列表（附对端资料、kind/status/时间）；
+  WS `call` 协议增加 `kind`（audio/video）；前端「通话记录」
+- 会话管理：WS 连接级 session_id 跟踪、`GET /api/me/sessions`（含 `current` 标记）、
+  `DELETE /api/me/sessions/{id}` 撤销单个会话并断其 WS（4401）、`DELETE /api/me/sessions`
+  退出其他设备（保留当前）；前端「登录设备」列表与撤销按钮
+- 群消息操作补齐：群内编辑/撤回（`PATCH/DELETE /api/groups/{id}/messages/{mid}`，发送者、
+  5 分钟窗、墓碑；非成员 404）与表情回应（成员校验、幂等 toggle）；WS
+  `message_edited/message_deleted/message_reaction` 群内广播；前端群消息启用编辑/撤回/表情
+- 群公告与群头像：`groups.announcement`（≤2000，owner/admin 维护、可清空）、
+  `groups.avatar_url`（owner/admin 引用本人上传的图片，非图片 422 / 他人附件 403）；WS
+  `announcement_updated/avatar_updated` 全成员广播；前端群公告横幅/编辑与头像上传
+- 会话置顶与免打扰：`user_conversation_settings`（dm/group 键归属校验：单聊必须包含本人、
+  群必须为成员）、`PATCH /api/conversations/settings` upsert、会话摘要附 `pinned/muted`
+  且置顶会话排在前面；前端会话行置顶/免打扰开关，免打扰会话不显示未读徽标
+- 收藏消息：`user_stars` 幂等 star/unstar（`PUT/DELETE /api/messages/{id}/star`，仅自己
+  可见范围、越权 404）、收藏列表 `GET /api/me/stars`（会话引用 + 倒序游标 ≤50）、历史载荷
+  按查看者附 `starred`；前端收藏切换与「我的收藏」列表
+- @提及：`message_mentions` 表与成员/对端校验（单聊仅对方、群仅成员，≤50 去重，非法 422）、
+  载荷与 WS 事件附 `mentions`；前端群 composer「@」成员选择器与「@我」高亮
+- 消息转发：`POST /api/conversations/{sub}/forward` 与 `/api/groups/{id}/forward`（源消息
+  须在转发者可见范围、已撤回 409；DM↔群互转），复制文本/附件元数据并置 `forwarded` 标记；
+  前端「转发」按钮与目标选择弹层
+- 消息引用回复：`messages.reply_to_id`（自引用 FK）与同会话校验（单聊 pair / 群 group_id，
+  跨会话 404）、引用预览 `reply_to`（内容 ≤100 截断、已撤回显示墓碑、不递归嵌套）；单聊与
+  群发送接口加 `reply_to_id`；前端消息「回复」按钮与输入框引用条（可取消）
 - 音视频呼叫信令（里程碑四起点）：WS `call` 协议 `offer/answer/ice/reject/end` 与
   `busy/invalid/unavailable/error` 应答；仅好友间、载荷 ≤16KB、ICE 限频、进程内状态机
   （idle→ringing→connected→ended）、信令不落库不记日志；前端 WebRTC 1:1 呼叫（发起/来电
@@ -63,6 +89,8 @@
 
 ### 行为变更
 
+- 附件回源授权从「仅上传者」放宽为「上传者或引用该附件的会话参与者」：修复收件人无法
+  查看图片/下载文件的缺陷；陌生人仍 403
 - SSO 资料同步改为「昵称/头像仅空值回填」：本地编辑的个人资料不再被门户 userinfo 覆盖
   （`name`/`email` 仍随登录同步）
 - SQLite 连接启用 `journal_mode=WAL` 与 `busy_timeout=5000`：缓解读写并发互锁与瞬时
@@ -73,6 +101,9 @@
 
 ### 安全加固
 
+- 登录限流：`/oidc/login` 与 `/oidc/callback` 按客户端 IP 做进程内滑动窗口限流
+  （`LICHAT_LOGIN_RATE_LIMIT` 默认 10、`LICHAT_LOGIN_RATE_WINDOW` 默认 60 秒），超限
+  429 + `Retry-After`；多副本部署仍需网关或共享存储限流
 - 授权单飞：同一浏览器重复发起登录时复用未完成的 auth state（`lichat_auth` HttpOnly Cookie），授权完成后即删除状态并清 Cookie——其他仍在等待的授权确认页随之作废，不再并行放行出多个会话
 - 会话守护加强：RP 登出即断开该用户全部 WebSocket（配置 Redis 时跨副本广播），登出标签页不再继续收到实时消息；WS 心跳每次重新校验会话，会话被删除/过期立即以 4401 关闭
 

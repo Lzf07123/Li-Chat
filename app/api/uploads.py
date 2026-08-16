@@ -50,7 +50,9 @@ async def download_upload(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> FileResponse:
     upload = await service.get_upload(db, filename)
-    if upload.owner_sub != user.sub:
+    if upload.owner_sub != user.sub and not await service.referenced_for(
+        db, f"/api/uploads/{filename}", user.sub
+    ):
         raise HTTPException(status_code=403, detail="not your upload")
     settings = cast(Settings, request.app.state.settings)
     path = service.resolve_upload_root(settings) / upload.filename

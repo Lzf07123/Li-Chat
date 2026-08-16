@@ -100,7 +100,12 @@ class Message(Base):
         BigInteger().with_variant(Integer, "sqlite"),
         ForeignKey("groups.id", ondelete="CASCADE"),
     )
+    reply_to_id: Mapped[int | None] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("messages.id", ondelete="SET NULL"),
+    )
     content_type: Mapped[str] = mapped_column(String(16), default="text")
+    forwarded: Mapped[bool] = mapped_column(Boolean, default=False)
     attachment_name: Mapped[str | None] = mapped_column(String(255))
     attachment_size: Mapped[int | None] = mapped_column(Integer)
     attachment_mime: Mapped[str | None] = mapped_column(String(64))
@@ -150,6 +155,67 @@ class Reaction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class MessageMention(Base):
+    __tablename__ = "message_mentions"
+
+    message_id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), primary_key=True
+    )
+
+
+class UserStar(Base):
+    __tablename__ = "user_stars"
+
+    user_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), primary_key=True
+    )
+    message_id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class UserConversationSetting(Base):
+    __tablename__ = "user_conversation_settings"
+
+    user_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), primary_key=True
+    )
+    kind: Mapped[str] = mapped_column(String(8), primary_key=True)
+    key: Mapped[str] = mapped_column(String(160), primary_key=True)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    muted: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class CallLog(Base):
+    __tablename__ = "call_logs"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    caller_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), index=True
+    )
+    callee_sub: Mapped[str] = mapped_column(
+        ForeignKey("users.sub", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(8))
+    status: Mapped[str | None] = mapped_column(String(16))
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 class Group(Base):
     __tablename__ = "groups"
 
@@ -162,6 +228,8 @@ class Group(Base):
     owner_sub: Mapped[str] = mapped_column(
         ForeignKey("users.sub", ondelete="CASCADE"), index=True
     )
+    announcement: Mapped[str | None] = mapped_column(Text)
+    avatar_url: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 

@@ -1021,6 +1021,10 @@ a {
   text-decoration: underline;
 }
 
+.message-star-on {
+  color: var(--chat-primary);
+}
+
 .message-bubble-deleted {
   font-style: italic;
   opacity: 0.7;
@@ -1129,6 +1133,27 @@ a {
   font-weight: 600;
   background: var(--chat-primary-soft);
   color: var(--chat-primary);
+}
+
+.group-avatar-img {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.group-announcement {
+  padding: 10px 12px;
+  border: 1px solid var(--chat-border);
+  border-radius: 10px;
+  background: var(--chat-surface-2);
+}
+
+.group-announcement p {
+  margin: 0 0 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .group-panel {
@@ -1297,6 +1322,112 @@ a {
 .call-actions {
   display: flex;
   gap: 12px;
+}
+
+.reply-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--chat-primary);
+  border-radius: 6px;
+  background: var(--chat-surface-2);
+  font-size: 0.82rem;
+  color: var(--chat-muted);
+}
+
+.reply-bar[hidden] {
+  display: none;
+}
+
+.reply-bar-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reply-bar-cancel {
+  border: none;
+  background: none;
+  color: var(--chat-muted);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.message-reply-preview {
+  margin-bottom: 4px;
+  padding: 3px 8px;
+  border-left: 3px solid var(--chat-primary);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: var(--chat-muted);
+  background: rgb(0 0 0 / 0.06);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+
+.forward-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.forward-target {
+  width: 100%;
+}
+
+.mention-list {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 8px;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 260px;
+  padding: 8px;
+  border: 1px solid var(--chat-border);
+  border-radius: 10px;
+  background: var(--chat-surface-1);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+
+.composer {
+  position: relative;
+}
+
+.mention-list[hidden] {
+  display: none;
+}
+
+.mention-option {
+  border: 1px solid var(--chat-border);
+  border-radius: 999px;
+  background: var(--chat-surface-2);
+  color: var(--chat-fg);
+  font-size: 0.78rem;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.message-mentioned .message-bubble {
+  border: 1px solid var(--chat-primary);
+}
+
+.conv-actions {
+  gap: 0;
+}
+
+.conv-toggle {
+  opacity: 0.45;
+  font-size: 0.85rem;
+}
+
+.conv-toggle-on {
+  opacity: 1;
 }
 
 .chat-peer-main {

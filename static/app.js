@@ -24,6 +24,10 @@ const state = {
   activePeer: null,
   editingId: null,
   pickerMessageId: null,
+  replyTo: null,
+  forwardMessageId: null,
+  mentionSubs: [],
+  mentionOpen: false,
   groups: [],
   activeGroupId: null,
   activeGroup: null,
@@ -161,6 +165,15 @@ function headerHtml() {
           <button id="edit-profile" class="profile-menu-item" role="menuitem" type="button">
             编辑资料
           </button>
+          <button id="open-stars" class="profile-menu-item" role="menuitem" type="button">
+            我的收藏
+          </button>
+          <button id="open-sessions" class="profile-menu-item" role="menuitem" type="button">
+            登录设备
+          </button>
+          <button id="open-calls" class="profile-menu-item" role="menuitem" type="button">
+            通话记录
+          </button>
           <button id="logout" class="profile-menu-item" role="menuitem" type="button">
             退出登录
           </button>
@@ -251,6 +264,11 @@ function mainHtml() {
           </button>
           <input id="attach-input" type="file" hidden
             accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain" />
+          <div id="message-reply-bar" class="reply-bar" hidden>
+            <span class="reply-bar-text"></span>
+            <button class="reply-bar-cancel" type="button"
+              data-action="cancel-reply" aria-label="取消引用">×</button>
+          </div>
           <label class="sr-only" for="message-input">消息内容</label>
           <textarea id="message-input" class="input" rows="1" maxlength="2000"
             placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
@@ -271,6 +289,9 @@ function renderLoggedIn() {
   document.addEventListener("keydown", onProfileKeydown);
   document.getElementById("logout").addEventListener("click", logout);
   document.getElementById("edit-profile").addEventListener("click", openProfileModal);
+  document.getElementById("open-stars").addEventListener("click", openStarsModal);
+  document.getElementById("open-sessions").addEventListener("click", openSessionsModal);
+  document.getElementById("open-calls").addEventListener("click", openCallsModal);
   document.getElementById("search-form").addEventListener("submit", onSearch);
   document.getElementById("search-form").addEventListener("click", onSearchModeClick);
   document.getElementById("search-results").addEventListener("click", onSearchResultClick);
@@ -281,6 +302,7 @@ function renderLoggedIn() {
   document.getElementById("groups-list").addEventListener("click", onGroupListClick);
   document.getElementById("group-create").addEventListener("click", openGroupCreateModal);
   document.getElementById("composer").addEventListener("submit", onComposerSubmit);
+  document.getElementById("composer").addEventListener("click", onComposerBarClick);
   document.getElementById("message-input").addEventListener("keydown", onComposerKeydown);
   document.getElementById("message-input").addEventListener("input", onComposerInput);
   document.getElementById("message-input").addEventListener("blur", onComposerBlur);
@@ -338,6 +360,176 @@ function openProfileModal() {
   });
   document.getElementById("profile-avatar-input").addEventListener("change", onAvatarSelected);
   document.getElementById("profile-nickname").focus();
+}
+
+async function openStarsModal() {
+  setProfileMenu(false);
+  const response = await api("/api/me/stars?limit=50");
+  if (!response.ok) return;
+  const body = await response.json();
+  const items = body.messages
+    .map((item) => {
+      const label =
+        item.conversation.type === "group"
+          ? `群：${item.conversation.group_name || ""}`
+          : item.conversation.peer_name || "";
+      const target =
+        item.conversation.type === "group"
+          ? `data-group="${item.conversation.group_id}"`
+          : `data-peer="${escapeHtml(item.conversation.peer_sub || "")}"`;
+      const preview = item.deleted ? "消息已撤回" : item.content || "";
+      return `<li class="contact-item">
+        <button class="contact-button" type="button" data-action="open-star" ${target}>
+          <span class="contact-main">
+            <span class="contact-name">${escapeHtml(label)}</span>
+            <span class="contact-preview">${escapeHtml(preview)}</span>
+          </span>
+        </button>
+      </li>`;
+    })
+    .join("");
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="stars-modal" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <h3 class="modal-title">我的收藏</h3>
+        <ul class="contact-list forward-list">${
+          items || '<li class="sidebar-empty">还没有收藏</li>'
+        }</ul>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" data-action="close-stars">关闭</button>
+        </div>
+      </div>
+    </div>`
+  );
+  const modal = document.getElementById("stars-modal");
+  modal.addEventListener("click", (event) => {
+    const target = event.target.closest("[data-action='open-star']");
+    if (target) {
+      modal.remove();
+      if (target.dataset.group) openGroup(Number(target.dataset.group));
+      else if (target.dataset.peer) openChat(target.dataset.peer);
+      return;
+    }
+    if (event.target === modal || event.target.closest("[data-action='close-stars']")) {
+      modal.remove();
+    }
+  });
+}
+
+async function openSessionsModal() {
+  setProfileMenu(false);
+  await renderSessionsModal();
+}
+
+async function renderSessionsModal() {
+  const response = await api("/api/me/sessions");
+  if (!response.ok) return;
+  const sessions = (await response.json()).sessions;
+  const existing = document.getElementById("sessions-modal");
+  if (existing) existing.remove();
+  const rows = sessions
+    .map((session) => {
+      const time = new Date(session.last_seen_at).toLocaleString([], {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+      return `<li class="contact-item">
+        <span class="contact-main">
+          <span class="contact-name">${session.current ? "当前设备" : "其他设备"} · ${escapeHtml(time)}</span>
+          <span class="contact-preview">有效期至 ${escapeHtml(
+            new Date(session.expires_at).toLocaleDateString()
+          )}</span>
+        </span>
+        ${session.current
+          ? '<span class="badge badge-primary">当前</span>'
+          : `<button class="btn btn-ghost btn-sm" type="button"
+              data-action="revoke-session" data-id="${escapeHtml(session.id)}">撤销</button>`}
+      </li>`;
+    })
+    .join("");
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="sessions-modal" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <h3 class="modal-title">登录设备</h3>
+        <ul class="contact-list forward-list">${rows || '<li class="sidebar-empty">无会话</li>'}</ul>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" data-action="revoke-others">退出其他设备</button>
+          <button class="btn btn-primary" type="button" data-action="close-sessions">关闭</button>
+        </div>
+      </div>
+    </div>`
+  );
+  const modal = document.getElementById("sessions-modal");
+  modal.addEventListener("click", async (event) => {
+    const revoke = event.target.closest("[data-action='revoke-session']");
+    if (revoke) {
+      const result = await api(`/api/me/sessions/${encodeURIComponent(revoke.dataset.id)}`, {
+        method: "DELETE",
+      });
+      if (result.ok) await renderSessionsModal();
+      return;
+    }
+    if (event.target.closest("[data-action='revoke-others']")) {
+      const result = await api("/api/me/sessions", { method: "DELETE" });
+      if (result.ok) await renderSessionsModal();
+      return;
+    }
+    if (event.target === modal || event.target.closest("[data-action='close-sessions']")) {
+      modal.remove();
+    }
+  });
+}
+
+async function openCallsModal() {
+  setProfileMenu(false);
+  const response = await api("/api/me/calls?limit=50");
+  if (!response.ok) return;
+  const calls = (await response.json()).calls;
+  const statusLabel = {
+    accepted: "已接通",
+    rejected: "已拒绝",
+    missed: "未接",
+  };
+  const rows = calls
+    .map((call) => {
+      const time = new Date(call.started_at).toLocaleString([], {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+      const peer = call.peer.nickname || call.peer.name || call.peer.sub;
+      return `<li class="contact-item">
+        <span class="contact-main">
+          <span class="contact-name">${escapeHtml(peer)} · ${
+            call.kind === "video" ? "视频" : "语音"
+          }</span>
+          <span class="contact-preview">${escapeHtml(time)}</span>
+        </span>
+        <span class="badge ${call.status === "missed" ? "badge-warning" : "badge-muted"}">${
+          statusLabel[call.status] || "进行中"
+        }</span>
+      </li>`;
+    })
+    .join("");
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="calls-modal" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <h3 class="modal-title">通话记录</h3>
+        <ul class="contact-list forward-list">${rows || '<li class="sidebar-empty">暂无通话记录</li>'}</ul>
+        <div class="modal-actions">
+          <button class="btn btn-primary" type="button" data-action="close-calls">关闭</button>
+        </div>
+      </div>
+    </div>`
+  );
+  const modal = document.getElementById("calls-modal");
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal || event.target.closest("[data-action='close-calls']")) {
+      modal.remove();
+    }
+  });
 }
 
 async function onProfileSubmit(event) {
@@ -513,6 +705,9 @@ function recommendHtml(user) {
 
 function friendHtml(friend, summary) {
   const unread = summary ? summary.unread_count : 0;
+  const pinned = summary ? summary.pinned : false;
+  const muted = summary ? summary.muted : false;
+  const dmKey = [state.me.sub, friend.sub].sort().join(":");
   const preview = summary && summary.last_message
     ? summary.last_message.deleted
       ? "消息已撤回"
@@ -534,16 +729,26 @@ function friendHtml(friend, summary) {
         </span>
         ${preview ? `<span class="contact-preview">${escapeHtml(preview)}</span>` : ""}
       </span>
-      ${unread > 0
+      ${unread > 0 && !muted
         ? `<span class="badge badge-unread" data-role="unread" data-sub="${escapeHtml(friend.sub)}">${unread}</span>`
         : ""}
     </button>
+    <span class="contact-actions conv-actions">
+      <button class="icon-btn conv-toggle${pinned ? " conv-toggle-on" : ""}" type="button"
+        data-action="toggle-pin" data-kind="dm" data-key="${dmKey}"
+        data-value="${pinned}" aria-label="置顶">📌</button>
+      <button class="icon-btn conv-toggle${muted ? " conv-toggle-on" : ""}" type="button"
+        data-action="toggle-mute" data-kind="dm" data-key="${dmKey}"
+        data-value="${muted}" aria-label="免打扰">🔕</button>
+    </span>
   </li>`;
 }
 
 function groupHtml(group, summary) {
   const count = group.members ? group.members.length : 0;
   const unread = summary ? summary.unread_count : 0;
+  const pinned = summary ? summary.pinned : false;
+  const muted = summary ? summary.muted : false;
   const preview = summary && summary.last_message
     ? summary.last_message.deleted
       ? "消息已撤回"
@@ -556,15 +761,25 @@ function groupHtml(group, summary) {
   return `<li class="contact-item">
     <button class="contact-button" type="button"
       data-action="open-group" data-id="${group.id}">
-      <div class="avatar avatar-placeholder group-avatar" aria-hidden="true">#</div>
+      ${group.avatar_url
+        ? `<img class="avatar group-avatar-img" src="${escapeHtml(group.avatar_url)}" alt="群头像" />`
+        : '<div class="avatar avatar-placeholder group-avatar" aria-hidden="true">#</div>'}
       <span class="contact-main">
         <span class="contact-name">${escapeHtml(group.name)}</span>
         <span class="contact-preview">${preview || `${count} 位成员`}</span>
       </span>
-      ${unread > 0
+      ${unread > 0 && !muted
         ? `<span class="badge badge-unread" data-role="unread" data-id="${group.id}">${unread}</span>`
         : ""}
     </button>
+    <span class="contact-actions conv-actions">
+      <button class="icon-btn conv-toggle${pinned ? " conv-toggle-on" : ""}" type="button"
+        data-action="toggle-pin" data-kind="group" data-key="${group.id}"
+        data-value="${pinned}" aria-label="置顶">📌</button>
+      <button class="icon-btn conv-toggle${muted ? " conv-toggle-on" : ""}" type="button"
+        data-action="toggle-mute" data-kind="group" data-key="${group.id}"
+        data-value="${muted}" aria-label="免打扰">🔕</button>
+    </span>
   </li>`;
 }
 
@@ -733,15 +948,39 @@ async function loadRecommendations() {
 }
 
 function onFriendListClick(event) {
-  const button = event.target.closest("[data-action='open']");
+  const button = event.target.closest("[data-action]");
   if (!button) return;
+  if (button.dataset.action === "toggle-pin" || button.dataset.action === "toggle-mute") {
+    toggleConversationSetting(button);
+    return;
+  }
+  if (button.dataset.action !== "open") return;
   openChat(button.dataset.sub);
 }
 
 function onGroupListClick(event) {
-  const button = event.target.closest("[data-action='open-group']");
+  const button = event.target.closest("[data-action]");
   if (!button) return;
+  if (button.dataset.action === "toggle-pin" || button.dataset.action === "toggle-mute") {
+    toggleConversationSetting(button);
+    return;
+  }
+  if (button.dataset.action !== "open-group") return;
   openGroup(Number(button.dataset.id));
+}
+
+async function toggleConversationSetting(button) {
+  const field = button.dataset.action === "toggle-pin" ? "pinned" : "muted";
+  const value = button.dataset.value === "true";
+  await api("/api/conversations/settings", {
+    method: "PATCH",
+    body: JSON.stringify({
+      kind: button.dataset.kind,
+      key: button.dataset.key,
+      [field]: !value,
+    }),
+  });
+  await refreshSidebar();
 }
 
 async function openGroup(groupId) {
@@ -753,6 +992,9 @@ async function openGroup(groupId) {
   state.activePeer = null;
   state.editingId = null;
   state.pickerMessageId = null;
+  state.replyTo = null;
+  state.mentionSubs = [];
+  state.mentionOpen = false;
   state.messages = [];
   state.nextBefore = null;
   document.getElementById("chat-empty").hidden = true;
@@ -767,6 +1009,7 @@ async function openGroup(groupId) {
 function closeGroupPanel() {
   state.activeGroupId = null;
   state.activeGroup = null;
+  state.replyTo = null;
   state.messages = [];
   state.nextBefore = null;
   document.getElementById("chat-empty").hidden = false;
@@ -831,7 +1074,9 @@ function groupPanelHtml(group) {
         </svg>
       </button>
       <div class="chat-peer">
-        <div class="avatar avatar-placeholder group-avatar" aria-hidden="true">#</div>
+        ${group.avatar_url
+          ? `<img class="avatar group-avatar-img" src="${escapeHtml(group.avatar_url)}" alt="群头像" />`
+          : '<div class="avatar avatar-placeholder group-avatar" aria-hidden="true">#</div>'}
         <span class="chat-peer-main">
           <span class="chat-peer-name">${escapeHtml(group.name)}</span>
           <span class="chat-peer-status">${group.members.length} 位成员</span>
@@ -844,6 +1089,9 @@ function groupPanelHtml(group) {
       <div id="group-messages" class="messages" role="log" aria-live="polite"
         aria-label="群聊记录"></div>
       <form id="group-composer" class="composer">
+        <div id="group-mention-list" class="mention-list" hidden></div>
+        <button id="group-mention-btn" class="icon-btn" type="button"
+          aria-label="提及成员">@</button>
         <button id="group-attach-btn" class="icon-btn" type="button" aria-label="发送附件">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -852,6 +1100,11 @@ function groupPanelHtml(group) {
         </button>
         <input id="group-attach-input" type="file" hidden
           accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain" />
+        <div id="group-reply-bar" class="reply-bar" hidden>
+          <span class="reply-bar-text"></span>
+          <button class="reply-bar-cancel" type="button"
+            data-action="cancel-reply" aria-label="取消引用">×</button>
+        </div>
         <label class="sr-only" for="group-message-input">消息内容</label>
         <textarea id="group-message-input" class="input" rows="1" maxlength="2000"
           placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
@@ -859,6 +1112,20 @@ function groupPanelHtml(group) {
       </form>
     </div>
     <div class="group-panel-body">
+      <section class="group-section">
+        <h3 class="group-section-title">公告</h3>
+        <div class="group-announcement">
+          <p id="group-announcement-text">${escapeHtml(group.announcement || "暂无公告")}</p>
+          ${manager
+            ? `<div class="group-rename-row">
+                <textarea id="group-announcement-input" class="input" rows="2"
+                  maxlength="2000" placeholder="编辑群公告">${escapeHtml(group.announcement || "")}</textarea>
+                <button class="btn btn-secondary btn-sm" type="button"
+                  data-action="group-announcement">发布</button>
+              </div>`
+            : ""}
+        </div>
+      </section>
       <section class="group-section">
         <h3 class="group-section-title">成员</h3>
         <ul class="contact-list">${members}</ul>
@@ -880,6 +1147,13 @@ function groupPanelHtml(group) {
                 <button class="btn btn-secondary btn-sm" type="button"
                   data-action="group-invite" ${candidates.length ? "" : "disabled"}>邀请</button>
               </div>
+              <div class="group-rename-row">
+                <span class="muted">群头像</span>
+                <input id="group-avatar-input" type="file" hidden
+                  accept="image/png,image/jpeg,image/gif,image/webp" />
+                <button class="btn btn-ghost btn-sm" type="button"
+                  data-action="group-avatar-pick">上传头像</button>
+              </div>
             </div>
           </section>`
         : ""}
@@ -898,9 +1172,19 @@ function renderGroupPanel() {
   if (loadOlder) {
     loadOlder.addEventListener("click", () => loadGroupHistory(state.nextBefore));
   }
+  const groupMessages = document.getElementById("group-messages");
+  if (groupMessages) {
+    groupMessages.addEventListener("click", onMessagesClick);
+  }
   const composer = document.getElementById("group-composer");
   if (composer) {
     composer.addEventListener("submit", onGroupComposerSubmit);
+    composer.addEventListener("click", onComposerBarClick);
+    document.getElementById("group-mention-btn").addEventListener("click", toggleMentionList);
+    const mentionList = document.getElementById("group-mention-list");
+    if (mentionList) {
+      mentionList.addEventListener("click", onMentionPick);
+    }
     document.getElementById("group-message-input").addEventListener(
       "keydown",
       onGroupComposerKeydown
@@ -911,7 +1195,33 @@ function renderGroupPanel() {
     document.getElementById("group-attach-input").addEventListener("change", (event) => {
       onAttachSelected(event, true);
     });
+    const avatarPick = document.querySelector("[data-action='group-avatar-pick']");
+    if (avatarPick) {
+      avatarPick.addEventListener("click", () => {
+        document.getElementById("group-avatar-input").click();
+      });
+      document.getElementById("group-avatar-input").addEventListener(
+        "change",
+        onGroupAvatarSelected
+      );
+    }
   }
+}
+
+async function onGroupAvatarSelected(event) {
+  const input = event.target;
+  const file = input.files && input.files[0];
+  if (!file || !state.activeGroupId) return;
+  const form = new FormData();
+  form.append("file", file);
+  const uploadResponse = await api("/api/uploads", { method: "POST", body: form });
+  if (!uploadResponse.ok) return;
+  const upload = await uploadResponse.json();
+  const avatarResponse = await api(`/api/groups/${state.activeGroupId}/avatar`, {
+    method: "POST",
+    body: JSON.stringify({ url: upload.url }),
+  });
+  if (avatarResponse.ok) await refreshGroups();
 }
 
 async function onAttachSelected(event, isGroup) {
@@ -1030,6 +1340,12 @@ async function onGroupPanelClick(event) {
       method: "POST",
       body: JSON.stringify({ member_subs: [sub] }),
     });
+  } else if (action === "group-announcement") {
+    const text = document.getElementById("group-announcement-input").value.trim();
+    await api(`/api/groups/${groupId}/announcement`, {
+      method: "PATCH",
+      body: JSON.stringify({ text }),
+    });
   } else if (action === "group-remove") {
     await api(`/api/groups/${groupId}/members/${encodeURIComponent(button.dataset.sub)}`, {
       method: "DELETE",
@@ -1067,6 +1383,7 @@ async function openChat(sub) {
   state.activePeer = peer;
   state.editingId = null;
   state.pickerMessageId = null;
+  state.replyTo = null;
   state.messages = [];
   state.nextBefore = null;
   document.getElementById("chat-empty").hidden = true;
@@ -1159,6 +1476,7 @@ function loadOlder() {
 function closeChat() {
   sendTyping("stop");
   state.editingId = null;
+  state.replyTo = null;
   state.activeSub = null;
   state.activePeer = null;
   state.messages = [];
@@ -1170,17 +1488,26 @@ function closeChat() {
 
 function messageHtml(message) {
   const own = message.sender_sub === state.me.sub;
+  const mentioned = (message.mentions || []).includes(state.me.sub);
   const readByPeer = state.readUpTo[state.activeSub];
   const read = own && typeof readByPeer === "number" && message.id <= readByPeer;
   const time = new Date(message.created_at).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
+  const replyPreview = message.reply_to
+    ? `<div class="message-reply-preview">${
+        message.reply_to.deleted
+          ? "消息已撤回"
+          : escapeHtml(message.reply_to.content || "")
+      }</div>`
+    : "";
   let body;
   if (message.deleted) {
     body = '<div class="message-bubble message-bubble-deleted">消息已撤回</div>';
   } else if (message.content_type === "image" && message.attachment) {
     body = `<div class="message-bubble message-bubble-attachment">
+      ${replyPreview}
       <img class="attachment-image" src="${escapeHtml(message.attachment.url)}"
         alt="图片消息" loading="lazy" />
       ${message.content
@@ -1189,6 +1516,7 @@ function messageHtml(message) {
     </div>`;
   } else if (message.attachment) {
     body = `<div class="message-bubble message-bubble-attachment">
+      ${replyPreview}
       <a class="attachment-link" href="${escapeHtml(message.attachment.url)}" download>
         📎 ${escapeHtml(message.attachment.name)}</a>
       ${message.content
@@ -1196,25 +1524,40 @@ function messageHtml(message) {
         : ""}
     </div>`;
   } else {
-    body = `<div class="message-bubble">${escapeHtml(message.content)}</div>`;
+    body = `<div class="message-bubble">${replyPreview}${escapeHtml(message.content)}</div>`;
   }
-  const actions = own && !message.deleted && !state.activeGroupId
-    ? `<span class="message-actions">
-        <button class="message-action" type="button"
+  const editActions =
+    own
+      ? `<button class="message-action" type="button"
           data-action="edit" data-id="${message.id}">编辑</button>
+         <button class="message-action" type="button"
+          data-action="withdraw" data-id="${message.id}">撤回</button>`
+      : "";
+  const actions = !message.deleted
+    ? `<span class="message-actions">${editActions}
         <button class="message-action" type="button"
-          data-action="withdraw" data-id="${message.id}">撤回</button>
+          data-action="forward" data-id="${message.id}">转发</button>
+        <button class="message-action${message.starred ? " message-star-on" : ""}" type="button"
+          data-action="star" data-id="${message.id}">${message.starred ? "取消收藏" : "收藏"}</button>
+        <button class="message-action" type="button"
+          data-action="reply" data-id="${message.id}">回复</button>
       </span>`
     : "";
   const editedMark = !message.deleted && message.edited_at
     ? '<span class="message-read">已编辑</span>'
     : "";
-  const reactions = message.deleted || state.activeGroupId ? "" : reactionsHtml(message);
-  return `<div class="message ${own ? "message-own" : "message-other"}">
+  const forwardMark = message.forwarded
+    ? '<span class="message-read">已转发</span>'
+    : "";
+  const mentionMark = mentioned ? '<span class="message-read">@我</span>' : "";
+  const reactions = message.deleted ? "" : reactionsHtml(message);
+  return `<div class="message ${own ? "message-own" : "message-other"}${
+    mentioned ? " message-mentioned" : ""
+  }">
     ${body}
     <div class="message-meta">${escapeHtml(time)}${read
       ? '<span class="message-read">已读</span>'
-      : ""}${editedMark}${actions}</div>
+      : ""}${editedMark}${forwardMark}${mentionMark}${actions}</div>
     ${reactions}
   </div>`;
 }
@@ -1318,20 +1661,103 @@ async function onGroupComposerSubmit(event) {
   const input = document.getElementById("group-message-input");
   const content = input.value.trim();
   if (!content || !state.activeGroupId) return;
-  const response = await api(`/api/groups/${state.activeGroupId}/messages`, {
-    method: "POST",
-    body: JSON.stringify({ content }),
+  const editingId = state.editingId;
+  const url = editingId
+    ? `/api/groups/${state.activeGroupId}/messages/${editingId}`
+    : `/api/groups/${state.activeGroupId}/messages`;
+  const body = { content };
+  if (!editingId && state.replyTo) body.reply_to_id = state.replyTo.id;
+  if (!editingId) body.mentions = state.mentionSubs;
+  const response = await api(url, {
+    method: editingId ? "PATCH" : "POST",
+    body: JSON.stringify(body),
   });
   if (response.ok) {
+    clearReply();
+    state.editingId = null;
+    input.placeholder = "输入消息，Enter 发送，Shift+Enter 换行";
+    state.mentionSubs = [];
+    state.mentionOpen = false;
+    const mentionList = document.getElementById("group-mention-list");
+    if (mentionList) mentionList.hidden = true;
     input.value = "";
     input.focus();
   }
 }
 
+function toggleMentionList() {
+  state.mentionOpen = !state.mentionOpen;
+  renderMentionList();
+}
+
+function renderMentionList() {
+  const list = document.getElementById("group-mention-list");
+  if (!list) return;
+  list.hidden = !state.mentionOpen;
+  if (!state.mentionOpen) return;
+  const members = state.activeGroup
+    ? state.activeGroup.members.filter((member) => member.user.sub !== state.me.sub)
+    : [];
+  list.innerHTML = members
+    .map(
+      (member) => `<button class="mention-option" type="button"
+        data-sub="${escapeHtml(member.user.sub)}">@${escapeHtml(displayName(member.user))}</button>`
+    )
+    .join("") || '<span class="muted">没有可提及的成员</span>';
+}
+
+function onMentionPick(event) {
+  const button = event.target.closest(".mention-option[data-sub]");
+  if (!button) return;
+  const sub = button.dataset.sub;
+  const member = state.activeGroup.members.find((item) => item.user.sub === sub);
+  if (!member) return;
+  if (!state.mentionSubs.includes(sub)) state.mentionSubs.push(sub);
+  const input = document.getElementById("group-message-input");
+  const label = `@${displayName(member.user)} `;
+  input.value = input.value ? `${input.value}${label}` : label;
+  input.focus();
+  state.mentionOpen = false;
+  renderMentionList();
+}
+
 function onGroupComposerKeydown(event) {
+  if (event.key === "Escape" && state.editingId) {
+    cancelEditing();
+    return;
+  }
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     document.getElementById("group-composer").requestSubmit();
+  }
+}
+
+function onComposerBarClick(event) {
+  const button = event.target.closest("[data-action='cancel-reply']");
+  if (button) clearReply();
+}
+
+function setReply(message) {
+  state.replyTo = {
+    id: message.id,
+    text: message.deleted ? "消息已撤回" : message.content || "",
+  };
+  renderReplyBars();
+}
+
+function clearReply() {
+  state.replyTo = null;
+  renderReplyBars();
+}
+
+function renderReplyBars() {
+  for (const id of ["message-reply-bar", "group-reply-bar"]) {
+    const bar = document.getElementById(id);
+    if (!bar) continue;
+    bar.hidden = !state.replyTo;
+    if (state.replyTo) {
+      bar.querySelector(".reply-bar-text").textContent = state.replyTo.text;
+    }
   }
 }
 
@@ -1387,12 +1813,15 @@ async function onComposerSubmit(event) {
   const url = editingId
     ? `/api/conversations/${encodeURIComponent(state.activeSub)}/messages/${editingId}`
     : `/api/conversations/${encodeURIComponent(state.activeSub)}/messages`;
+  const body = { content };
+  if (!editingId && state.replyTo) body.reply_to_id = state.replyTo.id;
   const response = await api(url, {
     method: editingId ? "PATCH" : "POST",
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(body),
   });
   if (response.ok) {
     state.editingId = null;
+    clearReply();
     input.value = "";
     input.placeholder = "输入消息，Enter 发送，Shift+Enter 换行";
     input.focus();
@@ -1403,8 +1832,37 @@ async function onMessagesClick(event) {
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const messageId = button.dataset.id;
+  if (button.dataset.action === "reply") {
+    const message = state.messages.find((item) => String(item.id) === messageId);
+    if (message && !message.deleted) {
+      setReply(message);
+      const input = state.activeGroupId
+        ? document.getElementById("group-message-input")
+        : document.getElementById("message-input");
+      if (input) input.focus();
+    }
+    return;
+  }
+  if (button.dataset.action === "forward") {
+    const message = state.messages.find((item) => String(item.id) === messageId);
+    if (message && !message.deleted) openForwardModal(message);
+    return;
+  }
+  if (button.dataset.action === "star") {
+    const message = state.messages.find((item) => String(item.id) === messageId);
+    if (!message || message.deleted) return;
+    const url = `/api/messages/${messageId}/star`;
+    const response = await api(url, {
+      method: message.starred ? "DELETE" : "PUT",
+    });
+    if (response.ok) {
+      message.starred = !message.starred;
+      renderMessages();
+    }
+    return;
+  }
   const sub = state.activeSub;
-  if (!sub) return;
+  const groupId = state.activeGroupId;
   if (button.dataset.action === "react-picker") {
     const numericId = Number(messageId);
     state.pickerMessageId = state.pickerMessageId === numericId ? null : numericId;
@@ -1416,7 +1874,9 @@ async function onMessagesClick(event) {
     if (!message) return;
     const emoji = button.dataset.emoji;
     const mine = (message.my_reactions || []).includes(emoji);
-    const url = `/api/conversations/${encodeURIComponent(sub)}/messages/${messageId}/reactions`;
+    const url = groupId
+      ? `/api/groups/${groupId}/messages/${messageId}/reactions`
+      : `/api/conversations/${encodeURIComponent(sub)}/messages/${messageId}/reactions`;
     await api(url, {
       method: mine ? "DELETE" : "PUT",
       body: mine ? undefined : JSON.stringify({ emoji }),
@@ -1425,23 +1885,84 @@ async function onMessagesClick(event) {
     return;
   }
   if (button.dataset.action !== "edit" && button.dataset.action !== "withdraw") return;
+  if (!sub && !groupId) return;
   if (button.dataset.action === "edit") {
     const message = state.messages.find((item) => String(item.id) === messageId);
     if (!message || message.deleted) return;
     state.editingId = message.id;
-    const input = document.getElementById("message-input");
+    const input = groupId
+      ? document.getElementById("group-message-input")
+      : document.getElementById("message-input");
     input.value = message.content;
     input.placeholder = "正在编辑消息，Enter 保存，Esc 取消";
     input.focus();
     return;
   }
-  const response = await api(
-    `/api/conversations/${encodeURIComponent(sub)}/messages/${messageId}`,
-    { method: "DELETE" }
-  );
+  const url = groupId
+    ? `/api/groups/${groupId}/messages/${messageId}`
+    : `/api/conversations/${encodeURIComponent(sub)}/messages/${messageId}`;
+  const response = await api(url, { method: "DELETE" });
   if (!response.ok && response.status === 409) {
-    await loadHistory();
+    if (groupId) await loadGroupHistory();
+    else await loadHistory();
   }
+}
+
+function openForwardModal(message) {
+  state.forwardMessageId = message.id;
+  const friends = state.friends
+    .map(
+      (friend) => `<li class="contact-item">
+        <button class="forward-target contact-button" type="button"
+          data-kind="dm" data-target="${escapeHtml(friend.sub)}">
+          ${avatarHtml(friend)}
+          <span class="contact-name">${escapeHtml(displayName(friend))}</span>
+        </button>
+      </li>`
+    )
+    .join("");
+  const groups = state.groups
+    .map(
+      (group) => `<li class="contact-item">
+        <button class="forward-target contact-button" type="button"
+          data-kind="group" data-target="${group.id}">
+          <div class="avatar avatar-placeholder group-avatar" aria-hidden="true">#</div>
+          <span class="contact-name">群：${escapeHtml(group.name)}</span>
+        </button>
+      </li>`
+    )
+    .join("");
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="forward-modal" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <h3 class="modal-title">转发给</h3>
+        <ul class="contact-list forward-list">${friends}${groups}</ul>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" data-action="close-forward">取消</button>
+        </div>
+      </div>
+    </div>`
+  );
+  const modal = document.getElementById("forward-modal");
+  modal.addEventListener("click", async (event) => {
+    const target = event.target.closest(".forward-target");
+    if (target) {
+      const url =
+        target.dataset.kind === "group"
+          ? `/api/groups/${target.dataset.target}/forward`
+          : `/api/conversations/${encodeURIComponent(target.dataset.target)}/forward`;
+      const response = await api(url, {
+        method: "POST",
+        body: JSON.stringify({ message_id: state.forwardMessageId }),
+      });
+      if (response.ok) modal.remove();
+      return;
+    }
+    if (event.target === modal || event.target.closest("[data-action='close-forward']")) {
+      modal.remove();
+    }
+  });
 }
 
 function onComposerKeydown(event) {
@@ -1457,7 +1978,9 @@ function onComposerKeydown(event) {
 
 function cancelEditing() {
   state.editingId = null;
-  const input = document.getElementById("message-input");
+  const input = state.activeGroupId
+    ? document.getElementById("group-message-input")
+    : document.getElementById("message-input");
   input.value = "";
   input.placeholder = "输入消息，Enter 发送，Shift+Enter 换行";
 }
@@ -1596,7 +2119,7 @@ async function startCall(kind) {
   stream.getTracks().forEach((track) => pc.addTrack(track, stream));
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-  sendCallSignal("offer", pc.localDescription.toJSON());
+  sendCallSignal("offer", pc.localDescription.toJSON(), kind);
   showCallOverlay("呼叫中…");
 }
 
@@ -1612,11 +2135,13 @@ function wireCallEvents() {
   };
 }
 
-function sendCallSignal(op, payload = {}) {
+function sendCallSignal(op, payload = {}, kind = null) {
   const call = state.call;
   const peer = call ? call.peerSub : state.activeSub;
   if (!peer || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
-  state.ws.send(JSON.stringify({ type: "call", op, to: peer, payload }));
+  const frame = { type: "call", op, to: peer, payload };
+  if (kind) frame.kind = kind;
+  state.ws.send(JSON.stringify(frame));
 }
 
 function showCallOverlay(status) {
@@ -1762,7 +2287,11 @@ async function acceptIncomingCall() {
   await pc.setRemoteDescription(call.offer);
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
-  sendCallSignal("answer", pc.localDescription.toJSON());
+  sendCallSignal(
+    "answer",
+    pc.localDescription.toJSON(),
+    call.kind === "unknown" ? "audio" : call.kind
+  );
   showCallOverlay("接听中…");
 }
 
@@ -1863,6 +2392,7 @@ window.addEventListener("pageshow", (event) => {
   state.activePeer = null;
   state.editingId = null;
   state.pickerMessageId = null;
+  state.replyTo = null;
   state.groups = [];
   state.activeGroupId = null;
   state.activeGroup = null;
