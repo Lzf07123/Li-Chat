@@ -9,3 +9,5 @@ data/
 *.db
 .DS_Store
 .worktrees/
+# 页面预览截图仅存本地，不入库
+design-system/chat/preview/

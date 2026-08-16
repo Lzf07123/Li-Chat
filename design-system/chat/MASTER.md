@@ -112,4 +112,4 @@ Pre-Delivery Checklist 全部通过（2026-08-16 信使蓝版；2026-08-17 海�
 重验）：无 emoji 图标、可点击元素 cursor-pointer、hover 150–300ms、正文对比度 ≥4.5:1、
 focus-visible 2px 主色描边、reduced-motion 单帧、375/1440 无横向滚动、令牌与文案无硬
 编码、明暗切换无闪烁（首帧内联脚本 + 像素抽样验证：浅 `#F6FBF9` / 深 `#3A3F45`）。
-视觉基线见 [preview/](./preview/)。
+视觉基线截图仅存本地 `design-system/chat/preview/`（已 gitignore，不入库）。
