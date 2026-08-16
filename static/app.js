@@ -4611,26 +4611,56 @@ function replaceMessage(message) {
   }
 }
 
+function submitLogoutForm(action) {
+  state.loggingOut = true;
+  localStorage.removeItem("lichat-session-active");
+  localStorage.setItem("lichat-logout", String(Date.now()));
+  if (state.wsReconnectTimer) {
+    window.clearTimeout(state.wsReconnectTimer);
+    state.wsReconnectTimer = null;
+  }
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = action;
+  const input = document.createElement("input");
+  input.type = "hidden";
+  input.name = "csrf_token";
+  input.value = state.me.csrf_token;
+  form.appendChild(input);
+  document.body.appendChild(form);
+  form.submit();
+}
+
 function logout() {
-  confirmModal("退出登录", "确定要退出当前账号吗？", () => {
-    state.loggingOut = true;
-    localStorage.removeItem("lichat-session-active");
-    localStorage.setItem("lichat-logout", String(Date.now()));
-    if (state.wsReconnectTimer) {
-      window.clearTimeout(state.wsReconnectTimer);
-      state.wsReconnectTimer = null;
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="modal-overlay" id="logout-modal" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <h3 class="modal-title">退出登录</h3>
+        <p class="confirm-message">仅退出本网站，或同时退出所有已授权网站（单点登出）。</p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" data-action="close-logout">取消</button>
+          <button class="btn btn-secondary" type="button" id="logout-local">仅退出本网站</button>
+          <button class="btn btn-danger" type="button" id="logout-sso">退出 SSO</button>
+        </div>
+      </div>
+    </div>`
+  );
+  const modal = document.getElementById("logout-modal");
+  const close = () => modal.remove();
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal || event.target.closest("[data-action='close-logout']")) {
+      close();
     }
-    const form = document.createElement("form");
-    form.method = "POST";
-    form.action = "/oidc/logout";
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = "csrf_token";
-    input.value = state.me.csrf_token;
-    form.appendChild(input);
-    document.body.appendChild(form);
-    form.submit();
-  }, "退出");
+  });
+  document.getElementById("logout-local").addEventListener("click", () => {
+    close();
+    submitLogoutForm("/oidc/logout-local");
+  });
+  document.getElementById("logout-sso").addEventListener("click", () => {
+    close();
+    submitLogoutForm("/oidc/logout");
+  });
 }
 
 function scheduleReconnect() {

@@ -56,6 +56,30 @@ async def test_logout_accepts_csrf_form_field(
     assert response.status_code == 302
 
 
+async def test_logout_local_clears_session_without_end_session(
+    api_client: httpx.AsyncClient,
+    mock_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    await _login(api_client, mock_client)
+    me = (await api_client.get("/api/me")).json()
+    response = await api_client.post(
+        "/oidc/logout-local", headers={"x-csrf-token": me["csrf_token"]}
+    )
+    assert response.status_code == 302
+    assert response.headers["location"] == "/"
+    assert (await db_session.execute(select(Session))).all() == []
+    assert (await api_client.get("/api/me")).status_code == 401
+
+
+async def test_logout_local_without_csrf_returns_403(
+    api_client: httpx.AsyncClient, mock_client: httpx.AsyncClient
+) -> None:
+    await _login(api_client, mock_client)
+    response = await api_client.post("/oidc/logout-local")
+    assert response.status_code == 403
+
+
 async def test_post_logout_accepts_valid_state(api_client: httpx.AsyncClient) -> None:
     signed = sign_state("test-session-secret", "token-1")
     response = await api_client.get("/oidc/post-logout", params={"state": signed})
@@ -89,4 +113,3 @@ def test_logout_disconnects_user_websocket(app) -> None:
             with pytest.raises(WebSocketDisconnect) as exc_info:
                 ws.receive_json()
             assert exc_info.value.code == 4401
-
