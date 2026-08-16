@@ -20,15 +20,18 @@ flowchart LR
 | `app/main.py` | 应用装配、生命周期（建表/建目录）、`/ws`、`/healthz`、静态挂载 |
 | `app/config.py` | `LICHAT_*` 环境变量，生产环境校验会话密钥强度 |
 | `app/db.py` | 异步引擎、`get_db` 依赖 |
-| `app/models.py` | `users` / `auth_states` / `sessions` / `friendships` / `messages` 五张表 |
+| `app/models.py` | `users` / `auth_states` / `sessions` / `friendships` / `messages` / `dm_reads` / `reactions` / `groups` / `group_members` / `group_reads` / `uploads` 十一张表 |
 | `app/auth/` | 本地会话生命周期、Cookie、`get_current_user` / `require_csrf` |
 | `app/oidc/` | 依赖方实现：发现文档、PKCE、授权状态、令牌校验、用户同步 |
 | `app/sso/` | `/oidc/*` 路由、登出 state 签名、jti 防重放（内存/Redis 双实现） |
 | `app/redis.py` | Redis 客户端构建与登出广播订阅（`LICHAT_REDIS_URL` 可选启用） |
-| `app/ws/` | 内存连接表，按用户 sub 管理 WebSocket；跨副本断开经 Redis 广播 |
-| `app/api/` | `/api/me`、用户搜索、好友与单聊薄路由 |
+| `app/ws/` | 内存连接表，按用户 sub 管理 WebSocket；presence/typing/call 信令中继；跨副本断开经 Redis 广播 |
+| `app/api/` | `/api/me`、用户搜索、好友、单聊与群聊薄路由 |
 | `app/friends/` | 好友业务：搜索、关系状态、申请生命周期 |
 | `app/messages/` | 消息业务：发送、历史分页、长度/关系校验 |
+| `app/groups/` | 群聊业务：建群、成员、角色与权限矩阵 |
+| `app/uploads/` | 附件业务：内容嗅探、随机文件名、鉴权回源 |
+| `app/search/` | 搜索业务：消息检索（可见范围 + 游标 + snippet）与联系人检索 |
 | `static/` | 同源前端（登录、好友双栏、单聊、在线状态、退出） |
 | `tests/fixtures/mock_idp.py` | 本地模拟 IdP，测试零外网依赖 |
 
@@ -36,11 +39,17 @@ flowchart LR
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `users` | `sub`(PK)、nickname、name、picture、email | 门户 UUID 作主键，登录时 upsert |
+| `users` | `sub`(PK)、nickname、name、picture、email、bio、last_seen_at | 门户 UUID 作主键，登录时 upsert；昵称/头像仅空值回填（本地编辑优先），bio 仅好友可见；last_seen_at 在 WS 连接与心跳时刷新 |
 | `auth_states` | `state`(PK)、verifier、nonce、redirect_after、expires_at | 授权状态，单次使用 |
 | `sessions` | `id`(PK)、user_sub、sid、acr、csrf_token、expires_at、absolute_expires_at | 绑定门户会话 `(sub, sid)`，支撑回程登出 |
 | `friendships` | `requester_sub+addressee_sub`(复合 PK)、status、created_at、updated_at | 申请方向由 requester 表达；`pending`/`accepted`，无自环约束 |
-| `messages` | `id`(自增，SQLite INTEGER/PostgreSQL BIGINT)、sender_sub、recipient_sub、participant_lo/hi、content、created_at | `(participant_lo, participant_hi, id)` 索引支撑会话历史 |
+| `messages` | `id`(自增，SQLite INTEGER/PostgreSQL BIGINT)、sender_sub、recipient_sub、participant_lo/hi、content、conversation_type(dm/group)、group_id、content_type(text/image/file)、attachment_*、edited_at、deleted_at、created_at | DM 用 `(participant_lo, participant_hi, id)` 索引；群消息按 `(group_id, id)` 索引，recipient/participant 以 `group:{id}` 哨兵占位兼容旧约束；撤回清空 content 留墓碑 |
+| `dm_reads` | `user_sub+participant_lo+participant_hi`(复合 PK)、last_read_message_id、updated_at | 单聊已读游标，只前进；未读 = 对方消息 id 大于游标 |
+| `reactions` | `message_id+user_sub+emoji`(复合 PK)、created_at | 幂等 toggle；聚合计数回显，不泄露非上榜用户 |
+| `groups` | `id`、name、owner_sub、created_at、updated_at | 群元数据；owner 变更随转让同步 |
+| `group_members` | `group_id+user_sub`(复合 PK)、role(owner/admin/member)、joined_at | 角色约束 + 权限矩阵在 service 层强校验 |
+| `group_reads` | `user_sub+group_id`(复合 PK)、last_read_message_id、updated_at | 群已读游标，只前进；未读 = 群消息 id 大于游标且非本人发送 |
+| `uploads` | `id`、owner_sub、filename(唯一)、original_name、mime、size、created_at | 随机文件名防遍历；仅上传者可回源 |
 
 ## 关键链路
 
@@ -52,4 +61,4 @@ flowchart LR
 
 **回程登出**：门户 POST `logout_token` → 验 iss/aud/120 秒窗/jti/events → 清 `(sub, sid)` 会话并主动断开该用户 WS。
 
-**实时通道**：`/ws` 握手校验同源 Cookie，无效以 4401 关闭；心跳 ping/pong；回程登出触发服务端断开。除心跳外，服务端按需推送 `message`（新消息，双方）与 `friend_event`（申请/接受/拒绝/解除，相关方）。
+**实时通道**：`/ws` 握手校验同源 Cookie，无效以 4401 关闭；心跳 ping/pong；回程登出触发服务端断开。除心跳外，服务端按需推送 `message`（新消息：单聊双方 / 群全体）、`message_edited`/`message_deleted`（编辑/撤回，单聊双方）、`message_reaction`（回应增删，单聊双方）、`read_receipt`（已读回执：单聊会话另一方 / 群全体）、`presence`（好友上线/下线）、`group_event`（建群/成员/角色变更，群全体）、`call`（音视频呼叫信令，对端）与 `friend_event`（申请/接受/拒绝/解除，相关方）；客户端可发 `typing` 与 `call` 信令，服务端校验好友关系并限频后中继。

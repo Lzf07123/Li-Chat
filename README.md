@@ -10,7 +10,13 @@
 - 同源前端：登录、资料展示、在线状态、心跳保活、退出
 - 好友：按昵称/邮箱搜索、申请与处理、列表与解除
 - 好友推荐：随机推荐未建立关系的人，一键添加、刷新换一批
-- 单聊：纯文本实时收发、历史分页拉取（未读/已读与离线推送在下一里程碑）
+- 单聊：纯文本实时收发、历史分页拉取、未读计数与已读回执、消息编辑与撤回、表情回应
+- 在线状态与正在输入：好友在线圆点、last_seen、输入中提示
+- 群聊：建群、成员邀请/移除、群主/管理员角色、转让与退出、群消息与群已读
+- 附件与图片消息：图片/文件上传、在线预览与下载
+- 全文搜索：聊天记录关键词检索（命中高亮片段）与联系人搜索
+- 个人资料：昵称/简介编辑与头像上传（SSO 资料仅空值回填）
+- 音视频呼叫：WebRTC 1:1 通话（服务端信令中继，媒体 P2P）
 
 ## 快速开始
 
@@ -33,7 +39,7 @@ docker compose up -d --build   # 默认附带编排内 redis（jti 防重放/跨
 ## 质量门禁
 
 ```bash
-uv run pytest -q      # 107 个测试
+uv run pytest -q      # 172 个测试
 uv run ruff check .
 uv run mypy app
 ```
@@ -44,7 +50,7 @@ uv run mypy app
 app/
 ├── main.py        # 应用装配、生命周期、/ws、/healthz、静态挂载
 ├── config.py      # LICHAT_* 环境变量
-├── models.py      # users / auth_states / sessions / friendships / messages 五张表
+├── models.py      # users / auth_states / sessions / friendships / messages / dm_reads / reactions / groups / group_members / group_reads / uploads 十一张表
 ├── auth/          # 本地会话与鉴权依赖
 ├── oidc/          # 依赖方实现（发现、PKCE、令牌校验、用户同步）
 ├── sso/           # /oidc/* 路由、登出签名、jti 防重放
@@ -53,7 +59,7 @@ app/
 ├── friends/       # 好友业务：搜索、关系状态、申请生命周期
 └── messages/      # 消息业务：发送、历史分页、校验
 static/            # 同源前端（index.html + app/brand/theme/ambient.js + style.css 令牌）
-tests/             # 107 个测试 + 本地模拟 IdP
+tests/             # 172 个测试 + 本地模拟 IdP
 design-system/     # 品牌设计（chat/ 项目方案 + template/ Li-Design 子模块）
 Dockerfile         # 容器镜像（python:3.12-slim + uv，非 root 运行）
 docker-compose.yaml # 容器编排（单服务 + SQLite 命名卷）
@@ -81,5 +87,5 @@ docs/              # 架构、接口、部署、安全文档
 
 - [x] 里程碑一：Li&Pass 统一单点登录
 - [x] 里程碑二：好友关系与一对一实时聊天
-- [ ] 里程碑三：群聊、未读/已读、离线推送
-- [ ] 里程碑四：音视频（WebRTC）与更多扩展
+- [ ] 里程碑三：群聊、未读/已读、离线推送（群聊与未读/已读已交付，离线推送待定）
+- [ ] 里程碑四：音视频（WebRTC）与更多扩展（1:1 呼叫信令已交付，群呼叫/媒体服务待定）

@@ -4,6 +4,45 @@
 
 ### 功能
 
+- 音视频呼叫信令（里程碑四起点）：WS `call` 协议 `offer/answer/ice/reject/end` 与
+  `busy/invalid/unavailable/error` 应答；仅好友间、载荷 ≤16KB、ICE 限频、进程内状态机
+  （idle→ringing→connected→ended）、信令不落库不记日志；前端 WebRTC 1:1 呼叫（发起/来电
+  接听/拒绝/挂断）；媒体为 P2P，服务端只中转信令
+- 个人资料与头像：`PATCH /api/me`（昵称 1–32 / 简介 ≤200，简介仅好友可见）、
+  `POST /api/me/avatar`（引用本人上传的图片，非图片 422 / 他人附件 403）；前端资料编辑弹层
+  与头像上传
+- 全文搜索：`GET /api/search?kind=messages|contacts`——消息检索限定自己可见范围（单聊双方 /
+  群成员）、LIKE 不区分大小写、倒序游标分页、命中片段前后截断脱敏；联系人检索复用好友搜索
+  语义（附 friend_status）；前端搜索框「用户/消息」双模式、命中跳转与加载更多
+- 附件与图片消息：上传端点（`LICHAT_UPLOAD_MAX_MB` 默认 10、≤20；内容嗅探白名单
+  jpeg/png/gif/webp/pdf/txt，拒绝 SVG/HTML 与伪造类型；随机文件名防遍历）、`uploads`
+  表、会话鉴权回源（仅上传者可下载、nosniff、图片 inline / 其他 attachment）、消息
+  `content_type + attachment` 元数据（单聊 + 群）与附件归属校验；前端附件按钮与图片/文件
+  消息渲染
+- 群消息与群已读（里程碑三核心）：`messages` 会话抽象（`conversation_type dm|group` +
+  `group_id`，SQLite 兼容迁移自动补列、旧 DM 数据不动；群消息以 `group:{id}` 哨兵占位
+  recipient/participant 满足旧库约束）、`group_reads` 已读游标（只前进）、群发送/历史
+  分页/标记已读（仅成员）、`GET /api/conversations` 合并群摘要（peer/group 二选一）、WS
+  群消息与群已读回执广播全成员；前端群聊天区、群未读徽标、打开即已读
+- 群聊管理（里程碑三）：建群（初始成员必须为创建者好友、单请求 ≤20、容量 200）、群列表/
+  详情、改名（owner/admin）、邀请（owner/admin，好友闸）、移除（admin 不得移除 owner 或
+  admin，owner 可移除 admin）、角色调整（owner 专属）、退出（owner 需先转让）、转让群主；
+  WS `group_event` 全成员广播；前端群列表、建群弹层、群详情与成员/角色管理
+- 表情回应：`reactions` 表复合主键幂等 toggle（`PUT`/`DELETE
+  /api/conversations/{sub}/messages/{id}/reactions`，emoji 1–8 字符、禁空白与控制符、
+  已撤回 409、非参与者 404）；历史消息附 `reactions` 聚合与 `my_reactions`；WS
+  `message_reaction` 定向双方；前端回应栏 + 快捷 emoji + 点击切换
+- 消息编辑与撤回：发送者 5 分钟内可 `PATCH` 编辑（回显 `edited_at`）或 `DELETE` 撤回
+  （content 清空落库，历史与 WS 只回墓碑不泄露原文）；WS `message_edited`/
+  `message_deleted` 定向双方；前端编辑态与撤回按钮、墓碑与「已编辑」标记
+- 在线状态与正在输入：好友上线/下线 presence 广播（仅好友可见）、`users.last_seen_at`
+  （连接与心跳写入）、`GET /api/friends` 附 `online`/`last_seen_at`；typing `start/stop`
+  定向中继（仅好友、2 秒限频、非法/非好友静默丢弃）；前端好友在线圆点、会话头部在线
+  状态与「正在输入…」提示
+- 未读计数与已读回执（里程碑三起点）：会话列表摘要（最后消息 + 未读数 + 已读游标）、
+  `GET /api/conversations` 与 `POST /api/conversations/{sub}/read`（游标只前进、消息必须
+  属于该会话、非好友 403）、WS `read_receipt` 定向回执、发送方发送后自动推进游标；前端
+  好友栏未读徽标与最后消息预览、打开会话即标记已读、消息气泡「已读」指示
 - UI 首次设计实例化：品牌令牌（信使蓝 `#2563EB`）、明暗双主题 + 首帧防闪烁、几何 Logo/favicon、Canvas 环境呼吸层、AuthShell/AppShell 外壳与无障碍（focus-visible / aria-live / 44px 热区 / reduced-motion）
 - Redis 接入（`LICHAT_REDIS_URL`）：jti 防重放改为 `SET NX EX` 原子判重，回程登出经 `lichat:logout` 频道跨副本广播断开 WS；未配置时保持进程内行为，配置后启动 PING 失败即拒绝启动
 - 好友与单聊（里程碑二）：昵称/邮箱关键词搜索（不回传邮箱）、申请-同意制好友关系（accept/reject/撤回/解除）、单向解除关系且历史保留、纯文本一对一实时聊天（REST 落库 + WS 双向推送）、历史消息倒序游标分页
@@ -24,6 +63,10 @@
 
 ### 行为变更
 
+- SSO 资料同步改为「昵称/头像仅空值回填」：本地编辑的个人资料不再被门户 userinfo 覆盖
+  （`name`/`email` 仍随登录同步）
+- SQLite 连接启用 `journal_mode=WAL` 与 `busy_timeout=5000`：缓解读写并发互锁与瞬时
+  锁竞争（生产同样受益；PostgreSQL 不受影响）
 - OIDC 授权 scope 默认加入 `email`：登录时向 Li&Pass 请求邮箱并同步到本地资料，支撑「按邮箱搜索好友」；未验证邮箱不阻塞登录（仅存储 `email_verified` 标记），授权同意页可能多一项邮箱授权
 - RP 登出携带 `id_token_hint`：登录时把 `id_token` 存进本地会话（仅作登出提示），网站内退出登录跳门户 `end-session` 时随 `client_id` 一起携带，门户据此展示「退出所有会话 / 仅退出当前网站」确认页，而不是打回授权确认
 - 移除 `/oidc/post-logout` 的兼容逻辑：该端点恢复标准形态（仅 GET 带签名 `state` 回跳，验签后 302 首页），POST/`logout_token` 一律 405；回程登出统一走 `/oidc/backchannel-logout`

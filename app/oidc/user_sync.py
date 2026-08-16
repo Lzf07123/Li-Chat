@@ -16,9 +16,11 @@ async def upsert_user(db: AsyncSession, userinfo: dict[str, Any]) -> User:
     if user is None:
         user = User(sub=sub)
         db.add(user)
-    user.nickname = userinfo.get("nickname")
+    if not user.nickname:
+        user.nickname = userinfo.get("nickname")
+    if not user.picture:
+        user.picture = userinfo.get("picture")
     user.name = userinfo.get("name")
-    user.picture = userinfo.get("picture")
     user.email = userinfo.get("email")
     user.email_verified = userinfo.get("email_verified")
     await db.commit()

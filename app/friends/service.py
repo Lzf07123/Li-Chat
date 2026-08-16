@@ -174,7 +174,14 @@ async def list_friends(db: AsyncSession, me_sub: str) -> list[dict[str, str | No
             await db.execute(select(User).where(User.sub.in_(set(others))))
         ).scalars().all()
         users = {user.sub: user for user in found}
-    return [profile(users[sub]) for sub in others if sub in users]
+    def _with_seen(user: User) -> dict[str, str | None]:
+        return {
+            **profile(user),
+            "last_seen_at": iso_utc(user.last_seen_at) if user.last_seen_at else None,
+            "bio": user.bio,
+        }
+
+    return [_with_seen(users[sub]) for sub in others if sub in users]
 
 
 async def remove_relationship(

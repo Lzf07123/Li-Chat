@@ -27,6 +27,8 @@ class Settings(BaseSettings):
 
     logout_token_max_skew: int = 120
     discovery_cache_ttl: int = 300
+    upload_max_mb: int = 10
+    upload_dir: str = "./data/uploads"
 
     @property
     def discovery_url(self) -> str:
@@ -41,4 +43,11 @@ class Settings(BaseSettings):
     def _validate_session_secret(cls, value: str, info: ValidationInfo) -> str:
         if info.data.get("env") == "prod" and len(value) < 32:
             raise ValueError("session_secret must be at least 32 characters in prod")
+        return value
+
+    @field_validator("upload_max_mb")
+    @classmethod
+    def _validate_upload_max(cls, value: int) -> int:
+        if not 1 <= value <= 20:
+            raise ValueError("upload_max_mb must be between 1 and 20")
         return value

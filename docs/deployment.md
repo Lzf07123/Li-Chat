@@ -58,6 +58,8 @@ compose 默认随 `chat` 启动一个编排内 redis（7-alpine、AOF、192mb、
 | `LICHAT_SESSION_COOKIE_NAME` | `lichat_session` | 会话 Cookie 名 |
 | `LICHAT_LOGOUT_TOKEN_MAX_SKEW` | `120` | 回程登出令牌允许时钟偏差（秒）；jti 缓存保留 = 该值 + 60 |
 | `LICHAT_DISCOVERY_CACHE_TTL` | `300` | 发现文档缓存时长（秒） |
+| `LICHAT_UPLOAD_MAX_MB` | `10` | 单文件大小上限（MB，1–20） |
+| `LICHAT_UPLOAD_DIR` | `./data/uploads` | 附件存储目录；容器部署建议挂卷持久化 |
 
 compose 插值变量（应用忽略）：`LICHAT_PORT`（宿主机端口）、`REDIS_PASSWORD` / `REDIS_APPENDONLY` / `REDIS_MAXMEMORY`（编排内 redis）、`TZ`、`PYPI_INDEX_URL` / `APT_MIRROR`（构建镜像源）、`BASE_IMAGE_REGISTRY`（基础镜像加速）与 `IMAGE_REGISTRY`（应用镜像前缀）。完整模板见 `.env.example`。
 
@@ -73,3 +75,11 @@ compose 插值变量（应用忽略）：`LICHAT_PORT`（宿主机端口）、`R
 ## Issuer 注意事项
 
 发现文档声明的 `issuer` 与五个端点为 `http://account.lizf.cn`（http 字面值），但传输层实际走 https。本实现自 2026-08-16 起把五个传输端点统一升级为 https（`issuer` 保留原文用于严格校验）；建议推动 Li&Pass 侧将 issuer 改为 https，修改后无需改代码（发现文档启动时拉取并按 TTL 缓存）。
+
+## 数据库结构演进（SQLite 开发库）
+
+应用启动时 `Base.metadata.create_all` 建表，并对既有 SQLite 库做增量补列（`sessions.id_token`、
+`users.last_seen_at`、`messages.edited_at/deleted_at/conversation_type/group_id`）。群消息
+引入后，`messages.recipient_sub` 与 `participant_lo/hi` 对群消息以 `group:{id}` 哨兵占位，
+旧库无需重建即可写入群消息；数据迁移到 PostgreSQL 时需用 Alembic 重建等价语义（届时再收敛
+哨兵设计）。

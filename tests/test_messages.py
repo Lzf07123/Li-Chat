@@ -194,10 +194,19 @@ def test_message_pushed_to_both_parties_over_ws(app: Any) -> None:
                     headers={"x-csrf-token": alice_csrf},
                 )
                 assert response.status_code == 201
-                alice_event = alice_ws.receive_json()
-            bob_event = bob_ws.receive_json()
+                alice_event = _receive_type(alice_ws, "message")
+            bob_event = _receive_type(bob_ws, "message")
     assert alice_event["type"] == "message"
     assert alice_event["message"]["content"] == "实时"
     assert bob_event["type"] == "message"
     assert bob_event["message"]["content"] == "实时"
     assert bob_event["message"]["id"] == alice_event["message"]["id"]
+
+
+def _receive_type(ws: Any, expected: str) -> dict[str, Any]:
+    """presence 帧可能因广播时序插队，容忍跳过直到命中预期类型。"""
+    for _ in range(4):
+        event = ws.receive_json()
+        if event.get("type") == expected:
+            return event
+    raise AssertionError(f"expected ws event type {expected!r}")
