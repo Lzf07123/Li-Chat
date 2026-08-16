@@ -337,3 +337,11 @@ async def test_v59_group_event_convergence(api_client: httpx.AsyncClient) -> Non
     text = await _app_js(api_client)
     assert "你已不在该群聊中" in text
     assert "你的角色已变更为" in text
+
+
+async def test_v61_accessibility_focus_management(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function trapTab(" in text
+    assert "MutationObserver" in text
+    assert "lastFocusElement" in text
+    assert 'aria-modal="true"' in text

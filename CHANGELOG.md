@@ -4,6 +4,8 @@
 
 ### 功能
 
+- 无障碍收口（v61）：弹层打开自动聚焦首个可交互元素、Tab/Shift+Tab 焦点陷阱、关闭后焦点
+  还原触发元素（MutationObserver 统一接管）；保留 aria-modal/role=dialog 与屏幕阅读器语义
 - 端到端场景回归（v60）：`tests/test_e2e_flow.py` 用真实 WS 连接跑通「申请附言→接受→
   单聊→已读→建群→@提及→投票→禁言→解散」全链路，逐帧断言 friend/message/read_receipt/
   group_event/poll_event/notification 广播与 403/404 边界

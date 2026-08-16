@@ -1119,6 +1119,10 @@ function confirmModal(title, message, onConfirm, confirmLabel = "确认") {
 
 function onGlobalKeydown(event) {
   const mod = event.ctrlKey || event.metaKey;
+  if (event.key === "Tab") {
+    const modal = document.querySelector(".modal-overlay");
+    if (modal) trapTab(modal, event);
+  }
   if (mod && event.key.toLowerCase() === "k") {
     event.preventDefault();
     const input = document.getElementById("search-input");
@@ -1171,6 +1175,45 @@ function onGlobalKeydown(event) {
     event.preventDefault();
     openShortcutsModal();
   }
+}
+
+let lastFocusElement = null;
+
+function trapTab(modal, event) {
+  const focusable = modal.querySelectorAll(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  );
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function initFocusTracking() {
+  const observer = new MutationObserver(() => {
+    const openModal = document.querySelector(".modal-overlay");
+    if (openModal) {
+      if (!openModal.contains(document.activeElement)) {
+        if (!lastFocusElement || !document.contains(lastFocusElement)) {
+          lastFocusElement = document.activeElement;
+        }
+        const focusable = openModal.querySelector(
+          "input, textarea, select, button, [href]"
+        );
+        if (focusable) focusable.focus();
+      }
+    } else if (lastFocusElement && document.contains(lastFocusElement)) {
+      lastFocusElement.focus();
+      lastFocusElement = null;
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
 }
 
 function updateTitleBadge() {
@@ -4667,4 +4710,5 @@ window.addEventListener("pageshow", (event) => {
 });
 
 ensureFreshFrontend();
+initFocusTracking();
 loadMe();
