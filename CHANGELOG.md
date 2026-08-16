@@ -4,6 +4,8 @@
 
 ### 功能
 
+- 群文件面板（v35）：`GET /api/groups/{id}/files` 聚合群内文件/语音附件（仅成员、倒序游标
+  ≤50、排除已撤回）；前端群详情新增「文件」区（图标/文件名/大小/日期 + 加载更多），点击下载
 - 语音消息（v34）：上传白名单增 `audio/webm`（EBML 魔数）与 `audio/mp4`（ftyp 魔数），
   消息 `content_type` 增 `audio`；前端麦克风按钮录音（MediaRecorder、时长计时、停止即上传
   发送），语音气泡 `<audio controls>` 播放；伪造类型仍 415

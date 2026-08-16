@@ -40,6 +40,8 @@ const state = {
   groups: [],
   activeGroupId: null,
   activeGroup: null,
+  groupFiles: [],
+  groupFilesNext: null,
   messages: [],
   call: null,
   nextBefore: null,
@@ -1446,6 +1448,8 @@ async function openGroup(groupId, locateId = null) {
   state.replyTo = null;
   state.mentionSubs = [];
   state.mentionOpen = false;
+  state.groupFiles = [];
+  state.groupFilesNext = null;
   state.messages = [];
   state.nextBefore = null;
   document.getElementById("chat-empty").hidden = true;
@@ -1455,6 +1459,7 @@ async function openGroup(groupId, locateId = null) {
   document.getElementById("app").classList.add("chat-open");
   await loadGroupHistory();
   await markGroupRead();
+  await loadGroupFiles();
   if (locateId) await locateMessage(locateId);
 }
 
@@ -1463,6 +1468,8 @@ function closeGroupPanel() {
   state.activeGroupId = null;
   state.activeGroup = null;
   state.replyTo = null;
+  state.groupFiles = [];
+  state.groupFilesNext = null;
   state.messages = [];
   state.nextBefore = null;
   document.getElementById("chat-empty").hidden = false;
@@ -1602,7 +1609,12 @@ function groupPanelHtml(group) {
                   data-action="group-announcement">发布</button>
               </div>`
             : ""}
-        </div>
+          </div>
+      </section>
+      <section class="group-section">
+        <h3 class="group-section-title">文件</h3>
+        <p id="group-files-empty" class="sidebar-empty">暂无共享文件</p>
+        <ul id="group-files-list" class="contact-list"></ul>
       </section>
       <section class="group-section">
         <h3 class="group-section-title">成员</h3>
@@ -1647,6 +1659,7 @@ function groupPanelHtml(group) {
 function renderGroupPanel() {
   const panel = document.getElementById("group-panel");
   panel.innerHTML = groupPanelHtml(state.activeGroup);
+  renderGroupFiles();
   const back = document.getElementById("group-back");
   if (back) back.addEventListener("click", closeGroupPanel);
   const loadOlder = document.getElementById("group-load-older");
@@ -1976,6 +1989,59 @@ async function refreshGroups() {
   }
 }
 
+function fileSizeLabel(size) {
+  if (size === null || size === undefined) return "";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+async function loadGroupFiles(before) {
+  if (state.activeGroupId === null) return;
+  let url = `/api/groups/${state.activeGroupId}/files?limit=30`;
+  if (before) url += `&before=${before}`;
+  const response = await api(url);
+  if (!response.ok) return;
+  const body = await response.json();
+  if (before) {
+    state.groupFiles = state.groupFiles.concat(body.files);
+  } else {
+    state.groupFiles = body.files;
+  }
+  state.groupFilesNext = body.next_before;
+  renderGroupFiles();
+}
+
+function renderGroupFiles() {
+  const list = document.getElementById("group-files-list");
+  if (!list) return;
+  const empty = document.getElementById("group-files-empty");
+  const items = state.groupFiles
+    .map((file) => {
+      const icon = file.mime && file.mime.startsWith("audio/") ? "🎵" : "📎";
+      const time = new Date(file.created_at).toLocaleDateString([], {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+      return `<li class="contact-item">
+        <a class="contact-button group-file-link" href="${escapeHtml(file.url || "")}" download>
+          <span class="contact-main">
+            <span class="contact-name">${icon} ${escapeHtml(file.name || "附件")}</span>
+            <span class="contact-preview">${fileSizeLabel(file.size)} · ${escapeHtml(time)}</span>
+          </span>
+        </a>
+      </li>`;
+    })
+    .join("");
+  const more = state.groupFilesNext
+    ? `<li class="contact-item"><button class="btn btn-ghost btn-sm" type="button"
+        data-action="group-files-more" data-before="${state.groupFilesNext}">加载更多</button></li>`
+    : "";
+  list.innerHTML = items + more;
+  if (empty) empty.hidden = state.groupFiles.length > 0;
+}
+
 function openGroupCreateModal() {
   document.body.insertAdjacentHTML(
     "beforeend",
@@ -2039,6 +2105,10 @@ async function onGroupPanelClick(event) {
   const groupId = state.activeGroupId;
   if (groupId === null) return;
   const action = button.dataset.action;
+  if (action === "group-files-more") {
+    await loadGroupFiles(Number(button.dataset.before));
+    return;
+  }
   if (action === "group-rename") {
     const name = document.getElementById("group-rename-input").value.trim();
     if (!name) return;

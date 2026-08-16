@@ -48,6 +48,7 @@
 | POST | `/api/groups/{id}/avatar` | 会话 + CSRF | 群头像 `{"url"}`（本人上传的图片；owner/admin） |
 | POST | `/api/groups/{id}/messages` | 会话 + CSRF | 群发消息（文本/附件/引用/提及，语义同单聊；仅成员；mentions 须为群成员）；201 返回消息（附 `group_id`）；WS 推全成员 |
 | GET | `/api/groups/{id}/messages?limit=&before=` | 会话 | 群历史倒序分页（仅成员；参数语义同单聊） |
+| GET | `/api/groups/{id}/files?limit=&before=` | 会话 | 群内文件/语音附件聚合（仅成员，倒序游标 ≤50）；`{"files":[{message_id,sender_sub,name,size,mime,url,created_at}],"next_before"}` |
 | PATCH | `/api/groups/{id}/messages/{mid}` | 会话 + CSRF | 群消息编辑（发送者、未撤回、5 分钟内；非成员 404 / 非发送者 403） |
 | DELETE | `/api/groups/{id}/messages/{mid}` | 会话 + CSRF | 群消息撤回（同上鉴权；墓碑不含原文） |
 | PUT | `/api/groups/{id}/messages/{mid}/reactions` | 会话 + CSRF | 群消息回应（仅成员，幂等） |

@@ -159,3 +159,10 @@ async def test_v34_voice_message_ui(api_client: httpx.AsyncClient) -> None:
     assert "voice-btn" in text
     assert "voice-player" in text
     assert "<audio" in text
+
+
+async def test_v35_group_files_panel(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "function loadGroupFiles(" in text
+    assert "group-files-list" in text
+    assert "group-files-more" in text

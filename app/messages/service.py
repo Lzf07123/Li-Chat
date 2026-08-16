@@ -569,6 +569,48 @@ async def group_history(
     return page, next_before
 
 
+async def group_files(
+    db: AsyncSession,
+    me_sub: str,
+    group_id: int,
+    *,
+    before: int | None = None,
+    limit: int = HISTORY_DEFAULT_LIMIT,
+) -> tuple[list[dict[str, Any]], int | None]:
+    if await group_membership(db, group_id, me_sub) is None:
+        raise HTTPException(status_code=404, detail="group not found")
+    stmt = (
+        select(Message)
+        .where(
+            Message.conversation_type == "group",
+            Message.group_id == group_id,
+            Message.content_type.in_(["file", "audio"]),
+        )
+        .order_by(Message.id.desc())
+        .limit(limit + 1)
+    )
+    if before is not None:
+        stmt = stmt.where(Message.id < before)
+    rows = (await db.execute(stmt)).scalars().all()
+    has_more = len(rows) > limit
+    page = list(rows[:limit])
+    items = [
+        {
+            "message_id": message.id,
+            "sender_sub": message.sender_sub,
+            "name": message.attachment_name,
+            "size": message.attachment_size,
+            "mime": message.attachment_mime,
+            "url": message.attachment_url,
+            "created_at": iso_utc(message.created_at),
+        }
+        for message in page
+        if message.attachment_url is not None and message.deleted_at is None
+    ]
+    next_before = page[-1].id if has_more and page else None
+    return items, next_before
+
+
 async def mark_group_read(
     db: AsyncSession, me_sub: str, group_id: int, last_read_id: int
 ) -> None:

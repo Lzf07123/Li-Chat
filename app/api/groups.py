@@ -52,6 +52,21 @@ class GroupOut(BaseModel):
     members: list[MemberOut]
 
 
+class GroupFileOut(BaseModel):
+    message_id: int
+    sender_sub: str
+    name: str | None = None
+    size: int | None = None
+    mime: str | None = None
+    url: str | None = None
+    created_at: str
+
+
+class GroupFilesOut(BaseModel):
+    files: list[GroupFileOut]
+    next_before: int | None
+
+
 class AnnouncementIn(BaseModel):
     text: str
 
@@ -186,6 +201,20 @@ async def group_detail(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> GroupOut:
     return GroupOut.model_validate(await service.get_group(db, user.sub, group_id))
+
+
+@router.get("/{group_id}/files", response_model=GroupFilesOut)
+async def group_files(
+    group_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    before: Annotated[int | None, Query(ge=1)] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 50,
+) -> GroupFilesOut:
+    files, next_before = await messages_service.group_files(
+        db, user.sub, group_id, before=before, limit=limit
+    )
+    return GroupFilesOut(files=files, next_before=next_before)
 
 
 @router.patch("/{group_id}", response_model=GroupOut)
