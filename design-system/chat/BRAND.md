@@ -1,8 +1,8 @@
 # Li&Chat · 品牌 UI 设计报告
 
-> **版本**：V1.1 ｜ **日期**：2026-08-16 ｜ **状态**：已发布（后续统一风格以本文件为准）
-> **V1.2 模板同步**：2026-08-17 ｜ 槽位 20 → 22、主按钮半透明着色 + 扫光、认证卡辉光落地；
-> 海玻璃为 Li&Pass 专属配色，Li&Chat 维持信使蓝、不整体换肤（取舍见槽位 21/22 与 §6 治理）。
+> **版本**：V1.2 ｜ **日期**：2026-08-17 ｜ **状态**：已发布（后续统一风格以本文件为准）
+> **模板同步**：槽位 20 → 22、主按钮半透明着色 + 扫光、认证卡辉光落地；按用户指令**全量
+> 采纳 Li-Design 模板 V1.2 海玻璃配色方案**（浅色全淡色 + 深色雾灰中间调 + 强调色板）。
 > **适用范围**：static/ 全部前端界面（登录外壳、登录后外壳）。
 > **配套文档**：实现速览见 [MASTER.md](./MASTER.md)；代码事实以 `static/style.css` 令牌与 `static/brand.js` 为准。
 
@@ -28,13 +28,18 @@
 
 ### 3.1 色彩系统
 
-主色 = 信使蓝 `#2563EB`（浅）/ `#60A5FA`（深），按 ui-ux-pro-max 规则库「Chat & Messaging App」首选确定（见设计规格 §3）。
+主色 = 海玻璃 `#25786D`（浅）/ `#7FD4C6`（深），全淡色、无粉色、无大面积重色
+（Li-Design 模板 V1.2 定稿口径，见设计规格 `2026-08-17-design-template-v12-palette-adoption-design.md`）。
 
-浅色：bg `#F8FAFC` / surface `#FFFFFF` / surface-2 `#F1F5F9` / fg `#0F172A` / muted `#64748B` / border `#E2E8F0`；primary `#2563EB` hover `#1D4ED8` soft `#DBEAFE` fg `#FFFFFF`；success `#15803D` / warning `#B45309` / destructive `#DC2626` 及 soft；ring `#2563EB`。
+浅色：bg `#F6FBF9` / surface `#FFFFFF` / surface-2 `#EEF6F3` / fg `#35423F` / muted `#64736C` / border `#E1ECE8`；primary `#25786D` hover `#1F6359` soft `#D9F4EE` fg `#FFFFFF`；secondary `#2F678F` / soft `#DFF1FA`；success `#2A7C52` / warning `#9A5C05` / destructive `#C43737` 及 soft；ring `#25786D`。
 
-深色：bg `#0B1220` / surface `#111A2C` / surface-2 `#1B2740` / fg `#E2E8F0` / muted `#94A3B8` / border `#263449`；primary `#60A5FA` hover `#93C5FD` soft `rgba(96,165,250,0.14)` fg `#172554`；success `#4ADE80` / warning `#FBBF24` / destructive `#F87171`；ring `#60A5FA`。
+深色（D1 雾灰，不压黑）：bg `#3A3F45` / surface `#434950` / surface-2 `#4B5259` / fg `#F0F2F4` / muted `#B8C0C7` / border `#545C64`；primary `#7FD4C6` hover `#A5E4D9` soft `rgba(127,212,198,0.16)` fg `#17332E`；secondary `#A8D4F0` / soft `rgba(168,212,240,0.16)`；success `#86D6AC` / warning `#EAD48E` / destructive `#E8A49A`；ring `#7FD4C6`。
 
 用色比例 60/30/10；主色永远小面积强调；语义色只表达状态。
+
+按模板附录 E 做 RGB 调校：模板原值四处不达 4.5 已同色相加深（muted→`#64736C`、
+success→`#2A7C52`、warning→`#9A5C05`、destructive→`#C43737`）；深色带文字的软底一律
+实色粉彩底 + 深字（`*-soft-solid`/`*-soft-fg` 令牌），不得用 rgba 软底配同色浅字。
 
 ### 3.2 字体与排版
 
@@ -62,10 +67,11 @@ Logo 为家族几何语法 SVG 标识「两个方块以细线相连、右上方�
 
 四级分层：BRAND.md（意图）→ MASTER.md（快照）→ style.css / brand.js（代码事实）→ 页面。冲突时以代码为准并回写文档。
 
-Li-Design 模板 V1.2（2026-08-17）同步时，对 Li&Pass「海玻璃」专属增量按品牌内核逐项取舍：
-采用 RGB 调校审计、按钮半透明着色与扫光、认证卡/品牌辉光；不采用科技光效层、深色雾灰
-中间调、六强调色板与 secondary 角色（理由见槽位 21/22 与设计规格
-`docs/superpowers/specs/2026-08-17-design-template-v12-ui-sync-design.md`）。
+Li-Design 模板 V1.2（2026-08-17）：先同步按钮/辉光规范，后按用户指令**全量采纳海玻璃
+配色方案**（浅色全淡色、深色雾灰、secondary 与六强调色板、按钮着色令牌、tint 阴影）；
+落地时按模板附录 E 做 RGB 调校（四处同色相加深 + 深色软底实色粉彩/深字）。科技光效层
+与流光线属于光效风格，不采用。取舍记录见槽位 21/22 与设计规格
+`docs/superpowers/specs/2026-08-17-design-template-v12-palette-adoption-design.md`。
 
 ## 7. 槽位表
 
@@ -77,12 +83,12 @@ Li-Design 模板 V1.2（2026-08-17）同步时，对 Li&Pass「海玻璃」专�
 | 4 | 品牌承诺 | 对话只在你们之间流动；每一次登录都经 Li&Pass 验证 |
 | 5 | 人格比喻 | 可靠的信使：准确送达、不多嘴、不打扰 |
 | 6 | 符号隐喻 | 直线=消息通路、Z 形=对话往返、方块=消息、锁钥=私密、光斑=在线状态 |
-| 7 | 主色（浅） | `#2563EB` / hover `#1D4ED8` / soft `#DBEAFE` / fg `#FFFFFF` |
-| 8 | 主色（深） | `#60A5FA` / hover `#93C5FD` / soft `rgba(96,165,250,0.14)` / fg `#172554` |
-| 9 | 中性色（浅） | `#F8FAFC` / `#FFFFFF` / `#F1F5F9` / `#0F172A` / `#64748B` / `#E2E8F0` |
-| 10 | 中性色（深） | `#0B1220` / `#111A2C` / `#1B2740` / `#E2E8F0` / `#94A3B8` / `#263449` |
-| 11 | 语义色 | 浅：success `#15803D`、warning `#B45309`、destructive `#DC2626` 及 soft；深：`#4ADE80` / `#FBBF24` / `#F87171` 及 rgba soft |
-| 12 | 焦点环 | 浅 `#2563EB`、深 `#60A5FA`，2px 描边 + 2px offset，`focus-visible` 全局 |
+| 7 | 主色（浅） | `#25786D` / hover `#1F6359` / soft `#D9F4EE` / fg `#FFFFFF`（海玻璃，模板 V1.2 定稿） |
+| 8 | 主色（深） | `#7FD4C6` / hover `#A5E4D9` / soft `rgba(127,212,198,0.16)` / fg `#17332E` |
+| 9 | 中性色（浅） | `#F6FBF9` / `#FFFFFF` / `#EEF6F3` / `#35423F` / `#64736C` / `#E1ECE8`（muted 经 RGB 调校） |
+| 10 | 中性色（深） | `#3A3F45` / `#434950` / `#4B5259` / `#F0F2F4` / `#B8C0C7` / `#545C64`（D1 雾灰，不压黑） |
+| 11 | 语义色 | 浅：success `#2A7C52`、warning `#9A5C05`、destructive `#C43737` 及 soft（RGB 调校）；深：`#86D6AC` / `#EAD48E` / `#E8A49A` 及 rgba soft + 实色粉彩 soft-solid/soft-fg |
+| 12 | 焦点环 | 浅 `#25786D`、深 `#7FD4C6`，2px 描边 + 2px offset，`focus-visible` 全局 |
 | 13 | 字体栈 | Inter → 系统栈 → PingFang SC / 微软雅黑；不加载远程字体 |
 | 14 | 标题字体 | 暂不引入 Lexend（零外部依赖）；后续如需自托管 subset 再议 |
 | 15 | Logo / favicon | 几何标识「两个方块细线相连 + 右侧光斑」，内联 SVG + `favicon.svg`，透明底、无位图 |
@@ -90,6 +96,6 @@ Li-Design 模板 V1.2（2026-08-17）同步时，对 Li&Pass「海玻璃」专�
 | 17 | 主题存储键 | `chat-theme` |
 | 18 | slogan / 备案 | slogan「一次登录，直连你的小圈子」；备案上线前留空，禁止假占位号 |
 | 19 | 氛围浓度 | 认证页 10、登录后 8（滚动联动钩子预留）；移动端（<768px）≤6 |
-| 20 | 浏览器品牌位 | `favicon.svg`、`theme-color`（浅 `#F8FAFC` / 深 `#0B1220`）、description、首帧主题脚本 |
-| 21 | 强调色板 | **不采用六强调色板**：信使蓝单主色品牌，装饰性小面积复用主色/语义色，避免新增无使用场景的色板（V1.2 模板槽位为可选装饰） |
-| 22 | 按钮与光效风格 | 主按钮半透明单色着色（浅 10% / 深 13% + 同色细描边）+ `::after` 扫光 4s，文字浅 `#1E40AF` / 深 `#DBEAFE`；认证卡/Logo 呼吸辉光 4.5s。**深色维持信使蓝 navy `#0B1220`**（不采用雾灰中间调）；**不采用科技光效层**（已有定制 Canvas 氛围四模式，再叠网格/光束违背克制原则） |
+| 20 | 浏览器品牌位 | `favicon.svg`、`theme-color`（浅 `#F6FBF9` / 深 `#3A3F45`）、description、首帧主题脚本 |
+| 21 | 强调色板 | 六色相 strong/soft（浅：ice `#2F678F`/aqua `#25786D`/lilac `#51488F`/sage `#557546`/mint `#2F7C52`/sand `#876741`；深：`#A8CBE8`/`#7FD4C6`/`#B0A8DE`/`#B0C79E`/`#9ADFAD`/`#D9C49E`），令牌已落地、暂未接装饰位（合计 ≤15% 可视面积铁律） |
+| 22 | 按钮与光效风格 | 主按钮半透明单色着色（浅 `rgba(47,127,116,.10)` / 深 `rgba(127,212,198,.13)` + 同色细描边）+ `::after` 扫光 4s，文字浅 `#24433E` / 深 `#D7EFEA`；认证卡/Logo 呼吸辉光 4.5s。**深色采用 D1 雾灰中间调**；**不采用科技光效层**（属于光效风格而非配色，已有定制 Canvas 氛围四模式，再叠网格/光束违背克制原则） |
