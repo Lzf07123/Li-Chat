@@ -23,6 +23,12 @@ async def test_style_has_brand_tokens(api_client: httpx.AsyncClient) -> None:
     assert "--chat-primary-soft-solid: #d9f4ee" in response.text
     assert "--chat-bg: #3a3f45" in response.text
     assert "var(--chat-success-soft-solid, var(--chat-success-soft))" in response.text
+    assert "@keyframes tech-grid-drift" in response.text
+    assert "@keyframes tech-beam-sweep" in response.text
+    assert "@keyframes tech-dot-breathe" in response.text
+    assert "@keyframes aurora-drift-1" in response.text
+    assert ".tech-soft" in response.text
+    assert ".aurora-soft" in response.text
     assert "prefers-reduced-motion" in response.text
 
 
@@ -60,6 +66,11 @@ async def test_index_brand_chrome(api_client: httpx.AsyncClient) -> None:
     assert 'src="/brand.js"' in text
     assert 'src="/theme.js"' in text
     assert 'src="/ambient.js"' in text
+    assert 'class="tech-ambience"' in text
+    assert 'class="tech-grid"' in text
+    assert 'class="aurora"' in text
+    assert text.count('class="tech-beam"') == 3
+    assert text.count('class="tech-dot"') == 8
 
 
 async def test_app_script_contracts(api_client: httpx.AsyncClient) -> None:
@@ -88,6 +99,15 @@ async def test_logout_modal_offers_two_logout_semantics(
     assert 'submitLogoutForm("/oidc/logout")' in text
     assert "event.persisted" in text
     assert "state.loggingOut = true" in text
+
+
+async def test_effect_layers_soften_outside_auth_shell(
+    api_client: httpx.AsyncClient,
+) -> None:
+    response = await api_client.get("/app.js")
+    text = response.text
+    assert 'classList.toggle("aurora-soft"' in text
+    assert 'classList.toggle("tech-soft"' in text
 
 
 async def test_ambient_script(api_client: httpx.AsyncClient) -> None:

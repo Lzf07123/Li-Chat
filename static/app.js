@@ -259,6 +259,11 @@ function mount(className, inner) {
   const app = document.getElementById("app");
   app.className = className;
   app.innerHTML = inner;
+  const soft = className !== "auth-shell";
+  const aurora = document.querySelector(".aurora");
+  const tech = document.querySelector(".tech-ambience");
+  if (aurora) aurora.classList.toggle("aurora-soft", soft);
+  if (tech) tech.classList.toggle("tech-soft", soft);
   LiChatTheme.initTheme();
 }
 
