@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import secrets
 from typing import Annotated, cast
-from urllib.parse import parse_qsl, quote, urlencode
+from urllib.parse import quote, urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,22 +39,6 @@ router = APIRouter(prefix="/oidc", tags=["sso"])
 logger = get_logger(__name__)
 
 _AUTH_STATE_COOKIE = "lichat_auth"
-
-_POST_LOGOUT_LANDING_HTML = """<!doctype html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="0; url=/">
-<title>已退出登录</title>
-</head>
-<body>
-<p>已退出登录，正在返回…</p>
-<p><a href="/">如果没有自动跳转，点击这里</a></p>
-<script>window.location.replace("/");</script>
-</body>
-</html>"""
-
 
 def _settings(request: Request) -> Settings:
     return cast(Settings, request.app.state.settings)
@@ -262,86 +246,6 @@ def _finish_post_logout(request: Request, state: str | None) -> RedirectResponse
 @router.get("/post-logout")
 async def post_logout(request: Request, state: str | None = None) -> RedirectResponse:
     return _finish_post_logout(request, state)
-
-
-async def _extract_post_logout_payload(
-    request: Request,
-) -> tuple[str | None, str | None, str, list[str], list[str]]:
-    query_keys = sorted(request.query_params.keys())
-    query_state = request.query_params.get("state")
-    query_token = request.query_params.get("logout_token")
-    if query_state is not None or query_token is not None:
-        return query_state, query_token, "query", query_keys, []
-    content_type = request.headers.get("content-type", "").lower()
-    if (
-        "application/x-www-form-urlencoded" in content_type
-        or "multipart/form-data" in content_type
-    ):
-        form = await request.form()
-        form_keys = sorted(form.keys())
-        state_value = form.get("state")
-        token_value = form.get("logout_token")
-        return (
-            str(state_value) if state_value is not None else None,
-            str(token_value) if token_value is not None else None,
-            "form",
-            query_keys,
-            form_keys,
-        )
-    if not content_type:
-        raw = await request.body()
-        try:
-            pairs = parse_qsl(raw.decode("utf-8"), keep_blank_values=True)
-        except Exception:
-            pairs = []
-        form_keys = sorted({key for key, _ in pairs})
-        values = dict(pairs)
-        return (
-            values.get("state"),
-            values.get("logout_token"),
-            "form",
-            query_keys,
-            form_keys,
-        )
-    try:
-        body = await request.json()
-    except Exception:
-        return None, None, "json", query_keys, []
-    if isinstance(body, dict):
-        state_value = body.get("state")
-        token_value = body.get("logout_token")
-        return (
-            str(state_value) if state_value is not None else None,
-            str(token_value) if token_value is not None else None,
-            "json",
-            query_keys,
-            sorted(body.keys()),
-        )
-    return None, None, "json", query_keys, []
-
-
-@router.post("/post-logout")
-async def post_logout_submit(
-    request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> Response:
-    state, logout_token, source, query_keys, form_keys = (
-        await _extract_post_logout_payload(request)
-    )
-    if logout_token is not None:
-        # 兼容旧门户行为（回程令牌误打到回跳地址）；标准配置走 /oidc/backchannel-logout
-        await _process_logout_token(request, db, logout_token)
-        return HTMLResponse(_POST_LOGOUT_LANDING_HTML)
-    if not state or verify_state(_settings(request).session_secret, state) is None:
-        logger.warning(
-            "post_logout_state_invalid",
-            source=source,
-            content_type=request.headers.get("content-type", ""),
-            query_keys=query_keys,
-            form_keys=form_keys,
-        )
-        raise HTTPException(status_code=400, detail="invalid logout state")
-    return RedirectResponse("/", status_code=302)
 
 
 async def _process_logout_token(

@@ -109,54 +109,6 @@ async def test_missing_logout_event_rejected(
     assert response.status_code == 400
 
 
-async def test_post_logout_accepts_logout_token_and_clears_sessions(
-    app,
-    api_client: httpx.AsyncClient,
-    db_session: AsyncSession,
-    mock_idp: MockIdP,
-) -> None:
-    ids = await _seed_sessions(db_session)
-    fake = FakeWS()
-    await _register_fake_ws(app, fake)
-    response = await api_client.post(
-        "/oidc/post-logout", data={"logout_token": _logout_token(mock_idp, "j-p1")}
-    )
-    assert response.status_code == 200
-    assert "text/html" in response.headers["content-type"]
-    assert "url=/" in response.text
-    assert 'window.location.replace("/")' in response.text
-    remaining = (await db_session.execute(select(Session.id))).scalars().all()
-    assert remaining == [ids["keep"]]
-    assert fake.closed_with == [4401]
-
-
-async def test_post_logout_logout_token_replayed_ignored(
-    app,
-    api_client: httpx.AsyncClient,
-    db_session: AsyncSession,
-    mock_idp: MockIdP,
-) -> None:
-    await _seed_sessions(db_session)
-    fake = FakeWS()
-    await _register_fake_ws(app, fake)
-    token = _logout_token(mock_idp, "j-p2")
-    first = await api_client.post("/oidc/post-logout", data={"logout_token": token})
-    assert first.status_code == 200
-    second = await api_client.post("/oidc/post-logout", data={"logout_token": token})
-    assert second.status_code == 200
-    assert "text/html" in second.headers["content-type"]
-    assert "url=/" in second.text
-
-
-async def test_post_logout_rejects_invalid_logout_token(
-    api_client: httpx.AsyncClient,
-    mock_idp: MockIdP,
-) -> None:
-    token = _logout_token(mock_idp, "j-p3", aud="other-client")
-    response = await api_client.post("/oidc/post-logout", data={"logout_token": token})
-    assert response.status_code == 400
-
-
 async def test_logout_token_with_unmatched_sid_clears_all_sessions_for_user(
     app,
     api_client: httpx.AsyncClient,

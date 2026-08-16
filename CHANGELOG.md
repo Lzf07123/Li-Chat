@@ -26,6 +26,7 @@
 
 - OIDC 授权 scope 默认加入 `email`：登录时向 Li&Pass 请求邮箱并同步到本地资料，支撑「按邮箱搜索好友」；未验证邮箱不阻塞登录（仅存储 `email_verified` 标记），授权同意页可能多一项邮箱授权
 - RP 登出携带 `id_token_hint`：登录时把 `id_token` 存进本地会话（仅作登出提示），网站内退出登录跳门户 `end-session` 时随 `client_id` 一起携带，门户据此展示「退出所有会话 / 仅退出当前网站」确认页，而不是打回授权确认
+- 移除 `/oidc/post-logout` 的兼容逻辑：该端点恢复标准形态（仅 GET 带签名 `state` 回跳，验签后 302 首页），POST/`logout_token` 一律 405；回程登出统一走 `/oidc/backchannel-logout`
 
 ### 安全加固
 
