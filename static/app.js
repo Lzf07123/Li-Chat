@@ -3,6 +3,7 @@
 const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 // 与 app/main.py 的 FRONTEND_VERSION 保持一致；落后即清缓存强制刷新
 const FRONTEND_VERSION = "0.3.0";
+let draftTimer = null;
 
 const state = {
   me: null,
@@ -1658,6 +1659,7 @@ async function openGroup(groupId, locateId = null) {
   document.getElementById("chat-active").hidden = true;
   document.getElementById("group-panel").hidden = false;
   renderGroupPanel();
+  loadDraft();
   document.getElementById("app").classList.add("chat-open");
   await loadGroupHistory();
   await markGroupRead();
@@ -1902,6 +1904,7 @@ function renderGroupPanel() {
     );
     document.getElementById("group-message-input").addEventListener("input", (event) => {
       autoGrowInput(event.target);
+      saveDraftDebounced(event.target.value);
     });
     bindPasteUpload(document.getElementById("group-message-input"), true);
     document.getElementById("group-attach-btn").addEventListener("click", () => {
@@ -2540,8 +2543,10 @@ async function openChat(sub, locateId = null) {
     </span>
     <span id="typing-hint" class="typing-hint" hidden>正在输入…</span>`;
   clearTypingHint();
-  document.getElementById("message-input").value = "";
-  autoGrowInput(document.getElementById("message-input"));
+  const messageInput = document.getElementById("message-input");
+  messageInput.value = "";
+  autoGrowInput(messageInput);
+  loadDraft();
   document.getElementById("load-older").hidden = true;
   renderMessages();
   document.getElementById("app").classList.add("chat-open");
@@ -3008,6 +3013,7 @@ async function onGroupComposerSubmit(event) {
     const mentionList = document.getElementById("group-mention-list");
     if (mentionList) mentionList.hidden = true;
     input.value = "";
+    saveDraft("");
     autoGrowInput(input);
     input.focus();
   }
@@ -3151,6 +3157,7 @@ async function onComposerSubmit(event) {
     state.editingId = null;
     clearReply();
     input.value = "";
+    saveDraft("");
     autoGrowInput(input);
     input.placeholder = "输入消息";
     input.focus();
@@ -3443,7 +3450,9 @@ function cancelEditing() {
 
 function onComposerInput() {
   sendTyping("start");
-  autoGrowInput(document.getElementById("message-input"));
+  const input = document.getElementById("message-input");
+  autoGrowInput(input);
+  saveDraftDebounced(input.value);
 }
 
 function onComposerBlur() {
@@ -3454,6 +3463,45 @@ function autoGrowInput(input) {
   if (!input) return;
   input.style.height = "auto";
   input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+}
+
+function draftKey() {
+  if (state.activeGroupId !== null) {
+    return `lichat-draft:group:${state.activeGroupId}`;
+  }
+  if (state.activeSub) {
+    return `lichat-draft:dm:${state.activeSub}`;
+  }
+  return null;
+}
+
+function saveDraft(value) {
+  const key = draftKey();
+  if (!key) return;
+  if (value) {
+    localStorage.setItem(key, value);
+  } else {
+    localStorage.removeItem(key);
+  }
+}
+
+function saveDraftDebounced(value) {
+  if (draftTimer) window.clearTimeout(draftTimer);
+  draftTimer = window.setTimeout(() => saveDraft(value), 300);
+}
+
+function loadDraft() {
+  const key = draftKey();
+  const input =
+    state.activeGroupId !== null
+      ? document.getElementById("group-message-input")
+      : document.getElementById("message-input");
+  if (!key || !input) return;
+  const draft = localStorage.getItem(key) || "";
+  if (draft) {
+    input.value = draft;
+    autoGrowInput(input);
+  }
 }
 
 function handleServerMessage(data) {

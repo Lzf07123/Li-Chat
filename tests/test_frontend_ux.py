@@ -208,3 +208,11 @@ async def test_v40_friend_request_reason(api_client: httpx.AsyncClient) -> None:
     assert "function openRequestModal(" in text
     assert "request-reason" in text
     assert "item.reason" in text
+
+
+async def test_v41_conversation_drafts(api_client: httpx.AsyncClient) -> None:
+    text = await _app_js(api_client)
+    assert "lichat-draft" in text
+    assert "function saveDraft(" in text
+    assert "function loadDraft(" in text
+    assert "saveDraftDebounced" in text
