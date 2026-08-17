@@ -1,6 +1,39 @@
 # Li&Chat
 
-基于 OIDC SSO（Li&Pass）的小圈子即时通讯。当前里程碑：统一单点登录——授权码 + PKCE、本地会话、本地/SSO/回程多路径登出、WebSocket 认证桥接。
+> 基于 OIDC SSO（Li&Pass）的小圈子即时通讯。
+
+![Status](https://img.shields.io/badge/status-active-brightgreen)
+![Role](https://img.shields.io/badge/role-project-blue)
+![Focus](https://img.shields.io/badge/focus-chat-orange)
+
+[![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)](https://redis.io/)
+[![WebSocket](https://img.shields.io/badge/WebSocket-4A4A55)](https://websockets.spec.whatwg.org/)
+[![WebRTC](https://img.shields.io/badge/WebRTC-333333)](https://webrtc.org/)
+
+当前里程碑：统一单点登录——授权码 + PKCE、本地会话、本地/SSO/回程多路径登出、WebSocket 认证桥接。
+
+## 目录
+
+- [关于](#关于)
+- [功能](#功能)
+- [快速开始](#快速开始)
+- [质量门禁](#质量门禁)
+- [仓库结构](#仓库结构)
+- [文档索引](#文档索引)
+- [路线图](#路线图)
+
+## 关于
+
+| 项目 | 内容 |
+| --- | --- |
+| 身份 | Li&Chat |
+| 方向 | 小圈子即时通讯 |
+| 方式 | OIDC SSO（Li&Pass）+ WebSocket 实时通道 |
+| 目标 | 一次登录，直连你的小圈子 |
 
 ## 功能
 
@@ -55,7 +88,7 @@ uv run ruff check .
 uv run mypy app
 ```
 
-## 项目结构
+## 仓库结构
 
 ```text
 app/
