@@ -24,6 +24,9 @@
 - 设计系统同步 Li-Design 模板 V1.2：主按钮改半透明单色着色 + 细描边 + `::after` 扫光
   （4s，disabled 关闭），认证卡与 Logo 呼吸辉光（4.5s，reduced-motion 静止）；槽位表
   20 → 22；预览基线六张全部重拍
+- README 按 Li-Design README 模板（Li&About 规范）落地：顶部 flat 徽章（状态/角色/方向 +
+  技术徽章平铺）、目录与关于信息表，「项目结构」对齐模板改名「仓库结构」；设计子模块
+  指针同步至 `745a7ef`
 - 全量采纳 Li-Design V1.2 海玻璃配色方案：浅色全淡色（bg `#F6FBF9`、主色 `#25786D`、
   雾面中性色）+ 深色 D1 雾灰中间调（bg `#3A3F45`、主色 `#7FD4C6`）+ secondary 与六强调
   色板（ice/aqua/lilac/sage/mint/sand 明暗两套）+ 水绿 tint 阴影；品牌位/首帧主题同步

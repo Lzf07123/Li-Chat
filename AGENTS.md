@@ -141,7 +141,7 @@ docker compose down
 
 **当前状态：首次设计已完成（2026-08-16）。** 视觉决策以 [design-system/chat/BRAND.md](./design-system/chat/BRAND.md) 与 [MASTER.md](./design-system/chat/MASTER.md) 为唯一事实来源，令牌在 `static/style.css`、品牌单点在 `static/brand.js`；UI 改动先读这两份文档，不再依赖 `template` 子模块（可经评审后移除）。
 
-`design-system/template/` 是 [Li-Design](https://github.com/Lzf07123/Li-Design) 的子模块，**只在 Li&Chat 第一次做视觉设计时参考**，不参与日常开发。
+`design-system/template/` 是 [Li-Design](https://github.com/Lzf07123/Li-Design) 的子模块，**只在 Li&Chat 第一次做视觉设计时参考**，不参与日常开发。其中 `reusable-readme.template.md`（Li&About 规范）作为项目 README 结构与徽章规则的参考：README 改动遵循徽章 flat 样式、技术徽章链接官网、「不留空占位」原则。
 
 首次设计流程：
 
